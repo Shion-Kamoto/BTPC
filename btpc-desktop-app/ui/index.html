@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BTPC Wallet - Dashboard</title>
+    <link rel="stylesheet" href="btpc-styles.css">
+</head>
+<body>
+    <div class="page-container">
+        <!-- Sidebar Navigation -->
+        <div class="sidebar">
+            <div class="logo-section">
+                <div class="logo-image">
+                    <div class="btpc-animated-logo">
+                        <span class="btpc-letter">₿</span>
+                        <span class="btpc-letter">T</span>
+                        <span class="btpc-letter">P</span>
+                        <span class="btpc-letter">C</span>
+                    </div>
+                    <div class="quantum-orbital"></div>
+                    <div class="quantum-orbital"></div>
+                    <div class="quantum-symbol">
+                        <span class="btc-symbol">₿</span>
+                        <span class="q-symbol">Q</span>
+                    </div>
+                </div>
+                <div class="logo-header">BTPC Wallet</div>
+                <div class="logo-subtitle">Quantum-Resistant</div>
+
+                <!-- Balance Card inside logo section -->
+                <div class="account-info">
+                    <div class="account-name">Total Balance</div>
+                    <div class="balance-amount">
+                        <span id="wallet-balance">0.00000000</span>
+                        <span class="balance-unit">BTPC</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navigation Menu -->
+            <nav>
+                <a href="index.html" class="nav-item active">
+                    <span class="nav-icon"><span class="icon icon-home"></span></span>
+                    <span class="nav-text">Dashboard</span>
+                </a>
+                <a href="wallet-manager.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-wallet"></span></span>
+                    <span class="nav-text">Wallet</span>
+                </a>
+                <a href="transactions.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-transactions"></span></span>
+                    <span class="nav-text">Transactions</span>
+                </a>
+                <a href="mining.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-pickaxe"></span></span>
+                    <span class="nav-text">Mining</span>
+                </a>
+                <a href="node.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-link"></span></span>
+                    <span class="nav-text">Node</span>
+                </a>
+                <a href="settings.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-settings"></span></span>
+                    <span class="nav-text">Settings</span>
+                </a>
+            </nav>
+
+            <!-- Network Status -->
+            <div class="network-status-footer">
+                <div class="network-status-row">
+                    <span class="network-status-label">Network</span>
+                    <span class="network-status-value" id="network-name">Mainnet</span>
+                </div>
+                <div class="network-status-row">
+                    <span class="network-status-label">Status</span>
+                    <span class="network-status-value" id="sync-status">Syncing...</span>
+                </div>
+                <div class="sync-progress-bar">
+                    <div class="sync-progress-fill" id="sync-progress" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="main-content">
+            <div class="page-header">
+                <div class="page-header-left">
+                    <h1>Dashboard</h1>
+                    <p>Welcome to your BTPC quantum-resistant wallet</p>
+                </div>
+                <div class="logout-container">
+                    <button id="logout-btn" class="btn-logout">
+                        <img src="src/assets/icons-svg/unlock.svg" alt="Logout" class="logout-icon">
+                        <span>Logout</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Quick Stats Grid -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 32px;">
+                <div class="card">
+                    <div class="stat-label">Wallet Balance</div>
+                    <div class="stat-value"><span id="dashboard-balance">0.00000000</span></div>
+                    <div class="stat-subtext">BTPC</div>
+                </div>
+                <div class="card">
+                    <div class="stat-label">Node Status</div>
+                    <div class="stat-value" id="node-status-icon"><span class="icon icon-link" style="width: 32px; height: 32px; opacity: 0.3;"></span></div>
+                    <div class="stat-subtext" id="node-status-text">Offline</div>
+                </div>
+                <div class="card">
+                    <div class="stat-label">Mining</div>
+                    <div class="stat-value" id="mining-status-icon"><span class="icon icon-pickaxe" style="width: 32px; height: 32px; opacity: 0.3;"></span></div>
+                    <div class="stat-subtext" id="mining-hashrate">stopped</div>
+                </div>
+                <div class="card">
+                    <div class="stat-label">Addresses</div>
+                    <div class="stat-value" id="address-count">0</div>
+                    <div class="stat-subtext">Active wallets</div>
+                </div>
+                <div class="card">
+                    <div class="stat-label">Block Height</div>
+                    <div class="stat-value" id="chain-height">0</div>
+                    <div class="stat-subtext">Blockchain</div>
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="card mb-4">
+                <div class="card-header">Quick Actions</div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;">
+                    <a href="wallet-manager.html" class="btn btn-primary">
+                        <span class="icon icon-wallet"></span> Create Address
+                    </a>
+                    <a href="transactions.html" class="btn btn-primary">
+                        <span class="icon icon-send"></span> Send BTPC
+                    </a>
+                    <a href="mining.html" class="btn btn-secondary">
+                        <span class="icon icon-pickaxe"></span> Start Mining
+                    </a>
+                    <a href="node.html" class="btn btn-secondary">
+                        <span class="icon icon-link"></span> Manage Node
+                    </a>
+                </div>
+            </div>
+
+            <!-- Recent Activity -->
+            <div class="card mb-4">
+                <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <span><span class="icon icon-pickaxe"></span> Recent Activity</span>
+                    <a href="mining.html" class="btn btn-secondary" style="padding: 6px 16px; font-size: 0.875rem;">
+                        View All <span class="icon icon-arrow-right"></span>
+                    </a>
+                </div>
+                <div id="recent-activity-container" style="max-height: 280px; overflow-y: auto;">
+                    <div id="recent-activity-empty" style="padding: 40px 20px; text-align: center;">
+                        <div style="font-size: 2.5rem; margin-bottom: 12px; opacity: 0.3;"><span class="icon icon-pickaxe"></span></div>
+                        <div style="color: var(--text-muted); font-size: 0.875rem;">No mining activity yet</div>
+                        <div style="color: var(--text-muted); font-size: 0.8125rem; margin-top: 4px;">
+                            <a href="mining.html" style="color: var(--btpc-primary);">Start mining</a> to see activity here
+                        </div>
+                    </div>
+                    <div id="recent-activity-list" style="display: none;"></div>
+                </div>
+            </div>
+
+            <!-- System Info -->
+            <div class="card mt-4">
+                <div class="card-header">System Information</div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+                    <div>
+                        <div class="stat-label">Software Version</div>
+                        <div class="stat-subtext">BTPC Desktop v1.0.0</div>
+                    </div>
+                    <div>
+                        <div class="stat-label">Network Protocol</div>
+                        <div class="stat-subtext" id="network-type">Mainnet</div>
+                    </div>
+                    <div>
+                        <div class="stat-label">Cryptography</div>
+                        <div class="stat-subtext"><span class="icon icon-circle-check"></span> ML-DSA-65 Active</div>
+                    </div>
+                    <div>
+                        <div class="stat-label">Data Directory</div>
+                        <div class="stat-subtext" id="data-dir">~/.btpc</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Password Modal for Wallet Encryption -->
+    <div id="password-modal-overlay">
+        <div class="password-modal">
+            <h2 id="modal-title">🔒 Unlock Your Wallets</h2>
+            <p id="modal-description">Enter your <strong style="color: var(--btpc-secondary);">wallet encryption password</strong> to access your wallet data.</p>
+            <p id="modal-description" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 4px;">(This is different from your application master password)</p>
+
+            <div id="migration-notice" class="migration-notice">
+                <h3>⚡ Upgrade to Encrypted Wallets</h3>
+                <p>Your wallet metadata is currently stored in plaintext. For better security, we recommend encrypting it with a master password.</p>
+                <ul>
+                    <li>Encrypts wallet addresses and balances</li>
+                    <li>Protects against unauthorized access</li>
+                    <li>Creates backup before migration</li>
+                </ul>
+                <p style="margin-top: 10px;"><strong>Choose a strong password and remember it!</strong> Without it, you won't be able to access your wallets.</p>
+            </div>
+
+            <div class="password-input-group">
+                <label for="master-password">Wallet Encryption Password</label>
+                <div class="password-input-wrapper">
+                    <input type="password" id="master-password" placeholder="Enter wallet password" autocomplete="current-password" />
+                    <button type="button" class="toggle-password" id="toggle-password" title="Show/hide password">👁️</button>
+                </div>
+            </div>
+
+            <div id="password-error" class="password-error"></div>
+
+            <div id="password-loading" class="password-loading">
+                <div class="spinner"></div>
+                <p>Unlocking wallets...</p>
+            </div>
+
+            <div class="password-modal-buttons">
+                <button type="button" class="btn-unlock" id="btn-unlock">Unlock Wallets</button>
+                <button type="button" class="btn-cancel" id="btn-cancel" style="display: none;">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="btpc-tauri-context.js"></script>
+    <script src="btpc-event-listeners.js"></script>
+    <script src="btpc-navigation-guard.js"></script>
+    <script src="btpc-event-manager.js"></script>
+    <script src="btpc-common.js"></script>
+    <script src="btpc-update-manager.js"></script>
+    <script src="password-modal.js"></script>
+    <script src="btpc-logout.js"></script>
+    <script>
+        // Dashboard functionality using Update Manager
+        const updateManager = window.btpcUpdateManager;
+
+        // Subscribe to state updates (one-time only - prevent duplicate subscriptions causing stack overflow)
+        if (!window.dashboardPageSubscribed) {
+            window.dashboardPageSubscribed = true;
+            updateManager.subscribe((type, data, fullState) => {
+                switch (type) {
+                    case 'node':
+                        updateNodeDisplay(data);
+                        break;
+                    case 'mining':
+                        updateMiningDisplay(data);
+                        break;
+                    case 'blockchain':
+                        updateBlockchainDisplay(data);
+                        break;
+                    case 'wallet':
+                        updateWalletDisplay(data);
+                        break;
+                    case 'network':
+                        updateNetworkDisplay(data);
+                        break;
+                }
+            });
+        }
+
+        function updateNodeDisplay(nodeData) {
+            const iconEl = document.getElementById('node-status-icon');
+            const textEl = document.getElementById('node-status-text');
+
+            if (nodeData && nodeData.is_running) {
+                iconEl.innerHTML = '<span class="icon icon-link" style="width: 32px; height: 32px; color: var(--status-success);"></span>';
+                textEl.textContent = 'Running';
+                textEl.style.color = 'var(--status-success)';
+            } else {
+                iconEl.innerHTML = '<span class="icon icon-link" style="width: 32px; height: 32px; opacity: 0.3;"></span>';
+                textEl.textContent = 'Offline';
+                textEl.style.color = 'var(--text-muted)';
+            }
+        }
+
+        function updateMiningDisplay(miningData) {
+            const hashrateEl = document.getElementById('mining-hashrate');
+            const iconEl = document.getElementById('mining-status-icon');
+
+            if (miningData && miningData.is_mining) {
+                const hashrate = miningData.hashrate || 0;
+                hashrateEl.textContent = `${hashrate.toLocaleString()} H/s`;
+                hashrateEl.style.color = 'var(--status-success)';
+                iconEl.innerHTML = '<span class="icon icon-pickaxe" style="width: 32px; height: 32px; color: var(--status-success);"></span>';
+            } else {
+                hashrateEl.textContent = 'stopped';
+                hashrateEl.style.color = 'var(--text-muted)';
+                iconEl.innerHTML = '<span class="icon icon-pickaxe" style="width: 32px; height: 32px; opacity: 0.3;"></span>';
+            }
+        }
+
+        function updateBlockchainDisplay(blockchainData) {
+            if (blockchainData && blockchainData.height !== undefined) {
+                document.getElementById('chain-height').textContent = blockchainData.height.toLocaleString();
+            }
+        }
+
+        function updateWalletDisplay(walletData) {
+            if (walletData && walletData.balance !== undefined) {
+                const btpcBalance = walletData.balance.toFixed(8);
+                document.getElementById('wallet-balance').textContent = btpcBalance;
+                document.getElementById('dashboard-balance').textContent = btpcBalance;
+                document.getElementById('address-count').textContent = walletData.address_count || 0;
+            }
+        }
+
+        function updateNetworkDisplay(networkData) {
+            if (networkData && networkData.network) {
+                // Capitalize first letter of network name
+                const networkName = networkData.network.charAt(0).toUpperCase() + networkData.network.slice(1);
+
+                // Update network status footer
+                const networkNameEl = document.getElementById('network-name');
+                if (networkNameEl) {
+                    networkNameEl.textContent = networkName;
+                }
+
+                // Update system information section
+                const networkTypeEl = document.getElementById('network-type');
+                if (networkTypeEl) {
+                    networkTypeEl.textContent = networkName;
+                }
+            }
+        }
+
+        // Recent Activity Updates
+        async function updateRecentActivity() {
+            if (!window.invoke) {
+                return;
+            }
+
+            try {
+                const logs = await window.invoke('get_mining_logs');
+                const emptyState = document.getElementById('recent-activity-empty');
+                const activityList = document.getElementById('recent-activity-list');
+
+                if (!logs || logs.length === 0) {
+                    emptyState.style.display = 'block';
+                    activityList.style.display = 'none';
+                    return;
+                }
+
+                emptyState.style.display = 'none';
+                activityList.style.display = 'block';
+
+                // Show last 8 entries (most recent first)
+                const recentLogs = logs.slice(-8).reverse();
+
+                activityList.innerHTML = recentLogs.map(entry => {
+                    // Extract time from timestamp "YYYY-MM-DD HH:MM:SS"
+                    const timeOnly = entry.timestamp.split(' ')[1] || entry.timestamp;
+
+                    // Determine badge style based on level
+                    let badgeConfig = {
+                        'SUCCESS': { color: '#10b981', icon: '✓', label: 'BLOCK' },
+                        'ERROR': { color: '#ef4444', icon: '✕', label: 'ERROR' },
+                        'WARN': { color: '#f59e0b', icon: '⚠', label: 'WARN' },
+                        'INFO': { color: '#3b82f6', icon: 'ℹ', label: 'INFO' }
+                    };
+
+                    const config = badgeConfig[entry.level] || badgeConfig['INFO'];
+                    let displayMessage = entry.message;
+
+                    // Format block found messages specially
+                    if (entry.level === 'SUCCESS' && (entry.message.includes('Block') || entry.message.includes('Accepted'))) {
+                        const rewardMatch = entry.message.match(/(\d+\.\d+)\s+BTPC/);
+                        const heightMatch = entry.message.match(/height\s+(\d+)/);
+
+                        if (rewardMatch && heightMatch) {
+                            displayMessage = `<strong>Block Mined!</strong> Height: ${heightMatch[1]} • Reward: ${rewardMatch[1]} BTPC`;
+                        }
+                    }
+
+                    // Truncate long messages for dashboard view
+                    if (displayMessage.length > 80 && !displayMessage.includes('<strong>')) {
+                        displayMessage = displayMessage.substring(0, 80) + '...';
+                    }
+
+                    return `
+                        <div style="display: flex; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--border-color); font-size: 0.8125rem; font-family: 'SF Mono', 'Courier New', monospace;">
+                            <span style="color: #888; min-width: 70px; font-size: 0.75rem;">${timeOnly}</span>
+                            <span style="background: ${config.color}; color: #fff; padding: 2px 8px; font-weight: 600; font-size: 0.6875rem; margin: 0 10px; border-radius: 3px; min-width: 50px; text-align: center;">${config.label}</span>
+                            <span style="color: #e0e0e0; flex: 1; line-height: 1.4;">${displayMessage}</span>
+                        </div>
+                    `;
+                }).join('');
+
+            } catch (e) {
+                console.log('Failed to fetch recent activity:', e);
+            }
+        }
+
+        // Initialize
+        setTimeout(() => {
+            // Note: startAutoUpdate is called globally in btpc-common.js (Article XI compliance)
+            // Removed duplicate call here to prevent stack overflow
+
+            // Update recent activity immediately and every 5 seconds
+            updateRecentActivity();
+            setInterval(updateRecentActivity, 5000);
+        }, 500);
+    </script>
+</body>
+</html>

@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BTPC Wallet - Settings</title>
+    <link rel="stylesheet" href="btpc-styles.css">
+    <style>
+        .tab-nav {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .tab-btn {
+            padding: 12px 24px;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 0.9375rem;
+            font-weight: 500;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 200ms ease;
+        }
+        .tab-btn:hover {
+            color: var(--text-primary);
+            background: var(--bg-hover);
+        }
+        .tab-btn:focus {
+            outline: 2px solid var(--btpc-primary);
+            outline-offset: 2px;
+        }
+        .tab-btn:focus-visible {
+            outline: 2px solid var(--btpc-primary);
+            outline-offset: 2px;
+        }
+        .tab-btn.active {
+            color: var(--btpc-primary);
+            border-bottom-color: var(--btpc-primary);
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="page-container">
+        <div class="sidebar">
+            <div class="logo-section">
+                <div class="logo-image">
+                    <div class="btpc-animated-logo">
+                        <span class="btpc-letter">₿</span>
+                        <span class="btpc-letter">T</span>
+                        <span class="btpc-letter">P</span>
+                        <span class="btpc-letter">C</span>
+                    </div>
+                    <div class="quantum-orbital"></div>
+                    <div class="quantum-orbital"></div>
+                    <div class="quantum-symbol">
+                        <span class="btc-symbol">₿</span>
+                        <span class="q-symbol">Q</span>
+                    </div>
+                </div>
+                <div class="logo-header">BTPC Wallet</div>
+                <div class="logo-subtitle">Quantum-Resistant</div>
+
+                <!-- Balance Card inside logo section -->
+                <div class="account-info">
+                    <div class="account-name">Total Balance</div>
+                    <div class="balance-amount">
+                        <span id="wallet-balance">0.00000000</span>
+                        <span class="balance-unit">BTPC</span>
+                    </div>
+                </div>
+            </div>
+
+            <nav>
+                <a href="index.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-home"></span></span>
+                    <span class="nav-text">Dashboard</span>
+                </a>
+                <a href="wallet-manager.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-wallet"></span></span>
+                    <span class="nav-text">Wallet</span>
+                </a>
+                <a href="transactions.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-transactions"></span></span>
+                    <span class="nav-text">Transactions</span>
+                </a>
+                <a href="mining.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-pickaxe"></span></span>
+                    <span class="nav-text">Mining</span>
+                </a>
+                <a href="node.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-link"></span></span>
+                    <span class="nav-text">Node</span>
+                </a>
+                <a href="settings.html" class="nav-item active">
+                    <span class="nav-icon"><span class="icon icon-settings"></span></span>
+                    <span class="nav-text">Settings</span>
+                </a>
+            </nav>
+
+            <!-- Network Status -->
+            <div class="network-status-footer">
+                <div class="network-status-row">
+                    <span class="network-status-label">Network</span>
+                    <span class="network-status-value" id="network-name">Mainnet</span>
+                </div>
+                <div class="network-status-row">
+                    <span class="network-status-label">Status</span>
+                    <span class="network-status-value" id="sync-status">Syncing...</span>
+                </div>
+                <div class="sync-progress-bar">
+                    <div class="sync-progress-fill" id="sync-progress" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="page-header">
+                <div class="page-header-left">
+                    <h1>Settings</h1>
+                    <p>Configure your BTPC wallet and node preferences</p>
+                </div>
+                <div class="logout-container">
+                    <button id="logout-btn" class="btn-logout">
+                        <img src="src/assets/icons-svg/unlock.svg" alt="Logout" class="logout-icon">
+                        <span>Logout</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tab Navigation -->
+            <div class="tab-nav" role="tablist" aria-label="Settings Sections">
+                <button class="tab-btn active" role="tab" id="tab-btn-network" data-tab="network" aria-selected="true" aria-controls="tab-panel-network" tabindex="0">Network</button>
+                <button class="tab-btn" role="tab" id="tab-btn-node" data-tab="node" aria-selected="false" aria-controls="tab-panel-node" tabindex="-1">Node</button>
+                <button class="tab-btn" role="tab" id="tab-btn-application" data-tab="application" aria-selected="false" aria-controls="tab-panel-application" tabindex="-1">Application</button>
+                <button class="tab-btn" role="tab" id="tab-btn-security" data-tab="security" aria-selected="false" aria-controls="tab-panel-security" tabindex="-1">Security</button>
+            </div>
+
+            <!-- Network Settings Tab -->
+            <div id="tab-panel-network" class="tab-content active" role="tabpanel" aria-labelledby="tab-btn-network" tabindex="0">
+                <div class="card">
+                    <div class="card-header">Network Configuration</div>
+                    <div class="form-group">
+                        <label class="form-label">Network Type</label>
+                        <select class="form-input" id="network-type">
+                            <option value="mainnet">Mainnet</option>
+                            <option value="testnet">Testnet</option>
+                            <option value="regtest">Regtest (Local)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">RPC Port</label>
+                        <input type="number" class="form-input" id="rpc-port" value="8332" placeholder="8332">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">P2P Port</label>
+                        <input type="number" class="form-input" id="p2p-port" value="8333" placeholder="8333">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Connect to Peer (Optional)</label>
+                        <input type="text" class="form-input" id="peer-address" placeholder="127.0.0.1:8333">
+                        <small style="color: var(--text-muted); font-size: 0.8125rem;">Leave empty for automatic peer discovery</small>
+                    </div>
+                    <div style="display: flex; gap: 12px; margin-top: 24px;">
+                        <button class="btn btn-primary" onclick="saveSettings()"><span class="icon icon-save"></span> Save Settings</button>
+                        <button class="btn btn-secondary" onclick="resetToDefaults()"><span class="icon icon-refresh"></span> Reset to Defaults</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Node Settings Tab -->
+            <div id="tab-panel-node" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-node" tabindex="0">
+                <div class="card">
+                    <div class="card-header">Node Configuration</div>
+                    <div class="form-group">
+                        <label class="form-label">Data Directory</label>
+                        <input type="text" class="form-input" id="data-dir" value="~/.btpc">
+                        <small style="color: var(--text-muted); font-size: 0.8125rem;">Location for blockchain data and wallet files</small>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Maximum Peer Connections</label>
+                        <input type="number" class="form-input" id="max-peers" value="8" min="1" max="125">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">
+                            <input type="checkbox" id="enable-mining" style="margin-right: 8px;">
+                            Enable Mining on Node Start
+                        </label>
+                    </div>
+                    <div style="display: flex; gap: 12px; margin-top: 24px;">
+                        <button class="btn btn-primary" onclick="saveSettings()"><span class="icon icon-save"></span> Save Settings</button>
+                        <button class="btn btn-secondary" onclick="resetToDefaults()"><span class="icon icon-refresh"></span> Reset to Defaults</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Application Settings Tab -->
+            <div id="tab-panel-application" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-application" tabindex="0">
+                <div class="card">
+                    <div class="card-header">Application Preferences</div>
+                    <div class="form-group">
+                        <label class="form-label">Log Level</label>
+                        <select class="form-input" id="log-level">
+                            <option value="error">ERROR - Only errors</option>
+                            <option value="warn">WARN - Warnings and errors</option>
+                            <option value="info" selected>INFO - General information (recommended)</option>
+                            <option value="debug">DEBUG - Detailed debug info</option>
+                            <option value="trace">TRACE - All events</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">
+                            <input type="checkbox" id="auto-start-node" checked style="margin-right: 8px;">
+                            Auto-start node on application launch
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">
+                            <input type="checkbox" id="minimize-to-tray" style="margin-right: 8px;">
+                            Minimize to system tray
+                        </label>
+                    </div>
+                    <div style="display: flex; gap: 12px; margin-top: 24px;">
+                        <button class="btn btn-primary" onclick="saveSettings()"><span class="icon icon-save"></span> Save Settings</button>
+                        <button class="btn btn-secondary" onclick="exportConfig()"><span class="icon icon-export"></span> Export Configuration</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Security Settings Tab -->
+            <div id="tab-panel-security" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-security" tabindex="0">
+                <div class="card">
+                    <div class="card-header">Wallet Encryption</div>
+                    <div class="form-group">
+                        <label class="form-label">Encryption Status</label>
+                        <div style="padding: 12px; background: rgba(16, 185, 129, 0.1); border-left: 3px solid var(--btpc-accent); border-radius: 6px; margin-bottom: 12px;">
+                            <strong style="color: var(--btpc-accent);"><span class="icon icon-circle-check"></span> Active:</strong>
+                            <span style="color: var(--text-secondary);">AES-256-GCM + Argon2id Key Derivation</span>
+                        </div>
+                        <small style="color: var(--text-muted); font-size: 0.8125rem;">
+                            Post-quantum signatures: ML-DSA (Dilithium5)<br>
+                            Hash algorithm: SHA-512 (PoW consensus)
+                        </small>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">
+                            <input type="checkbox" id="require-password" checked style="margin-right: 8px;">
+                            Require password for transactions
+                        </label>
+                    </div>
+                    <div style="display: flex; gap: 12px; margin-top: 24px;">
+                        <button class="btn btn-primary" onclick="saveSettings()"><span class="icon icon-save"></span> Save Settings</button>
+                        <button class="btn btn-secondary" onclick="resetToDefaults()"><span class="icon icon-refresh"></span> Reset to Defaults</button>
+                    </div>
+                </div>
+
+                <!-- Lock Wallets Section -->
+                <div class="card" style="margin-top: 24px;">
+                    <div class="card-header">Wallet Access Control</div>
+                    <div class="form-group">
+                        <label class="form-label">Lock Wallets</label>
+                        <p style="color: var(--text-muted); font-size: 0.875rem; margin-bottom: 12px;">
+                            Clear wallet data from memory and require password to access. This provides additional security when stepping away from your computer.
+                        </p>
+                        <button class="btn btn-secondary" onclick="handleLockWallets()">
+                            <span class="icon icon-lock"></span> Lock Wallets Now
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Change Master Password Section -->
+                <div class="card" style="margin-top: 24px;">
+                    <div class="card-header">Change Master Password</div>
+                    <form id="change-password-form" onsubmit="handleChangePassword(event)">
+                        <div class="form-group">
+                            <label class="form-label">Current Password</label>
+                            <input type="password" id="old-password" class="form-input" required autocomplete="current-password">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">New Password</label>
+                            <input type="password" id="new-password" class="form-input" required minlength="8" autocomplete="new-password">
+                            <small style="color: var(--text-muted); font-size: 0.8125rem;">Minimum 8 characters recommended</small>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Confirm New Password</label>
+                            <input type="password" id="confirm-password" class="form-input" required minlength="8" autocomplete="new-password">
+                        </div>
+                        <button type="submit" class="btn btn-primary">
+                            <span class="icon icon-key"></span> Change Password
+                        </button>
+                    </form>
+                    <div id="password-change-message" style="margin-top: 12px; padding: 12px; display: none; border-radius: 6px;"></div>
+                </div>
+            </div>
+
+            <!-- Settings Message (visible on all tabs) -->
+            <div id="settings-message" style="margin-top: 16px; padding: 12px; display: none; border-radius: 6px;"></div>
+        </div>
+    </div>
+
+    <script src="btpc-storage.js"></script>
+    <script src="btpc-tauri-context.js"></script>
+    <script src="btpc-event-listeners.js"></script>
+    <script src="btpc-navigation-guard.js"></script>
+    <script src="btpc-event-manager.js"></script>
+    <script src="btpc-backend-first.js"></script>
+    <script src="btpc-common.js"></script>
+    <script src="btpc-update-manager.js"></script>
+    <script src="password-modal.js"></script>
+    <script src="btpc-tab-manager.js"></script>
+    <script src="btpc-logout.js"></script>
+    <script>
+        const updateManager = window.btpcUpdateManager;
+
+        // Load current settings from backend
+        async function loadSettings() {
+            try {
+                // Fetch network config from backend
+                if (window.invoke) {
+                    const networkConfig = await window.invoke('get_network_config');
+                    if (networkConfig) {
+                        document.getElementById('network-type').value = networkConfig.network || 'regtest';
+                        document.getElementById('rpc-port').value = networkConfig.rpc_port || 18360;
+                        document.getElementById('p2p-port').value = networkConfig.p2p_port || 18361;
+                        console.log('Network config loaded from backend:', networkConfig);
+                    }
+                }
+
+                // Load other settings from btpcStorage
+                const settings = window.btpcStorage.getSettings();
+                const nodeConfig = window.btpcStorage.getNodeConfig();
+                const miningConfig = window.btpcStorage.getMiningConfig();
+
+                const dataDir = settings.dataDir || '~/.btpc';
+                if (dataDir) document.getElementById('data-dir').value = dataDir;
+
+                const maxPeers = nodeConfig.maxPeers || 50;
+                if (maxPeers) document.getElementById('max-peers').value = maxPeers;
+
+                if (miningConfig.autoStart !== undefined) {
+                    document.getElementById('enable-mining').checked = miningConfig.autoStart;
+                }
+
+                const logLevel = settings.logLevel || 'info';
+                if (logLevel) document.getElementById('log-level').value = logLevel;
+
+                if (nodeConfig.autoConnect !== undefined) {
+                    document.getElementById('auto-start-node').checked = nodeConfig.autoConnect;
+                }
+
+                const minimizeToTray = settings.minimizeToTray || false;
+                if (minimizeToTray !== undefined) {
+                    document.getElementById('minimize-to-tray').checked = minimizeToTray;
+                }
+
+                const requirePassword = settings.requirePassword || false;
+                if (requirePassword !== undefined) {
+                    document.getElementById('require-password').checked = requirePassword;
+                }
+
+                const trustedNodes = nodeConfig.trustedNodes || [];
+                if (trustedNodes.length > 0) {
+                    document.getElementById('peer-address').value = trustedNodes[0];
+                }
+
+                console.log('Settings loaded from btpcStorage');
+            } catch (e) {
+                console.error('Could not load settings from btpcStorage:', e);
+            }
+        }
+
+        function showMessage(message, type = 'success') {
+            const msgEl = document.getElementById('settings-message');
+            msgEl.textContent = message;
+            msgEl.style.display = 'block';
+            msgEl.style.background = type === 'success' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)';
+            msgEl.style.border = type === 'success' ? '1px solid var(--btpc-accent)' : '1px solid #ef4444';
+            msgEl.style.color = type === 'success' ? 'var(--btpc-accent)' : '#ef4444';
+
+            setTimeout(() => {
+                msgEl.style.display = 'none';
+            }, 5000);
+        }
+
+        async function saveSettings() {
+            try {
+                // STEP 1: Validate network settings with backend FIRST (before saving to localStorage)
+                if (window.invoke) {
+                    try {
+                        const network = document.getElementById('network-type').value;
+                        const rpcPort = parseInt(document.getElementById('rpc-port').value);
+                        const p2pPort = parseInt(document.getElementById('p2p-port').value);
+
+                        // Backend validates and saves network config
+                        const result = await window.invoke('save_network_config', {
+                            network: network,
+                            rpcPort: rpcPort,
+                            p2pPort: p2pPort
+                        });
+
+                        console.log('Backend validation successful:', result);
+                    } catch (backendErr) {
+                        // Backend validation failed - DO NOT save to localStorage
+                        showMessage(`${backendErr}`, 'error');
+                        console.error('Backend validation failed:', backendErr);
+                        return; // Exit early - don't save anything to localStorage
+                    }
+                }
+
+                // STEP 2: Backend validation passed - now save other settings to localStorage
+                window.btpcStorage.updateSettings({
+                    dataDir: document.getElementById('data-dir').value,
+                    logLevel: document.getElementById('log-level').value,
+                    minimizeToTray: document.getElementById('minimize-to-tray').checked,
+                    requirePassword: document.getElementById('require-password').checked,
+                });
+
+                // Save node configuration to browser storage
+                const peerAddress = document.getElementById('peer-address').value.trim();
+                window.btpcStorage.updateNodeConfig({
+                    rpcHost: '127.0.0.1',
+                    rpcPort: parseInt(document.getElementById('rpc-port').value),
+                    p2pPort: parseInt(document.getElementById('p2p-port').value),
+                    maxPeers: parseInt(document.getElementById('max-peers').value),
+                    autoConnect: document.getElementById('auto-start-node').checked,
+                    trustedNodes: peerAddress ? [peerAddress] : []
+                });
+
+                // Save mining configuration to browser storage
+                window.btpcStorage.updateMiningConfig({
+                    autoStart: document.getElementById('enable-mining').checked,
+                });
+
+                // STEP 3: Show success message
+                showMessage('All settings saved successfully', 'success');
+                console.log('Settings saved:', window.btpcStorage.getStats());
+            } catch (e) {
+                showMessage('Failed to save settings: ' + e, 'error');
+                console.error('Save settings error:', e);
+            }
+        }
+
+        async function resetToDefaults() {
+            if (confirm('Reset all settings to defaults? This will not affect your wallet data.')) {
+                // Fetch actual backend defaults
+                if (window.invoke) {
+                    try {
+                        const networkConfig = await window.invoke('get_network_config');
+                        document.getElementById('network-type').value = networkConfig.network || 'regtest';
+                        document.getElementById('rpc-port').value = networkConfig.rpc_port || 18360;
+                        document.getElementById('p2p-port').value = networkConfig.p2p_port || 18361;
+                    } catch (e) {
+                        console.warn('Could not fetch backend defaults, using hardcoded values:', e);
+                        document.getElementById('network-type').value = 'regtest';
+                        document.getElementById('rpc-port').value = '18360';
+                        document.getElementById('p2p-port').value = '18361';
+                    }
+                }
+
+                document.getElementById('data-dir').value = '~/.btpc';
+                document.getElementById('max-peers').value = '8';
+                document.getElementById('enable-mining').checked = false;
+                document.getElementById('log-level').value = 'info';
+                document.getElementById('auto-start-node').checked = true;
+                document.getElementById('minimize-to-tray').checked = false;
+                document.getElementById('require-password').checked = true;
+                document.getElementById('peer-address').value = '';
+
+                showMessage('Settings reset to defaults', 'success');
+            }
+        }
+
+        async function exportConfig() {
+            try {
+                const settings = {
+                    network: document.getElementById('network-type').value,
+                    rpc_port: parseInt(document.getElementById('rpc-port').value),
+                    p2p_port: parseInt(document.getElementById('p2p-port').value),
+                    data_dir: document.getElementById('data-dir').value,
+                    max_peers: parseInt(document.getElementById('max-peers').value),
+                    enable_mining: document.getElementById('enable-mining').checked,
+                };
+
+                const configJson = JSON.stringify(settings, null, 2);
+                const blob = new Blob([configJson], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'btpc-config.json';
+                a.click();
+                URL.revokeObjectURL(url);
+
+                showMessage('Configuration exported', 'success');
+            } catch (e) {
+                showMessage('Failed to export: ' + e, 'error');
+            }
+        }
+
+        // Subscribe to updates
+        // Subscribe to updates (one-time only - prevent duplicate subscriptions causing stack overflow)
+        if (!window.settingsPageSubscribed) {
+            window.settingsPageSubscribed = true;
+            updateManager.subscribe((type, data, fullState) => {
+                if (type === 'wallet') {
+                    document.getElementById('wallet-balance').textContent = (data.balance || 0).toFixed(8);
+                } else if (type === 'blockchain') {
+                    const chainHeightEl = document.getElementById('chain-height');
+                    if (chainHeightEl) {
+                        chainHeightEl.textContent = (data.height || 0).toLocaleString();
+                    }
+                } else if (type === 'network') {
+                    // Update network status footer
+                    if (data && data.network) {
+                        const networkName = data.network.charAt(0).toUpperCase() + data.network.slice(1);
+                        const networkNameEl = document.getElementById('network-name');
+                        if (networkNameEl) {
+                            networkNameEl.textContent = networkName;
+                        }
+                    }
+                }
+            });
+        }
+
+        // Lock Wallets Handler
+        async function handleLockWallets() {
+            if (!confirm('Lock wallets now? You will need to enter your master password to unlock them again.')) {
+                return;
+            }
+
+            try {
+                // Call global lockWallets function from password-modal.js
+                if (typeof window.lockWallets === 'function') {
+                    await window.lockWallets();
+                    showMessage('Wallets locked successfully', 'success');
+                } else {
+                    throw new Error('lockWallets function not available');
+                }
+            } catch (e) {
+                showMessage('Failed to lock wallets: ' + e, 'error');
+                console.error('Lock wallets error:', e);
+            }
+        }
+
+        // Change Password Handler
+        async function handleChangePassword(event) {
+            event.preventDefault();
+
+            const oldPassword = document.getElementById('old-password').value;
+            const newPassword = document.getElementById('new-password').value;
+            const confirmPassword = document.getElementById('confirm-password').value;
+
+            const msgEl = document.getElementById('password-change-message');
+
+            // Validation
+            if (newPassword !== confirmPassword) {
+                msgEl.textContent = 'New passwords do not match';
+                msgEl.style.display = 'block';
+                msgEl.style.background = 'rgba(239, 68, 68, 0.1)';
+                msgEl.style.border = '1px solid #ef4444';
+                msgEl.style.color = '#ef4444';
+                return;
+            }
+
+            if (newPassword.length < 8) {
+                msgEl.textContent = 'Password must be at least 8 characters long';
+                msgEl.style.display = 'block';
+                msgEl.style.background = 'rgba(239, 68, 68, 0.1)';
+                msgEl.style.border = '1px solid #ef4444';
+                msgEl.style.color = '#ef4444';
+                return;
+            }
+
+            try {
+                // Call global changeMasterPassword function from password-modal.js
+                if (typeof window.changeMasterPassword === 'function') {
+                    const result = await window.changeMasterPassword(oldPassword, newPassword);
+
+                    if (result.success) {
+                        msgEl.textContent = 'Password changed successfully';
+                        msgEl.style.display = 'block';
+                        msgEl.style.background = 'rgba(16, 185, 129, 0.1)';
+                        msgEl.style.border = '1px solid var(--btpc-accent)';
+                        msgEl.style.color = 'var(--btpc-accent)';
+
+                        // Reset form
+                        document.getElementById('change-password-form').reset();
+
+                        // Hide message after 5 seconds
+                        setTimeout(() => {
+                            msgEl.style.display = 'none';
+                        }, 5000);
+                    } else {
+                        msgEl.textContent = 'Error: ' + result.error;
+                        msgEl.style.display = 'block';
+                        msgEl.style.background = 'rgba(239, 68, 68, 0.1)';
+                        msgEl.style.border = '1px solid #ef4444';
+                        msgEl.style.color = '#ef4444';
+                    }
+                } else {
+                    throw new Error('changeMasterPassword function not available');
+                }
+            } catch (e) {
+                msgEl.textContent = 'Failed to change password: ' + e;
+                msgEl.style.display = 'block';
+                msgEl.style.background = 'rgba(239, 68, 68, 0.1)';
+                msgEl.style.border = '1px solid #ef4444';
+                msgEl.style.color = '#ef4444';
+                console.error('Change password error:', e);
+            }
+        }
+
+        // Initialize TabManager and load settings on page load
+        /**
+         * Update RPC and P2P ports based on selected network type
+         * Port mapping from btpc-core/src/economics/constants.rs
+         */
+        function updatePortsForNetwork() {
+            const networkType = document.getElementById('network-type').value;
+            const rpcPortInput = document.getElementById('rpc-port');
+            const p2pPortInput = document.getElementById('p2p-port');
+            const peerAddressInput = document.getElementById('peer-address');
+
+            let rpcPort, p2pPort;
+
+            switch(networkType) {
+                case 'mainnet':
+                    rpcPort = 8332;
+                    p2pPort = 8333;
+                    peerAddressInput.placeholder = '127.0.0.1:8333';
+                    break;
+                case 'testnet':
+                    rpcPort = 18332;
+                    p2pPort = 18333;
+                    peerAddressInput.placeholder = '127.0.0.1:18333';
+                    break;
+                case 'regtest':
+                    rpcPort = 18443;
+                    p2pPort = 18444;
+                    peerAddressInput.placeholder = '127.0.0.1:18444';
+                    break;
+                default:
+                    rpcPort = 8332;
+                    p2pPort = 8333;
+                    peerAddressInput.placeholder = '127.0.0.1:8333';
+            }
+
+            rpcPortInput.value = rpcPort;
+            p2pPortInput.value = p2pPort;
+
+            console.log(`Updated ports for ${networkType}: RPC=${rpcPort}, P2P=${p2pPort}`);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            new TabManager({
+                page: 'settings',
+                defaultTab: 'network'
+            });
+
+            // Load settings after TabManager is initialized
+            loadSettings();
+
+            // Add event listener to network type dropdown
+            const networkTypeSelect = document.getElementById('network-type');
+            if (networkTypeSelect) {
+                networkTypeSelect.addEventListener('change', updatePortsForNetwork);
+
+                // Update ports on initial load based on current selection
+                updatePortsForNetwork();
+            }
+        });
+
+        // Note: startAutoUpdate called globally in btpc-common.js (Article XI compliance)
+    </script>
+
+    <!-- Password Modal for Wallet Encryption -->
+    <div id="password-modal-overlay">
+        <div class="password-modal">
+            <h2 id="modal-title">🔒 Unlock Your Wallets</h2>
+            <p id="modal-description">Enter your <strong style="color: var(--btpc-secondary);">wallet encryption password</strong> to access your wallet data.</p>
+            <p id="modal-description" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 4px;">(This is different from your application master password)</p>
+
+            <div id="migration-notice" class="migration-notice">
+                <h3>⚡ Upgrade to Encrypted Wallets</h3>
+                <p>Your wallet metadata is currently stored in plaintext. For better security, we recommend encrypting it with a password.</p>
+                <ul>
+                    <li>Encrypts wallet addresses and balances</li>
+                    <li>Protects against unauthorized access</li>
+                    <li>Creates backup before migration</li>
+                </ul>
+                <p style="margin-top: 10px;"><strong>Choose a strong password and remember it!</strong> Without it, you won't be able to access your wallets.</p>
+            </div>
+
+            <div class="password-input-group">
+                <label for="master-password">Wallet Encryption Password</label>
+                <div class="password-input-wrapper">
+                    <input type="password" id="master-password" placeholder="Enter wallet password" autocomplete="current-password" />
+                    <button type="button" class="toggle-password" id="toggle-password" title="Show/hide password">👁️</button>
+                </div>
+            </div>
+
+            <div id="password-error" class="password-error"></div>
+
+            <div id="password-loading" class="password-loading">
+                <div class="spinner"></div>
+                <p>Unlocking wallets...</p>
+            </div>
+
+            <div class="password-modal-buttons">
+                <button type="button" class="btn-unlock" id="btn-unlock">Unlock Wallets</button>
+                <button type="button" class="btn-cancel" id="btn-cancel" style="display: none;">Cancel</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
