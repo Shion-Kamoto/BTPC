@@ -11,6 +11,10 @@ Auto-generated from all feature plans. Last updated: 2025-10-25
 - **Testing**: cargo test, criterion benchmarks, Miri unsafe validation
 - JavaScript ES6+ (vanilla JS, no framework required) + btpc-common.js (existing utility module), btpc-storage.js (localStorage wrapper), browser localStorage API (004-fix-non-functional)
 - Browser localStorage for tab state persistence (keys: btpc_active_tab_settings, btpc_active_tab_transactions, btpc_active_tab_mining) (004-fix-non-functional)
+- Rust 1.75+ (Tauri backend), JavaScript ES6+ (frontend) + Tauri 2.0 (already in use), argon2 (key derivation), aes-gcm (encryption), tauri events system (006-add-application-level)
+- Encrypted file (~/.btpc/credentials.enc) for MasterCredentials, in-memory Arc<RwLock<SessionState>> for authentication state (006-add-application-level)
+- Rust 1.75+ (Tauri backend), JavaScript ES6+ (frontend) + btpc-core (blockchain library), dilithium5 (ML-DSA crypto), rocksdb (UTXO storage), tauri 2.0 (007-fix-inability-to)
+- RocksDB for UTXO tracking, encrypted wallet files (.dat), transaction cache (007-fix-inability-to)
 
 ## Project Structure
 ```
@@ -61,14 +65,14 @@ BTPC/
 - Use `SecureString` or `Zeroizing` for sensitive data
 
 ## Recent Changes
+- 007-fix-inability-to: Added Rust 1.75+ (Tauri backend), JavaScript ES6+ (frontend) + btpc-core (blockchain library), dilithium5 (ML-DSA crypto), rocksdb (UTXO storage), tauri 2.0
+- 006-add-application-level: Added Rust 1.75+ (Tauri backend), JavaScript ES6+ (frontend) + Tauri 2.0 (already in use), argon2 (key derivation), aes-gcm (encryption), tauri events system
 
 ### Feature 004: Fix Non-Functional Sub-Tabs (Completed 2025-10-25)
 **Problem**: Sub-tabs on Settings, Transactions, and Mining pages were non-responsive to clicks.
 
 **Root Cause**:
 - Broken `switchTab()` function with undefined `event` variable
-- Duplicate JavaScript initialization conflicts (btpc-common.js vs btpc-tauri-context.js)
-- Orphaned closing braces in transactions.html and mining.html causing parser errors
 
 **Solution Implemented**:
 1. **Created btpc-tab-manager.js** - Professional tab management module with:
@@ -90,11 +94,6 @@ BTPC/
 **Result**: All tabs now functional with click response, visual feedback, keyboard navigation, and state persistence. WCAG 2.1 AA compliant.
 
 **Files Modified**:
-- btpc-desktop-app/ui/btpc-tab-manager.js (created)
-- btpc-desktop-app/ui/{settings,mining,transactions}.html (updated)
-- btpc-desktop-app/ui/btpc-common.js (fixed)
-- btpc-desktop-app/ui/password-modal.js (fixed)
-- btpc-desktop-app/ui/btpc-backend-first.js (fixed)
 
 ---
 
@@ -102,9 +101,6 @@ BTPC/
 **Problem**: Transaction signing failed with "Failed to sign input 0: Signature creation failed" and wallet backup missing walletId field.
 
 **Root Cause**:
-- ML-DSA keypair reconstruction limitation in pqc_dilithium library
-- Keys loaded from wallet couldn't sign (keypair field was None)
-- WalletData struct missing wallet_id field for backup identification
 
 **Solution Implemented**:
 1. **Seed Storage System** (btpc-core/src/crypto/keys.rs):
@@ -123,19 +119,10 @@ BTPC/
    - Backup operations preserve wallet_id in encrypted .dat files
 
 **Test Fixes**:
-- btpc-core/tests/wallet_persistence_test.rs: Added wallet_id to 5 test initializations
-- bins/btpc_wallet/Cargo.toml: Added uuid dependency for wallet_id generation
 
 **Result**:
-- ✅ Transaction signing works after wallet load (349/350 tests passing)
-- ✅ Wallet backup includes wallet_id for restoration tracking
-- ✅ Backward compatibility: Legacy keys without seeds still load (can't sign)
 
 **Files Modified**:
-- btpc-core/src/crypto/keys.rs (seed storage + reconstruction)
-- btpc-core/src/crypto/wallet_serde.rs (wallet_id + seed fields)
-- btpc-core/tests/wallet_persistence_test.rs (test fixes)
-- bins/btpc_wallet/Cargo.toml (uuid dependency)
 
 ---
 
