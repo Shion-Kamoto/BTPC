@@ -529,8 +529,8 @@ async function initCommonFeatures() {
     // Add date/time display
     addDateTimeDisplay();
 
-    // Add logout button
-    addLogoutButton();
+    // Logout button is now in HTML (no longer dynamically created)
+    // addLogoutButton(); // REMOVED: Caused duplicate buttons with HTML button
 
     // Set up Tauri event listeners for unified state management
     await setupTauriEventListeners();
