@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BTPC Wallet - Login</title>
+    <link rel="stylesheet" href="btpc-styles.css">
+    <style>
+        /* Login-specific styles */
+        .login-container {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg-primary);
+            padding: 20px;
+        }
+
+        .login-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 48px 40px;
+            max-width: 420px;
+            width: 100%;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .login-icon {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 24px;
+            background: linear-gradient(135deg, rgba(99,102,241,0.2) 0%, rgba(139,92,246,0.2) 100%);
+            border: 2px solid var(--border-color);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .login-icon img {
+            width: 36px;
+            height: 36px;
+            filter: brightness(0) invert(1);
+        }
+
+        .login-title {
+            font-size: 1.75rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+
+        .login-subtitle {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+        }
+
+        .login-form {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .form-label {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+
+        .form-input {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-size: 1rem;
+            color: var(--text-primary);
+            transition: all 0.2s;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--btpc-primary);
+            box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+        }
+
+        .form-input:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .password-requirements {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            padding: 8px 12px;
+            background: rgba(99,102,241,0.05);
+            border: 1px solid rgba(99,102,241,0.1);
+            border-radius: 6px;
+            line-height: 1.5;
+        }
+
+        .error-message {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 8px;
+            padding: 12px 16px;
+            color: var(--status-error);
+            font-size: 0.875rem;
+            display: none;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
+        .success-message {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 8px;
+            padding: 12px 16px;
+            color: var(--status-success);
+            font-size: 0.875rem;
+            display: none;
+        }
+
+        .success-message.show {
+            display: block;
+        }
+
+        .submit-btn {
+            background: var(--btpc-primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 14px 24px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 8px;
+        }
+
+        .submit-btn:hover:not(:disabled) {
+            background: #4F46E5;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(99,102,241,0.4);
+        }
+
+        .submit-btn:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        .submit-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .footer-text {
+            text-align: center;
+            margin-top: 24px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <div class="login-icon">
+                    <img src="src/assets/icons-svg/lock.svg" alt="Lock Icon">
+                </div>
+                <h1 class="login-title" id="login-title">Welcome to BTPC</h1>
+                <p class="login-subtitle" id="login-subtitle">Loading...</p>
+                <p class="login-subtitle" style="color: var(--btpc-primary); margin-top: 8px; font-weight: 500;">Application Master Password</p>
+            </div>
+
+            <!-- Error Message -->
+            <div class="error-message" id="error-message"></div>
+
+            <!-- Success Message -->
+            <div class="success-message" id="success-message"></div>
+
+            <!-- Create Password Form (First Launch) -->
+            <form class="login-form" id="create-password-form" style="display: none;">
+                <div class="form-group">
+                    <label for="new-password" class="form-label">Master Password</label>
+                    <input
+                        type="password"
+                        id="new-password"
+                        class="form-input"
+                        placeholder="Enter a strong password"
+                        minlength="8"
+                        required
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="confirm-password" class="form-label">Confirm Password</label>
+                    <input
+                        type="password"
+                        id="confirm-password"
+                        class="form-input"
+                        placeholder="Re-enter your password"
+                        minlength="8"
+                        required
+                    >
+                </div>
+
+                <div class="password-requirements">
+                    <strong>Password Requirements:</strong><br>
+                    • Minimum 12 characters<br>
+                    • Use a unique password (not used elsewhere)<br>
+                    • Store in a secure password manager
+                </div>
+
+                <button type="submit" class="submit-btn" id="create-btn">
+                    Create Master Password
+                </button>
+            </form>
+
+            <!-- Login Form (Subsequent Launches) -->
+            <form class="login-form" id="login-form" style="display: none;">
+                <div class="form-group">
+                    <label for="password" class="form-label">Master Password</label>
+                    <input
+                        type="password"
+                        id="password"
+                        class="form-input"
+                        placeholder="Enter your password"
+                        required
+                        autofocus
+                    >
+                </div>
+
+                <button type="submit" class="submit-btn" id="login-btn">
+                    Login
+                </button>
+            </form>
+
+            <div class="footer-text">
+                BTPC Wallet v1.0 | Quantum-Resistant Cryptocurrency<br>
+                <span style="color: var(--text-muted); font-size: 0.7rem;">
+                    Secured with AES-256-GCM + Argon2id
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <script src="btpc-tauri-context.js"></script>
+    <script src="btpc-event-listeners.js"></script>
+    <script src="btpc-navigation-guard.js"></script>
+    <script>
+        // Import Tauri API
+        const { invoke } = window.btpcInvoke || window.__TAURI__.core;
+
+        // DOM elements
+        const loginTitle = document.getElementById('login-title');
+        const loginSubtitle = document.getElementById('login-subtitle');
+        const createPasswordForm = document.getElementById('create-password-form');
+        const loginForm = document.getElementById('login-form');
+        const errorMessage = document.getElementById('error-message');
+        const successMessage = document.getElementById('success-message');
+
+        // Show error message
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.classList.add('show');
+            successMessage.classList.remove('show');
+        }
+
+        // Show success message
+        function showSuccess(message) {
+            successMessage.textContent = message;
+            successMessage.classList.add('show');
+            errorMessage.classList.remove('show');
+        }
+
+        // Hide all messages
+        function hideMessages() {
+            errorMessage.classList.remove('show');
+            successMessage.classList.remove('show');
+        }
+
+        // Check if master password exists (first launch vs subsequent launch)
+        async function checkFirstLaunch() {
+            try {
+                const response = await invoke('has_master_password');
+
+                if (response.exists) {
+                    // Subsequent launch - show login form
+                    loginTitle.textContent = 'Welcome Back';
+                    loginSubtitle.textContent = 'Enter your master password to continue';
+                    loginForm.style.display = 'flex';
+                    createPasswordForm.style.display = 'none';
+                } else {
+                    // First launch - show create password form
+                    loginTitle.textContent = 'Create Master Password';
+                    loginSubtitle.textContent = 'Secure your wallet with a master password';
+                    createPasswordForm.style.display = 'flex';
+                    loginForm.style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Failed to check first launch:', error);
+                showError('Failed to initialize authentication system');
+            }
+        }
+
+        // Handle create password form submission
+        createPasswordForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            hideMessages();
+
+            const password = document.getElementById('new-password').value;
+            const confirmPassword = document.getElementById('confirm-password').value;
+            const createBtn = document.getElementById('create-btn');
+
+            // Client-side validation
+            if (password.length < 8) {
+                showError('Password must be at least 8 characters long');
+                return;
+            }
+
+            if (password !== confirmPassword) {
+                showError('Passwords do not match');
+                return;
+            }
+
+            // Disable button and show loading
+            createBtn.disabled = true;
+            createBtn.innerHTML = '<span class="loading-spinner"></span>Creating...';
+
+            try {
+                const response = await invoke('create_master_password', {
+                    password: password,
+                    password_confirm: confirmPassword
+                });
+
+                if (response.success) {
+                    showSuccess('Master password created successfully! Redirecting...');
+                    setTimeout(() => {
+                        window.location.href = 'index.html';
+                    }, 1500);
+                } else {
+                    showError(response.error || 'Failed to create master password');
+                    createBtn.disabled = false;
+                    createBtn.textContent = 'Create Master Password';
+                }
+            } catch (error) {
+                console.error('Create password error:', error);
+                showError(error.toString() || 'An unexpected error occurred');
+                createBtn.disabled = false;
+                createBtn.textContent = 'Create Master Password';
+            }
+        });
+
+        // Handle login form submission
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            hideMessages();
+
+            const password = document.getElementById('password').value;
+            const loginBtn = document.getElementById('login-btn');
+
+            if (!password) {
+                showError('Please enter your password');
+                return;
+            }
+
+            // Disable button and show loading
+            loginBtn.disabled = true;
+            loginBtn.innerHTML = '<span class="loading-spinner"></span>Logging in...';
+
+            try {
+                const response = await invoke('login', {
+                    password: password
+                });
+
+                if (response.success) {
+                    showSuccess('Login successful! Redirecting...');
+                    setTimeout(() => {
+                        window.location.href = 'index.html';
+                    }, 1000);
+                } else {
+                    showError(response.error || 'Authentication failed');
+                    loginBtn.disabled = false;
+                    loginBtn.textContent = 'Login';
+                    // Clear password field on failed login
+                    document.getElementById('password').value = '';
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                showError('Authentication failed. Please check your password.');
+                loginBtn.disabled = false;
+                loginBtn.textContent = 'Login';
+                // Clear password field on error
+                document.getElementById('password').value = '';
+            }
+        });
+
+        // Initialize on page load
+        window.addEventListener('DOMContentLoaded', checkFirstLaunch);
+    </script>
+</body>
+</html>

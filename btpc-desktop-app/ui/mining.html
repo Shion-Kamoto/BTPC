@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BTPC Wallet - Mining</title>
+    <link rel="stylesheet" href="btpc-styles.css">
+    <style>
+        .tab-nav {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .tab-btn {
+            padding: 12px 24px;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 0.9375rem;
+            font-weight: 500;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 200ms ease;
+        }
+        .tab-btn:hover {
+            color: var(--text-primary);
+            background: var(--bg-hover);
+        }
+        .tab-btn:focus {
+            outline: 2px solid var(--btpc-primary);
+            outline-offset: 2px;
+        }
+        .tab-btn:focus-visible {
+            outline: 2px solid var(--btpc-primary);
+            outline-offset: 2px;
+        }
+        .tab-btn.active {
+            color: var(--btpc-primary);
+            border-bottom-color: var(--btpc-primary);
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            padding: 20px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+        }
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background: var(--bg-card);
+            border-radius: 8px;
+        }
+        .status-item-label {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+        }
+        .status-item-value {
+            font-size: 0.9375rem;
+            color: var(--text-primary);
+            font-weight: 600;
+            font-family: 'SF Mono', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="page-container">
+        <!-- Sidebar Navigation -->
+        <div class="sidebar">
+            <div class="logo-section">
+                <div class="logo-image">
+                    <div class="btpc-animated-logo">
+                        <span class="btpc-letter">₿</span>
+                        <span class="btpc-letter">T</span>
+                        <span class="btpc-letter">P</span>
+                        <span class="btpc-letter">C</span>
+                    </div>
+                    <div class="quantum-orbital"></div>
+                    <div class="quantum-orbital"></div>
+                    <div class="quantum-symbol">
+                        <span class="btc-symbol">₿</span>
+                        <span class="q-symbol">Q</span>
+                    </div>
+                </div>
+                <div class="logo-header">BTPC Wallet</div>
+                <div class="logo-subtitle">Quantum-Resistant</div>
+
+                <!-- Balance Card inside logo section -->
+                <div class="account-info">
+                    <div class="account-name">Total Balance</div>
+                    <div class="balance-amount">
+                        <span id="wallet-balance">0.00000000</span>
+                        <span class="balance-unit">BTPC</span>
+                    </div>
+                </div>
+            </div>
+
+            <nav>
+                <a href="index.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-home"></span></span>
+                    <span class="nav-text">Dashboard</span>
+                </a>
+                <a href="wallet-manager.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-wallet"></span></span>
+                    <span class="nav-text">Wallet</span>
+                </a>
+                <a href="transactions.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-transactions"></span></span>
+                    <span class="nav-text">Transactions</span>
+                </a>
+                <a href="mining.html" class="nav-item active">
+                    <span class="nav-icon"><span class="icon icon-pickaxe"></span></span>
+                    <span class="nav-text">Mining</span>
+                </a>
+                <a href="node.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-link"></span></span>
+                    <span class="nav-text">Node</span>
+                </a>
+                <a href="settings.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-settings"></span></span>
+                    <span class="nav-text">Settings</span>
+                </a>
+            </nav>
+
+            <!-- Network Status -->
+            <div class="network-status-footer">
+                <div class="network-status-row">
+                    <span class="network-status-label">Network</span>
+                    <span class="network-status-value" id="network-name">Mainnet</span>
+                </div>
+                <div class="network-status-row">
+                    <span class="network-status-label">Status</span>
+                    <span class="network-status-value" id="sync-status">Syncing...</span>
+                </div>
+                <div class="sync-progress-bar">
+                    <div class="sync-progress-fill" id="sync-progress" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="page-header">
+                <div class="page-header-left">
+                    <h1>Mining</h1>
+                    <p>Mine BTPC and earn block rewards</p>
+                </div>
+                <div class="logout-container">
+                    <button id="logout-btn" class="btn-logout">
+                        <img src="src/assets/icons-svg/unlock.svg" alt="Logout" class="logout-icon">
+                        <span>Logout</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tab Navigation -->
+            <div class="tab-nav" role="tablist" aria-label="Mining Sections">
+                <button class="tab-btn active" role="tab" id="tab-btn-overview" data-tab="overview" aria-selected="true" aria-controls="tab-panel-overview" tabindex="0">Overview</button>
+                <button class="tab-btn" role="tab" id="tab-btn-configure" data-tab="configure" aria-selected="false" aria-controls="tab-panel-configure" tabindex="-1">Configure</button>
+                <button class="tab-btn" role="tab" id="tab-btn-history" data-tab="history" aria-selected="false" aria-controls="tab-panel-history" tabindex="-1">History</button>
+            </div>
+
+            <!-- Overview Tab -->
+            <div id="tab-panel-overview" class="tab-content active" role="tabpanel" aria-labelledby="tab-btn-overview" tabindex="0">
+                <!-- Mining Status Summary -->
+                <div class="card mb-4">
+                    <div class="card-header">Mining Status</div>
+                    <div class="status-grid">
+                        <div class="status-item">
+                            <span class="status-item-label">Status</span>
+                            <span class="status-item-value" id="mining-status"><span class="icon icon-pickaxe" style="opacity: 0.3;"></span> Stopped</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-item-label">Hashrate</span>
+                            <span class="status-item-value" id="hashrate">0 H/s</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-item-label">Blocks Found</span>
+                            <span class="status-item-value" id="blocks-found">0</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-item-label">Est. Reward</span>
+                            <span class="status-item-value" id="est-reward">0.00 BTPC</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Controls -->
+                <div class="card mb-4">
+                    <div class="card-header">Quick Controls</div>
+                    <div style="display: flex; gap: 12px;">
+                        <button class="btn btn-success" id="start-mining-btn" onclick="quickStartMining()">
+                            <span class="icon icon-pickaxe"></span> Start Mining
+                        </button>
+                        <button class="btn btn-danger" id="stop-mining-btn" onclick="stopMining()" style="display: none;">
+                            <span class="icon icon-stop"></span> Stop Mining
+                        </button>
+                        <button class="btn btn-secondary" data-switch-to-tab="configure">
+                            <span class="icon icon-settings"></span> Configure
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Mining Log -->
+                <div class="card">
+                    <div class="card-header">Recent Activity</div>
+                    <div id="mining-log" style="max-height: 320px; overflow-y: auto;">
+                        <div style="color: var(--text-muted); text-align: center; padding: 40px 20px;">No mining activity yet...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Configure Tab -->
+            <div id="tab-panel-configure" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-configure" tabindex="0">
+                <div class="card mb-4">
+                    <div class="card-header">Mining Configuration</div>
+                    <div class="form-group">
+                        <label class="form-label">Mining Address</label>
+                        <select class="form-input" id="mining-address">
+                            <option value="">Select a wallet address...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Number of Blocks to Mine</label>
+                        <input type="number" class="form-input" id="block-count" value="100" min="1" max="10000">
+                    </div>
+                    <div style="display: flex; gap: 12px;">
+                        <button class="btn btn-primary" onclick="startMiningWithConfig()">
+                            <span class="icon icon-pickaxe"></span> Start Mining
+                        </button>
+                        <button class="btn btn-secondary" data-switch-to-tab="overview">
+                            ← Back to Overview
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">Mining Information</div>
+                    <div style="color: var(--text-secondary); line-height: 1.6;">
+                        <p><strong>Current Network Difficulty:</strong> <span id="network-difficulty">Loading...</span></p>
+                        <p><strong>Estimated Time per Block:</strong> <span id="est-time">~10 minutes</span></p>
+                        <p><strong>Block Reward:</strong> <span id="block-reward">32.375 BTPC</span></p>
+                        <p style="margin-top: 16px; color: var(--text-muted); font-size: 0.875rem;">
+                            Mining uses SHA-512 proof-of-work algorithm.
+                            Rewards decrease linearly over 21M supply.
+                            Permanent tail rewards.
+                            0.5 BTPC per block after 24th year of mining.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- History Tab -->
+            <div id="tab-panel-history" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-history" tabindex="0">
+                <div class="card">
+                    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                        <span>Mining History</span>
+                        <div style="display: flex; gap: 8px;">
+                            <select id="history-filter" class="form-input" style="padding: 6px 12px; font-size: 0.875rem;" onchange="filterHistory()">
+                                <option value="all">All Events</option>
+                                <option value="SUCCESS">Blocks Found</option>
+                                <option value="ERROR">Errors Only</option>
+                                <option value="INFO">Info Only</option>
+                            </select>
+                            <button class="btn btn-secondary" onclick="refreshHistory()" style="padding: 6px 16px;"><span class="icon icon-refresh"></span> Refresh</button>
+                            <button class="btn btn-secondary" onclick="clearHistory()" style="padding: 6px 16px;">Clear</button>
+                        </div>
+                    </div>
+
+                    <div id="mining-history-table-container" style="max-height: 500px; overflow-y: auto;">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 200px;">Time</th>
+                                    <th style="width: 120px;">Type</th>
+                                    <th>Event</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-tbody">
+                                <!-- Mining history rows will be populated here -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div id="mining-history-empty" style="display: none; padding: 60px 20px; text-align: center;">
+                        <div style="font-size: 3rem; margin-bottom: 16px;"><span class="icon icon-pickaxe" style="width: 48px; height: 48px;"></span></div>
+                        <div style="font-size: 1.125rem; color: var(--text-primary); margin-bottom: 8px;">No mining history</div>
+                        <div style="color: var(--text-muted);">Start mining to see your activity log</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="btpc-tauri-context.js"></script>
+    <script src="btpc-event-listeners.js"></script>
+    <script src="btpc-navigation-guard.js"></script>
+    <script src="btpc-event-manager.js"></script>
+    <script src="btpc-common.js"></script>
+    <script src="btpc-update-manager.js"></script>
+    <script src="password-modal.js"></script>
+    <script src="btpc-tab-manager.js"></script>
+    <script src="btpc-logout.js"></script>
+    <script>
+        let miningInterval = null;
+        const updateManager = window.btpcUpdateManager;
+
+        // Initialize TabManager
+        document.addEventListener('DOMContentLoaded', () => {
+            const tabManager = new TabManager({
+                page: 'mining',
+                defaultTab: 'overview'
+            });
+
+            // Handle tab switching buttons within content
+            document.querySelectorAll('[data-switch-to-tab]').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const targetTab = e.currentTarget.getAttribute('data-switch-to-tab');
+                    const tabButton = document.querySelector(`[data-tab="${targetTab}"]`);
+                    if (tabButton) {
+                        tabButton.click();
+                    }
+                });
+            });
+        });
+
+        async function loadMiningAddresses() {
+            if (!window.invoke) {
+                console.log('Tauri API not ready, will retry...');
+                setTimeout(loadMiningAddresses, 1000);
+                return;
+            }
+
+            try {
+                const wallets = await window.invoke('list_wallets');
+                const select = document.getElementById('mining-address');
+                select.innerHTML = '<option value="">Select a wallet address...</option>';
+
+                wallets.forEach(wallet => {
+                    const option = document.createElement('option');
+                    option.value = wallet.address;
+                    option.textContent = `${wallet.nickname} - ${wallet.address.substring(0, 16)}...`;
+                    select.appendChild(option);
+                });
+            } catch (e) {
+                console.log('Failed to load wallets:', e);
+            }
+        }
+
+        async function quickStartMining() {
+            if (!window.invoke) {
+                alert('Tauri API not ready. Please wait a moment and try again.');
+                return;
+            }
+
+            console.log('🔍 Quick Start Mining clicked');
+
+            try {
+                const wallets = await window.invoke('list_wallets');
+                console.log('📋 Wallets loaded:', wallets);
+
+                if (!wallets || wallets.length === 0) {
+                    alert('Please create a wallet first');
+                    window.location.href = 'wallet-manager.html';
+                    return;
+                }
+
+                // Use default wallet or first wallet
+                const defaultWallet = wallets.find(w => w.is_default) || wallets[0];
+                console.log('Using wallet:', defaultWallet.nickname, defaultWallet.address.substring(0, 16) + '...');
+
+                await startMining(defaultWallet.address, 100);
+            } catch (error) {
+                console.error('Quick start mining error:', error);
+                alert(`Failed to start mining: ${error}`);
+            }
+        }
+
+        async function startMiningWithConfig() {
+            const address = document.getElementById('mining-address').value;
+            const blockCount = parseInt(document.getElementById('block-count').value);
+
+            if (!address) {
+                alert('Please select a mining address');
+                return;
+            }
+
+            await startMining(address, blockCount);
+            // Switch to overview tab
+            const overviewTabBtn = document.querySelector('[data-tab="overview"]');
+            if (overviewTabBtn) {
+                overviewTabBtn.click();
+            }
+        }
+
+        async function startMining(address, blocks) {
+            if (!window.invoke) {
+                toast.error('Tauri API not ready. Please wait a moment and try again.');
+                return;
+            }
+
+            showLoading('Starting miner...', 'Connecting to node and initializing');
+
+            try {
+                await window.invoke('start_mining', {
+                    address: address,
+                    blocks: blocks
+                });
+
+                hideLoading();
+
+                document.getElementById('start-mining-btn').style.display = 'none';
+                document.getElementById('stop-mining-btn').style.display = 'inline-flex';
+                document.getElementById('mining-status').innerHTML = '<span class="icon icon-pickaxe" style="color: var(--status-success);"></span> Running';
+
+                toast.success(`Mining started (target: ${blocks} blocks)`);
+                addLog(`Mining started with ${blocks} block target`);
+                startMiningUpdates();
+            } catch (e) {
+                hideLoading();
+                toast.error(`Failed to start mining: ${e}`);
+                console.error('Mining start error:', e);
+            }
+        }
+
+        async function stopMining() {
+            if (!window.invoke) {
+                toast.error('Tauri API not ready. Please wait a moment and try again.');
+                return;
+            }
+
+            showLoading('Stopping miner...', 'Finishing current block');
+
+            try {
+                await window.invoke('stop_mining');
+
+                hideLoading();
+
+                document.getElementById('start-mining-btn').style.display = 'inline-flex';
+                document.getElementById('stop-mining-btn').style.display = 'none';
+                document.getElementById('mining-status').innerHTML = '<span class="icon icon-pickaxe" style="opacity: 0.3;"></span> Stopped';
+
+                toast.success('Mining stopped successfully');
+                addLog('Mining stopped');
+                stopMiningUpdates();
+            } catch (e) {
+                hideLoading();
+                toast.error(`Failed to stop mining: ${e}`);
+                console.error('Mining stop error:', e);
+            }
+        }
+
+        function startMiningUpdates() {
+            miningInterval = setInterval(updateMiningStats, 2000);
+        }
+
+        function stopMiningUpdates() {
+            if (miningInterval) {
+                clearInterval(miningInterval);
+                miningInterval = null;
+            }
+        }
+
+        async function updateMiningStats() {
+            try {
+                const status = await window.invoke('get_mining_status');
+                const currentHashrate = status ? (status.hashrate || 0) : 0;
+
+                if (status) {
+                    const blocksFound = status.blocks_found || 0;
+                    const rewardPerBlock = 32.375; // BTPC reward per block
+                    const estimatedReward = blocksFound * rewardPerBlock;
+
+                    document.getElementById('hashrate').textContent = `${currentHashrate.toLocaleString()} H/s`;
+                    document.getElementById('blocks-found').textContent = blocksFound;
+                    document.getElementById('est-reward').textContent = `${estimatedReward.toFixed(8)} BTPC`;
+                }
+
+                // Fetch and display mining logs
+                const logs = await window.invoke('get_mining_logs');
+                if (logs && logs.length > 0) {
+                    const logContainer = document.getElementById('mining-log');
+                    // Clear placeholder if exists
+                    if (logContainer.children.length === 1 && logContainer.children[0].textContent.includes('No mining activity')) {
+                        logContainer.innerHTML = '';
+                    }
+
+                    // Show last 10 log entries in compact card format
+                    const recentLogs = logs.slice(-10);
+
+                    logContainer.innerHTML = recentLogs.map((entry, index) => {
+                        // Extract just the time portion from timestamp "YYYY-MM-DD HH:MM:SS"
+                        const timeOnly = entry.timestamp.split(' ')[1] || entry.timestamp;
+
+                        // Duino-Coin style: Simple line format with colored badges
+                        const levelConfig = {
+                            'ERROR': { badge: 'error', color: '#ef4444' },
+                            'WARN': { badge: 'wrn', color: '#f59e0b' },
+                            'INFO': { badge: 'sys', color: '#3b82f6' },
+                            'SUCCESS': { badge: 'ok', color: '#10b981' }
+                        };
+
+                        const config = levelConfig[entry.level] || levelConfig['INFO'];
+
+                        // Check if this is a block mined message for special formatting
+                        const isBlockMined = entry.level === 'SUCCESS' && (entry.message.includes('Block') || entry.message.includes('Accepted'));
+                        if (isBlockMined) {
+                            config.badge = 'BLOCK FOUND';
+                        }
+
+                        // Add hashrate display line before mining status messages (like "Mining...")
+                        const isMiningStatus = entry.message.includes('Mining...') || entry.message.includes('Mining started');
+                        const hashrateKH = currentHashrate > 0 ? (currentHashrate / 1000).toFixed(2) : '0.00';
+                        const hashrateMH = currentHashrate > 0 ? (currentHashrate / 1000000).toFixed(2) : '0.00';
+
+                        let output = '';
+                        let displayMessage = entry.message;
+                        let displayBadge = config.badge;
+
+                        // Reformat [BLOCK] messages
+                        if (isBlockMined) {
+                            // Parse: "Accepted 1760108663 (100%) · 32.37500000 BTPC · height 1760108663 [+3237500000 credits...]"
+                            const rewardMatch = entry.message.match(/(\d+\.\d+)\s+BTPC/);
+                            const heightMatch = entry.message.match(/height\s+(\d+)/);
+                            const percentMatch = entry.message.match(/\((\d+)%\)/);
+                            // Extract actual block hash if present (look for hex string after "block" or in message)
+                            const hashMatch = entry.message.match(/(?:block|hash)[:\s]+([0-9a-fA-F]{64})/i) ||
+                                             entry.message.match(/\b([0-9a-fA-F]{64})\b/);
+
+                            if (rewardMatch && heightMatch) {
+                                const reward = rewardMatch[1];
+                                const height = heightMatch[1];
+                                const percent = percentMatch ? percentMatch[1] : '100';
+                                const blockHash = hashMatch ? hashMatch[1] : 'pending...';
+
+                                // Color bracketed tags green (same as [BLOCK FOUND] badge)
+                                displayMessage = `Accepted (${percent}%) · <span style="color: #10b981;">[REWARD]</span> ${reward} BTPC · <span style="color: #00FFFF;">[HEIGHT]</span> ${height} · <span style="color: #f59e0b;">[HASH]</span> ${blockHash}`;
+                            }
+                        }
+
+                        // Reformat [sys] hash messages to [SYSTEM]
+                        if (config.badge === 'sys' && entry.message.includes('hash')) {
+                            displayBadge = 'SYSTEM';
+                            // Parse: "hash 023747a8fefafae4"
+                            const hashMatch = entry.message.match(/hash\s+([a-fA-F0-9]+)/);
+                            if (hashMatch) {
+                                const hash = hashMatch[1];
+                                // Color bracketed tags blue (same as [SYSTEM] badge)
+                                displayMessage = `Mining (100%) · <span style="color: #3b82f6;">[NODE]</span> Online · <span style="color: #f59e0b;">[HASHING]</span> ${hash}`;
+                            }
+                        }
+
+                        // Show hashrate periodically (every 3rd entry) or when mining starts
+                        if (isMiningStatus && currentHashrate > 0) {
+                            output += `<div style="font-family: 'Courier New', 'Consolas', monospace; font-size: 13px; padding: 3px 8px; line-height: 1.4; color: #e0e0e0;">
+                                <span style="color: #888;">${timeOnly}</span>
+                                <span style="color: #6366f1; margin: 0 6px; font-weight: bold;">[MINING]</span>
+                                <span style="color: #6366f1;">${hashrateMH} MH/s (${hashrateKH} KH/s)</span>
+                            </div>`;
+                        }
+
+                        // Simple terminal line: timestamp [badge] message
+                        output += `<div style="font-family: 'Courier New', 'Consolas', monospace; font-size: 13px; padding: 3px 8px; line-height: 1.4; color: #e0e0e0; background: transparent;">
+                            <span style="color: #888;">${timeOnly}</span>
+                            <span style="color: ${config.color}; margin: 0 6px; font-weight: bold;">[${displayBadge}]</span>
+                            <span style="color: #e0e0e0;">${displayMessage}</span>
+                        </div>`;
+
+                        return output;
+                    }).join('');
+
+                    // Add live hashrate display at the top if mining is active - ASCII terminal style
+                    if (status && status.is_mining && currentHashrate > 0) {
+                        const hashrateMH = (currentHashrate / 1000000).toFixed(2);
+                        const hashrateKH = (currentHashrate / 1000).toFixed(2);
+                        const hashrateDisplay = `<div style="font-family: 'SF Mono', 'Courier New', monospace; font-size: 0.8125rem; padding: 10px 12px; margin-bottom: 4px; background: rgba(99, 102, 241, 0.15); border-left: 3px solid #6366f1; border-radius: 4px; line-height: 1.5;">
+                            <span style="background: #6366f1; color: #fff; padding: 2px 8px; font-weight: 600; font-size: 0.75rem; margin-right: 8px; border-radius: 3px;">MINING</span>
+                            <span style="color: #6366f1; font-weight: 600;">${hashrateMH} MH/s</span>
+                            <span style="color: #a5b4fc; margin-left: 4px; font-size: 0.75rem;">(${hashrateKH} KH/s · ${currentHashrate.toLocaleString()} H/s)</span>
+                        </div>`;
+                        logContainer.innerHTML = hashrateDisplay + logContainer.innerHTML;
+                    }
+
+                    logContainer.scrollTop = logContainer.scrollHeight;
+                }
+            } catch (e) {
+                console.log('Failed to get mining status:', e);
+            }
+        }
+
+        function addLog(message) {
+            const log = document.getElementById('mining-log');
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.style.marginBottom = '4px';
+            entry.innerHTML = `<span style="color: var(--text-muted);">[${timestamp}]</span> ${message}`;
+
+            // Remove placeholder if exists
+            if (log.children.length === 1 && log.children[0].textContent.includes('No mining activity')) {
+                log.innerHTML = '';
+            }
+
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        // Mining history management
+        let allMiningLogs = [];
+        let currentFilter = 'all';
+
+        async function refreshHistory() {
+            if (!window.invoke) {
+                console.log('Tauri API not ready');
+                return;
+            }
+
+            try {
+                const logs = await window.invoke('get_mining_logs');
+                allMiningLogs = logs;
+                renderHistory();
+            } catch (e) {
+                console.error('Failed to fetch mining history:', e);
+            }
+        }
+
+        function filterHistory() {
+            currentFilter = document.getElementById('history-filter').value;
+            renderHistory();
+        }
+
+        function renderHistory() {
+            const tbody = document.getElementById('history-tbody');
+            const emptyState = document.getElementById('mining-history-empty');
+            const tableContainer = document.getElementById('mining-history-table-container');
+
+            // Apply filter
+            let filteredLogs = allMiningLogs;
+            if (currentFilter !== 'all') {
+                filteredLogs = allMiningLogs.filter(log => log.level === currentFilter);
+            }
+
+            // Show empty state or table
+            if (filteredLogs.length === 0) {
+                tableContainer.style.display = 'none';
+                emptyState.style.display = 'block';
+                return;
+            }
+
+            tableContainer.style.display = 'block';
+            emptyState.style.display = 'none';
+
+            // Render logs (most recent first)
+            tbody.innerHTML = '';
+            const reversedLogs = [...filteredLogs].reverse();
+
+            reversedLogs.forEach(log => {
+                const row = document.createElement('tr');
+
+                // Determine badge style based on level
+                let badgeClass = 'badge';
+                let badgeText = '';
+                switch (log.level) {
+                    case 'SUCCESS':
+                        badgeClass += ' badge-success';
+                        badgeText = 'OK';
+                        break;
+                    case 'ERROR':
+                        badgeClass += ' badge-error';
+                        badgeText = 'ERR';
+                        break;
+                    case 'WARN':
+                        badgeClass += ' badge-warning';
+                        badgeText = 'WRN';
+                        break;
+                    default:
+                        badgeClass += ' badge-info';
+                        badgeText = 'INFO';
+                }
+
+                // Format timestamp
+                const timestamp = new Date(log.timestamp);
+                const timeStr = timestamp.toLocaleString();
+
+                row.innerHTML = `
+                    <td class="mono" style="font-size: 0.8125rem;">${timeStr}</td>
+                    <td><span class="${badgeClass}">${badgeText}</span></td>
+                    <td style="font-size: 0.875rem;">${log.message}</td>
+                `;
+
+                tbody.appendChild(row);
+            });
+        }
+
+        async function clearHistory() {
+            if (!confirm('Are you sure you want to clear mining history? This cannot be undone.')) {
+                return;
+            }
+
+            // Note: This just clears the UI display.
+            // Backend logs will persist unless there's a clear command
+            allMiningLogs = [];
+            renderHistory();
+            addLog('Mining history display cleared');
+        }
+
+        // Subscribe to updates
+        // Subscribe to updates (one-time only - prevent duplicate subscriptions causing stack overflow)
+        if (!window.miningPageSubscribed) {
+            window.miningPageSubscribed = true;
+            updateManager.subscribe((type, data, fullState) => {
+                if (type === 'mining') {
+                    const blocksFound = data.blocks_found || 0;
+                    const rewardPerBlock = 32.375;
+                    const estimatedReward = blocksFound * rewardPerBlock;
+    
+                    if (data.is_mining) {
+                        document.getElementById('mining-status').innerHTML = '<span class="icon icon-pickaxe" style="color: var(--status-success);"></span> Running';
+                        document.getElementById('hashrate').textContent = `${(data.hashrate || 0).toLocaleString()} H/s`;
+                        document.getElementById('blocks-found').textContent = blocksFound;
+                        document.getElementById('est-reward').textContent = `${estimatedReward.toFixed(8)} BTPC`;
+                        document.getElementById('start-mining-btn').style.display = 'none';
+                        document.getElementById('stop-mining-btn').style.display = 'inline-flex';
+                    } else {
+                        document.getElementById('mining-status').innerHTML = '<span class="icon icon-pickaxe" style="opacity: 0.3;"></span> Stopped';
+                        document.getElementById('hashrate').textContent = '0 H/s';
+                        document.getElementById('blocks-found').textContent = blocksFound;
+                        document.getElementById('est-reward').textContent = `${estimatedReward.toFixed(8)} BTPC`;
+                        document.getElementById('start-mining-btn').style.display = 'inline-flex';
+                        document.getElementById('stop-mining-btn').style.display = 'none';
+                    }
+                } else if (type === 'wallet') {
+                    document.getElementById('wallet-balance').textContent = (data.balance || 0).toFixed(8);
+                } else if (type === 'blockchain') {
+                    // Update sync status and progress
+                    if (data && data.sync_progress !== undefined) {
+                        const syncProgress = data.sync_progress;
+                        const syncStatusEl = document.getElementById('sync-status');
+                        const syncProgressEl = document.getElementById('sync-progress');
+    
+                        if (syncProgressEl) {
+                            syncProgressEl.style.width = `${syncProgress}%`;
+                        }
+    
+                        if (syncStatusEl) {
+                            if (data.is_synced) {
+                                syncStatusEl.textContent = 'Synced';
+                                syncStatusEl.style.color = 'var(--status-success)';
+                            } else {
+                                syncStatusEl.textContent = `Syncing ${syncProgress.toFixed(1)}%`;
+                                syncStatusEl.style.color = 'var(--status-warning)';
+                            }
+                        }
+                    }
+    
+                    // Update network difficulty in mining info if available
+                    if (data && data.difficulty !== undefined) {
+                        const difficultyEl = document.getElementById('network-difficulty');
+                        if (difficultyEl) {
+                            difficultyEl.textContent = data.difficulty.toFixed(2);
+                        }
+                    }
+                } else if (type === 'network') {
+                    // Update network name in footer
+                    if (data && data.network) {
+                        const networkName = data.network.charAt(0).toUpperCase() + data.network.slice(1);
+                        const networkNameEl = document.getElementById('network-name');
+                        if (networkNameEl) {
+                            networkNameEl.textContent = networkName;
+                        }
+                    }
+                }
+            });
+        }
+
+        // Load mining addresses and history on page load
+        loadMiningAddresses();
+        refreshHistory();
+
+        // Setup StateManager event listeners (Article XI - automatic event emission)
+        async function setupStateManagerEvents() {
+            if (!window.__TAURI__ || !window.__TAURI__.event) {
+                console.warn('Tauri event API not available');
+                return;
+            }
+
+            try {
+                // Listen for mining_status_changed events from backend StateManager
+                await window.__TAURI__.event.listen('mining_status_changed', (event) => {
+                    const miningStatus = event.payload;
+                    console.log('📡 Received mining_status_changed event:', miningStatus);
+
+                    // Update UI based on StateManager event
+                    if (miningStatus.active) {
+                        document.getElementById('mining-status').innerHTML =
+                            '<span class="icon icon-pickaxe" style="color: var(--status-success);"></span> Running';
+                        document.getElementById('start-mining-btn').style.display = 'none';
+                        document.getElementById('stop-mining-btn').style.display = 'inline-flex';
+
+                        // Update hashrate if available
+                        if (miningStatus.hashrate !== undefined) {
+                            document.getElementById('hashrate').textContent = `${miningStatus.hashrate.toLocaleString()} H/s`;
+                        }
+
+                        // Update blocks mined if available
+                        if (miningStatus.blocks_mined !== undefined) {
+                            const rewardPerBlock = 32.375;
+                            const estimatedReward = miningStatus.blocks_mined * rewardPerBlock;
+                            document.getElementById('blocks-found').textContent = miningStatus.blocks_mined;
+                            document.getElementById('est-reward').textContent = `${estimatedReward.toFixed(8)} BTPC`;
+                        }
+
+                        // Update difficulty if available
+                        if (miningStatus.current_difficulty) {
+                            const difficultyEl = document.getElementById('network-difficulty');
+                            if (difficultyEl) {
+                                difficultyEl.textContent = miningStatus.current_difficulty;
+                            }
+                        }
+                    } else {
+                        document.getElementById('mining-status').innerHTML =
+                            '<span class="icon icon-pickaxe" style="opacity: 0.3;"></span> Stopped';
+                        document.getElementById('hashrate').textContent = '0 H/s';
+                        document.getElementById('start-mining-btn').style.display = 'inline-flex';
+                        document.getElementById('stop-mining-btn').style.display = 'none';
+                    }
+                });
+
+                console.log('✅ StateManager event listeners registered for mining page');
+            } catch (error) {
+                console.error('Failed to setup StateManager event listeners:', error);
+            }
+        }
+
+        // Initialize event listeners
+        setupStateManagerEvents();
+
+        // Refresh history when switching to history tab
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (btn.textContent.trim() === 'History') {
+                    refreshHistory();
+                }
+            });
+        });
+
+        // Check if mining is active on page load and start updates
+        async function checkMiningOnLoad() {
+            if (!window.invoke) {
+                setTimeout(checkMiningOnLoad, 500);
+                return;
+            }
+
+            try {
+                const status = await window.invoke('get_mining_status');
+                if (status && status.is_mining) {
+                    console.log('Mining is active, starting updates...');
+                    document.getElementById('start-mining-btn').style.display = 'none';
+                    document.getElementById('stop-mining-btn').style.display = 'inline-flex';
+                    document.getElementById('mining-status').innerHTML = '<span class="icon icon-pickaxe" style="color: var(--status-success);"></span> Running';
+                    startMiningUpdates();
+                } else {
+                    // Update once to show any existing logs
+                    await updateMiningStats();
+                }
+            } catch (e) {
+                console.log('Failed to check mining status on load:', e);
+            }
+        }
+
+        // Start manager updates if not already started
+        // Note: startAutoUpdate called globally in btpc-common.js (Article XI compliance)
+        // Removed duplicate call to prevent race condition
+
+        // Check mining status on page load
+        checkMiningOnLoad();
+    </script>
+
+    <!-- Password Modal for Wallet Encryption -->
+    <div id="password-modal-overlay">
+        <div class="password-modal">
+            <h2 id="modal-title">🔒 Unlock Your Wallets</h2>
+            <p id="modal-description">Enter your master password to access your encrypted wallet metadata.</p>
+
+            <div id="migration-notice" class="migration-notice">
+                <h3>⚡ Upgrade to Encrypted Wallets</h3>
+                <p>Your wallet metadata is currently stored in plaintext. For better security, we recommend encrypting it with a master password.</p>
+                <ul>
+                    <li>Encrypts wallet addresses and balances</li>
+                    <li>Protects against unauthorized access</li>
+                    <li>Creates backup before migration</li>
+                </ul>
+                <p style="margin-top: 10px;"><strong>Choose a strong password and remember it!</strong> Without it, you won't be able to access your wallets.</p>
+            </div>
+
+            <div class="password-input-group">
+                <label for="master-password">Master Password</label>
+                <div class="password-input-wrapper">
+                    <input type="password" id="master-password" placeholder="Enter your password" autocomplete="current-password" />
+                    <button type="button" class="toggle-password" id="toggle-password" title="Show/hide password">👁️</button>
+                </div>
+            </div>
+
+            <div id="password-error" class="password-error"></div>
+
+            <div id="password-loading" class="password-loading">
+                <div class="spinner"></div>
+                <p>Unlocking wallets...</p>
+            </div>
+
+            <div class="password-modal-buttons">
+                <button type="button" class="btn-unlock" id="btn-unlock">Unlock Wallets</button>
+                <button type="button" class="btn-cancel" id="btn-cancel" style="display: none;">Cancel</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

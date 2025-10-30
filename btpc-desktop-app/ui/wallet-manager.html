@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BTPC Wallet - Wallets</title>
+    <link rel="stylesheet" href="btpc-styles.css">
+    <script src="qrcode.min.js"></script>
+    <style>
+        .tab-nav {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .tab-btn {
+            padding: 12px 24px;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 0.9375rem;
+            font-weight: 500;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 200ms ease;
+        }
+        .tab-btn:hover {
+            color: var(--text-primary);
+            background: var(--bg-hover);
+        }
+        .tab-btn.active {
+            color: var(--btpc-primary);
+            border-bottom-color: var(--btpc-primary);
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="page-container">
+        <!-- Sidebar Navigation -->
+        <div class="sidebar">
+            <div class="logo-section">
+                <div class="logo-image">
+                    <div class="btpc-animated-logo">
+                        <span class="btpc-letter">₿</span>
+                        <span class="btpc-letter">T</span>
+                        <span class="btpc-letter">P</span>
+                        <span class="btpc-letter">C</span>
+                    </div>
+                    <div class="quantum-orbital"></div>
+                    <div class="quantum-orbital"></div>
+                    <div class="quantum-symbol">
+                        <span class="btc-symbol">₿</span>
+                        <span class="q-symbol">Q</span>
+                    </div>
+                </div>
+                <div class="logo-header">BTPC Wallet</div>
+                <div class="logo-subtitle">Quantum-Resistant</div>
+
+                <!-- Balance Card inside logo section -->
+                <div class="account-info">
+                    <div class="account-name">Total Balance</div>
+                    <div class="balance-amount">
+                        <span id="wallet-balance">0.00000000</span>
+                        <span class="balance-unit">BTPC</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navigation Menu -->
+            <nav>
+                <a href="index.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-home"></span></span>
+                    <span class="nav-text">Dashboard</span>
+                </a>
+                <a href="wallet-manager.html" class="nav-item active">
+                    <span class="nav-icon"><span class="icon icon-wallet"></span></span>
+                    <span class="nav-text">Wallet</span>
+                </a>
+                <a href="transactions.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-transactions"></span></span>
+                    <span class="nav-text">Transactions</span>
+                </a>
+                <a href="mining.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-pickaxe"></span></span>
+                    <span class="nav-text">Mining</span>
+                </a>
+                <a href="node.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-link"></span></span>
+                    <span class="nav-text">Node</span>
+                </a>
+                <a href="settings.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-settings"></span></span>
+                    <span class="nav-text">Settings</span>
+                </a>
+            </nav>
+
+            <!-- Network Status -->
+            <div class="network-status-footer">
+                <div class="network-status-row">
+                    <span class="network-status-label">Network</span>
+                    <span class="network-status-value" id="network-name">Mainnet</span>
+                </div>
+                <div class="network-status-row">
+                    <span class="network-status-label">Status</span>
+                    <span class="network-status-value" id="sync-status">Syncing...</span>
+                </div>
+                <div class="sync-progress-bar">
+                    <div class="sync-progress-fill" id="sync-progress" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="main-content">
+            <div class="page-header">
+                <div class="page-header-left">
+                    <h1>Wallet Manager</h1>
+                    <p>Create, import, and manage your BTPC quantum-resistant wallets</p>
+                </div>
+                <div class="logout-container">
+                    <button id="logout-btn" class="btn-logout">
+                        <img src="src/assets/icons-svg/unlock.svg" alt="Logout" class="logout-icon">
+                        <span>Logout</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Wallet Summary -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 32px;">
+                <div class="card">
+                    <div class="stat-label">Total Wallets</div>
+                    <div class="stat-value" id="total-wallets">0</div>
+                    <div class="stat-subtext">Active addresses</div>
+                </div>
+                <div class="card">
+                    <div class="stat-label">Total Balance</div>
+                    <div class="stat-value" id="total-balance">0.00</div>
+                    <div class="stat-subtext">BTPC</div>
+                </div>
+                <div class="card">
+                    <div class="stat-label">Favorites</div>
+                    <div class="stat-value" id="favorite-count">0</div>
+                    <div class="stat-subtext">Marked wallets</div>
+                </div>
+            </div>
+
+            <!-- Tab Navigation -->
+            <div class="tab-nav">
+                <button class="tab-btn active" onclick="switchTab('manage')">Manage</button>
+                <button class="tab-btn" onclick="switchTab('create')">Create</button>
+                <button class="tab-btn" onclick="switchTab('import')">Import</button>
+                <button class="tab-btn" onclick="switchTab('show-address')">Show Address</button>
+            </div>
+
+            <!-- Manage Wallets Tab -->
+            <div id="tab-manage" class="tab-content active">
+                <div class="card">
+                    <div class="card-header">
+                        <span>My Wallets</span>
+                        <button class="btn btn-secondary" onclick="refreshWallets()" style="padding: 6px 16px;"><span class="icon icon-refresh"></span> Display</button>
+                    </div>
+
+                    <div id="wallet-list-container">
+                        <!-- Empty State -->
+                        <div id="empty-wallets" style="padding: 60px 20px; text-align: center;">
+                            <div style="font-size: 3rem; margin-bottom: 16px;"><span class="icon icon-wallet" style="width: 48px; height: 48px;"></span></div>
+                            <div style="font-size: 1.125rem; color: var(--text-primary); margin-bottom: 8px;">No wallets yet</div>
+                            <div style="color: var(--text-muted); margin-bottom: 24px;">Create your first quantum-resistant wallet to get started</div>
+                            <button class="btn btn-primary" onclick="switchTab('create')">
+                                <span class="icon icon-plus"></span> Create Your First Wallet
+                            </button>
+                        </div>
+
+                        <!-- Wallet Table -->
+                        <div id="wallet-table" style="display: none;">
+                            <div class="table-container">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Nickname</th>
+                                            <th>Address</th>
+                                            <th>Balance</th>
+                                            <th>Category</th>
+                                            <th>Created</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="wallet-tbody">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Create Wallet Tab -->
+            <div id="tab-create" class="tab-content">
+                <div class="card">
+                    <div class="card-header">Create New Wallet</div>
+                    <div class="form-group">
+                        <label class="form-label">Wallet Nickname</label>
+                        <input type="text" class="form-input" id="new-wallet-nickname" placeholder="Enter a memorable name">
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <div class="form-group">
+                            <label class="form-label">Category</label>
+                            <select class="form-input" id="new-wallet-category">
+                                <option value="personal">Personal</option>
+                                <option value="business">Business</option>
+                                <option value="savings">Savings</option>
+                                <option value="trading">Trading</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Color</label>
+                            <input type="color" class="form-input" id="new-wallet-color" value="#6366f1">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Description (optional)</label>
+                        <input type="text" class="form-input" id="new-wallet-description" placeholder="Add notes about this wallet">
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <div class="form-group">
+                            <label class="form-label">Password</label>
+                            <input type="password" class="form-input" id="new-wallet-password" placeholder="Enter a strong password" required>
+                            <small style="color: var(--text-muted); margin-top: 4px;">Used to encrypt your private key</small>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Confirm Password</label>
+                            <input type="password" class="form-input" id="new-wallet-password-confirm" placeholder="Re-enter password" required>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 12px;">
+                        <button class="btn btn-primary" onclick="createNewWallet()"><span class="icon icon-plus"></span> Create Wallet</button>
+                        <button class="btn btn-secondary" onclick="switchTab('manage')">← Back to Wallets</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Import Wallet Tab -->
+            <div id="tab-import" class="tab-content">
+                <div class="card">
+                    <div class="card-header">Import Existing Wallet</div>
+
+                    <!-- Wallet Details -->
+                    <div class="form-group">
+                        <label class="form-label">Wallet Nickname</label>
+                        <input type="text" class="form-input" id="import-nickname" placeholder="Enter a nickname for this wallet">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Password</label>
+                        <input type="password" class="form-input" id="import-password" placeholder="Password to encrypt this wallet">
+                    </div>
+
+                    <!-- Import Method Selection -->
+                    <div class="form-group">
+                        <label class="form-label">Import Method</label>
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="radio" name="import-type" value="seed" checked onchange="updateImportMethod()">
+                                <span>Seed Phrase (24 words)</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="radio" name="import-type" value="key" onchange="updateImportMethod()">
+                                <span>Private Key</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="radio" name="import-type" value="file" onchange="updateImportMethod()">
+                                <span>Backup File</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Import Data Fields -->
+                    <div id="import-seed-section">
+                        <div class="form-group">
+                            <label class="form-label">Seed Phrase</label>
+                            <textarea class="form-input" id="import-seed" rows="4" placeholder="Enter your 24-word seed phrase separated by spaces"></textarea>
+                        </div>
+                    </div>
+                    <div id="import-key-section" style="display: none;">
+                        <div class="form-group">
+                            <label class="form-label">Private Key</label>
+                            <textarea class="form-input" id="import-key" rows="4" placeholder="Enter your private key"></textarea>
+                        </div>
+                    </div>
+                    <div id="import-file-section" style="display: none;">
+                        <div class="form-group">
+                            <label class="form-label">Backup File Path</label>
+                            <input type="text" class="form-input" id="import-file" placeholder="Enter full path to backup file">
+                            <small style="color: var(--text-muted); margin-top: 4px;">Example: /home/user/.btpc/backups/wallet.btpc</small>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 12px; margin-top: 24px;">
+                        <button class="btn btn-primary" onclick="importWallet()"><span class="icon icon-send"></span> Import Wallet</button>
+                        <button class="btn btn-secondary" onclick="switchTab('manage')">← Cancel</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Show Address Tab -->
+            <div id="tab-show-address" class="tab-content">
+                <div class="card">
+                    <div class="card-header">Show Wallet Address</div>
+                    <div class="form-group">
+                        <label class="form-label">Select Wallet</label>
+                        <select class="form-input" id="address-wallet-select" onchange="updateShowAddress()">
+                            <option value="">Choose a wallet...</option>
+                        </select>
+                    </div>
+                    <div id="address-display-section" style="display: none;">
+                        <div class="form-group">
+                            <label class="form-label">Wallet Address</label>
+                            <div class="form-input mono" id="display-address" style="word-break: break-all; cursor: pointer; background: var(--bg-card);" onclick="copyDisplayAddress()">
+                                -
+                            </div>
+                            <div style="font-size: 0.8125rem; color: var(--text-muted); margin-top: 8px;">Click to copy address</div>
+                        </div>
+                        <div style="text-align: center; padding: 40px;">
+                            <div id="address-qr-code" style="background: white; padding: 20px; border-radius: 12px; display: inline-block;"></div>
+                            <div style="margin-top: 16px; color: var(--text-muted); font-size: 0.875rem;">QR Code for easy scanning</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Private Key Recovery Modal (shown once after wallet creation) -->
+            <div id="recovery-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.95); z-index: 2000; padding: 40px;">
+                <div class="card" style="max-width: 700px; margin: 0 auto; max-height: 90vh; overflow-y: auto; border: 3px solid #dc2626;">
+                    <div class="card-header" style="background: linear-gradient(135deg, #dc2626, #991b1b); color: white;">
+                        <span><span class="icon icon-alert-triangle"></span> WALLET RECOVERY INFORMATION</span>
+                        <button class="btn" onclick="closeRecoveryModal()" style="padding: 6px 16px; background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3);">✕ Close</button>
+                    </div>
+
+                    <div style="background: #fef2f2; border: 2px solid #fca5a5; border-radius: 8px; padding: 16px; margin: 20px 0;">
+                        <div style="font-weight: 600; color: #991b1b; margin-bottom: 8px;"><span class="icon icon-lock"></span> CRITICAL: Save This Information Now!</div>
+                        <div style="color: #7f1d1d; font-size: 0.875rem; line-height: 1.6;">
+                            This is your <strong>ONLY chance</strong> to see your private key (secret key). You need it to recover your wallet if you lose access to this application. Store it in a secure location such as a password manager or encrypted file.
+                        </div>
+                    </div>
+
+                    <div class="detail-section">
+                        <h3 style="font-size: 1rem; color: var(--text-primary); margin-bottom: 12px;">Wallet Address</h3>
+                        <div class="form-input mono" id="recovery-address" style="word-break: break-all; font-size: 0.875rem; background: var(--bg-card);">
+                            -
+                        </div>
+                        <button class="btn btn-secondary" onclick="copyRecoveryAddress()" style="margin-top: 8px; width: 100%;">
+                            <span class="icon icon-send"></span> Copy Address
+                        </button>
+                    </div>
+
+                    <div class="detail-section" style="margin-top: 24px;">
+                        <h3 style="font-size: 1.125rem; color: #dc2626; margin-bottom: 12px;"><span class="icon icon-key"></span> Recovery Seed Phrase (24 words)</h3>
+                        <div style="background: #fff7ed; border: 2px solid #fb923c; border-radius: 8px; padding: 16px; margin-bottom: 12px;">
+                            <div id="recovery-seed-phrase" style="font-family: 'Courier New', monospace; font-size: 0.875rem; line-height: 1.8; color: #1f2937; word-wrap: break-word;">-</div>
+                        </div>
+                        <button class="btn btn-secondary" onclick="copySeedPhrase()" style="margin-top: 8px; width: 100%;">
+                            <span class="icon icon-send"></span> Copy Seed Phrase
+                        </button>
+                    </div>
+
+                    <div class="detail-section" style="margin-top: 24px; text-align: center;">
+                        <h3 style="font-size: 1rem; color: var(--text-primary); margin-bottom: 16px;">Seed Phrase QR Code</h3>
+                        <div id="recovery-qr-code" style="background: white; padding: 20px; border-radius: 12px; display: inline-block;"></div>
+                        <div style="margin-top: 12px; color: var(--text-muted); font-size: 0.875rem;">Scan this QR code to backup your seed phrase</div>
+                    </div>
+
+                    <!-- Advanced: Private Key Hex (collapsed by default) -->
+                    <div class="detail-section" style="margin-top: 24px;">
+                        <details style="background: var(--bg-section); border-radius: 8px; padding: 12px;">
+                            <summary style="cursor: pointer; font-weight: 600; color: var(--text-muted); font-size: 0.875rem;">Advanced: Show Raw Private Key (Hex)</summary>
+                            <div style="margin-top: 16px;">
+                                <div class="form-input mono" id="recovery-private-key" style="word-break: break-all; font-size: 0.75rem; background: var(--bg-card); max-height: 120px; overflow-y: auto; margin-top: 8px;">
+                                    -
+                                </div>
+                                <button class="btn btn-secondary" onclick="copyPrivateKey()" style="margin-top: 8px; width: 100%;">
+                                    <span class="icon icon-send"></span> Copy Private Key Hex
+                                </button>
+                            </div>
+                        </details>
+                    </div>
+
+                    <div style="margin-top: 24px; padding: 16px; background: #fef2f2; border-radius: 8px; text-align: center;">
+                        <div style="color: #991b1b; font-weight: 600; margin-bottom: 8px;"><span class="icon icon-alert-triangle"></span> Security Reminders:</div>
+                        <ul style="text-align: left; color: #7f1d1d; font-size: 0.875rem; line-height: 1.8; margin: 0; padding-left: 20px;">
+                            <li>Never share your private key with anyone</li>
+                            <li>Store it offline in a secure location</li>
+                            <li>Anyone with this key can access your funds</li>
+                            <li>This window will close and cannot be reopened</li>
+                        </ul>
+                    </div>
+
+                    <div style="margin-top: 24px; text-align: center;">
+                        <button class="btn btn-primary" onclick="closeRecoveryModal()" style="padding: 12px 32px; font-size: 1rem;">
+                            I Have Saved My Recovery Information
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Wallet Details Modal (Hidden by default) -->
+            <div id="wallet-details-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 1000; padding: 40px;">
+                <div class="card" style="max-width: 800px; margin: 0 auto; max-height: 90vh; overflow-y: auto;">
+                    <div class="card-header">
+                        <span id="modal-wallet-name">Wallet Details</span>
+                        <button class="btn btn-secondary" onclick="closeWalletDetails()" style="padding: 6px 16px;">✕ Close</button>
+                    </div>
+
+                    <div class="detail-section">
+                        <h3 style="font-size: 1rem; color: var(--text-primary); margin-bottom: 16px;">Information</h3>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+                            <div>
+                                <div class="stat-label">Nickname</div>
+                                <div class="stat-subtext" id="detail-nickname">-</div>
+                            </div>
+                            <div>
+                                <div class="stat-label">Balance</div>
+                                <div class="stat-subtext" id="detail-balance">-</div>
+                            </div>
+                            <div>
+                                <div class="stat-label">Category</div>
+                                <div class="stat-subtext" id="detail-category">-</div>
+                            </div>
+                            <div>
+                                <div class="stat-label">Created</div>
+                                <div class="stat-subtext" id="detail-created">-</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="detail-section" style="margin-top: 24px;">
+                        <h3 style="font-size: 1rem; color: var(--text-primary); margin-bottom: 12px;">Address</h3>
+                        <div class="form-input mono" id="detail-address" style="word-break: break-all; cursor: pointer;" onclick="copyAddress()">
+                            -
+                        </div>
+                        <div style="font-size: 0.8125rem; color: var(--text-muted); margin-top: 8px;">Click to copy</div>
+                    </div>
+
+                    <div class="detail-section" style="margin-top: 24px;">
+                        <h3 style="font-size: 1rem; color: var(--text-primary); margin-bottom: 16px;">Actions</h3>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
+                            <button class="btn btn-primary" onclick="sendFromWallet()"><span class="icon icon-send"></span> Send</button>
+                            <button class="btn btn-primary" onclick="receiveToWallet()"><span class="icon icon-send"></span> Receive</button>
+                            <button class="btn btn-secondary" onclick="viewHistory()"><span class="icon icon-chart"></span> History</button>
+                            <button class="btn btn-secondary" onclick="mineToWallet()"><span class="icon icon-pickaxe"></span> Mine Here</button>
+                            <button class="btn btn-secondary" onclick="backupWallet()"><span class="icon icon-save"></span> Backup</button>
+                            <button class="btn btn-danger" onclick="deleteWallet()"><span class="icon icon-stop"></span> Delete</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Copy Confirmation Modal -->
+            <div id="copy-confirm-modal" class="modal">
+                <div class="modal-content" style="max-width: 450px;">
+                    <div class="modal-header">
+                        <h2>Address Copied</h2>
+                        <button class="modal-close" onclick="closeCopyConfirmModal()">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div style="margin-bottom: 16px; color: var(--text-secondary);">
+                            The wallet address has been successfully copied to your clipboard.
+                        </div>
+
+                        <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                            <button class="btn btn-primary" onclick="closeCopyConfirmModal()">OK</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Password Modal for Wallet Encryption -->
+    <div id="password-modal-overlay">
+        <div class="password-modal">
+            <h2 id="modal-title">🔒 Unlock Your Wallets</h2>
+            <p id="modal-description">Enter your master password to access your encrypted wallet metadata.</p>
+
+            <div id="migration-notice" class="migration-notice">
+                <h3>⚡ Upgrade to Encrypted Wallets</h3>
+                <p>Your wallet metadata is currently stored in plaintext. For better security, we recommend encrypting it with a master password.</p>
+                <ul>
+                    <li>Encrypts wallet addresses and balances</li>
+                    <li>Protects against unauthorized access</li>
+                    <li>Creates backup before migration</li>
+                </ul>
+                <p style="margin-top: 10px;"><strong>Choose a strong password and remember it!</strong> Without it, you won't be able to access your wallets.</p>
+            </div>
+
+            <div class="password-input-group">
+                <label for="master-password">Master Password</label>
+                <div class="password-input-wrapper">
+                    <input type="password" id="master-password" placeholder="Enter your password" autocomplete="current-password" />
+                    <button type="button" class="toggle-password" id="toggle-password" title="Show/hide password">👁️</button>
+                </div>
+            </div>
+
+            <div id="password-error" class="password-error"></div>
+
+            <div id="password-loading" class="password-loading">
+                <div class="spinner"></div>
+                <p>Unlocking wallets...</p>
+            </div>
+
+            <div class="password-modal-buttons">
+                <button type="button" class="btn-unlock" id="btn-unlock">Unlock Wallets</button>
+                <button type="button" class="btn-cancel" id="btn-cancel" style="display: none;">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="btpc-tauri-context.js"></script>
+    <script src="btpc-event-listeners.js"></script>
+    <script src="btpc-navigation-guard.js"></script>
+    <script src="btpc-event-manager.js"></script>
+    <script src="btpc-backend-first.js"></script>
+    <script src="btpc-common.js"></script>
+    <script src="btpc-update-manager.js"></script>
+    <script src="password-modal.js"></script>
+    <script src="btpc-logout.js"></script>
+    <script>
+        let currentWalletId = null;
+        let allWallets = [];
+        const updateManager = window.btpcUpdateManager;
+
+        // Tab switching
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+            // Find and activate the correct tab button
+            const tabButtons = document.querySelectorAll('.tab-btn');
+            tabButtons.forEach((btn, index) => {
+                if (btn.textContent.toLowerCase().includes(tabName.toLowerCase())) {
+                    btn.classList.add('active');
+                }
+            });
+
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+        }
+
+        function updateImportMethod() {
+            const method = document.querySelector('input[name="import-type"]:checked')?.value;
+
+            document.getElementById('import-seed-section').style.display = method === 'seed' ? 'block' : 'none';
+            document.getElementById('import-key-section').style.display = method === 'key' ? 'block' : 'none';
+            document.getElementById('import-file-section').style.display = method === 'file' ? 'block' : 'none';
+        }
+
+        // Load wallets on page load
+        async function loadWallets() {
+            try {
+                if (!window.invoke) {
+                    console.error('Tauri invoke not ready yet');
+                    return;
+                }
+                const wallets = await window.invoke('list_wallets');
+                allWallets = wallets || [];
+                updateWalletDisplay();
+                updateAddressWalletSelect();
+            } catch (e) {
+                console.log('Failed to load wallets:', e);
+                allWallets = [];
+                updateWalletDisplay();
+            }
+        }
+
+        function updateWalletDisplay() {
+            const count = allWallets.length;
+            document.getElementById('total-wallets').textContent = count;
+
+            // Calculate total balance
+            const totalBalance = allWallets.reduce((sum, w) => sum + (w.cached_balance_btp || 0), 0);
+            document.getElementById('total-balance').textContent = totalBalance.toFixed(8);
+            document.getElementById('wallet-balance').textContent = totalBalance.toFixed(8);
+
+            // Count favorites
+            const favoriteCount = allWallets.filter(w => w.metadata?.is_favorite).length;
+            document.getElementById('favorite-count').textContent = favoriteCount;
+
+            // Show/hide empty state
+            if (count === 0) {
+                document.getElementById('empty-wallets').style.display = 'block';
+                document.getElementById('wallet-table').style.display = 'none';
+            } else {
+                document.getElementById('empty-wallets').style.display = 'none';
+                document.getElementById('wallet-table').style.display = 'block';
+                renderWalletTable();
+            }
+        }
+
+        function updateAddressWalletSelect() {
+            const select = document.getElementById('address-wallet-select');
+            select.innerHTML = '<option value="">Choose a wallet...</option>';
+
+            allWallets.forEach(wallet => {
+                const option = document.createElement('option');
+                option.value = wallet.address;
+                option.textContent = `${wallet.nickname} - ${wallet.address.substring(0, 16)}...`;
+                select.appendChild(option);
+            });
+        }
+
+        function updateShowAddress() {
+            const selectedAddress = document.getElementById('address-wallet-select').value;
+
+            if (selectedAddress) {
+                document.getElementById('display-address').textContent = selectedAddress;
+                document.getElementById('address-display-section').style.display = 'block';
+                generateAddressQRCode(selectedAddress);
+            } else {
+                document.getElementById('address-display-section').style.display = 'none';
+            }
+        }
+
+        function copyDisplayAddress() {
+            const address = document.getElementById('display-address').textContent;
+            navigator.clipboard.writeText(address);
+            showCopyConfirmModal();
+        }
+
+        function showCopyConfirmModal() {
+            document.getElementById('copy-confirm-modal').style.display = 'flex';
+        }
+
+        function closeCopyConfirmModal() {
+            document.getElementById('copy-confirm-modal').style.display = 'none';
+        }
+
+        function generateAddressQRCode(address) {
+            const qrContainer = document.getElementById('address-qr-code');
+            if (!qrContainer) {
+                console.error('QR container not found');
+                return;
+            }
+
+            // Clear previous QR code
+            qrContainer.innerHTML = '';
+
+            // Generate QR code using QRCode.js library
+            try {
+                if (typeof QRCode !== 'undefined') {
+                    new QRCode(qrContainer, {
+                        text: address,
+                        width: 256,
+                        height: 256,
+                        colorDark: '#000000',
+                        colorLight: '#ffffff',
+                        correctLevel: QRCode.CorrectLevel.M
+                    });
+                } else {
+                    // Fallback: show address text if library not loaded
+                    qrContainer.innerHTML = `<div style="width: 256px; height: 256px; display: flex; align-items: center; justify-content: center; padding: 20px; word-break: break-all; font-size: 0.75rem; color: #666;">${address}</div>`;
+                    console.error('QRCode library not loaded');
+                }
+            } catch (e) {
+                console.error('QR code generation failed:', e);
+                qrContainer.innerHTML = `<div style="width: 256px; height: 256px; display: flex; align-items: center; justify-content: center; padding: 20px; word-break: break-all; font-size: 0.75rem; color: #666;">${address}</div>`;
+            }
+        }
+
+        function renderWalletTable() {
+            const tbody = document.getElementById('wallet-tbody');
+            tbody.innerHTML = '';
+
+            allWallets.forEach(wallet => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>
+                        ${wallet.metadata?.is_favorite ? '⭐ ' : ''}
+                        ${wallet.nickname}
+                        ${wallet.is_default ? '<span class="badge badge-success" style="margin-left: 8px;">DEFAULT</span>' : ''}
+                    </td>
+                    <td class="mono" style="font-size: 0.8125rem;">${wallet.address.substring(0, 16)}...${wallet.address.substring(wallet.address.length - 16)}</td>
+                    <td class="mono">${(wallet.cached_balance_btp || 0).toFixed(8)} BTPC</td>
+                    <td><span class="badge badge-info">${wallet.metadata?.category || 'default'}</span></td>
+                    <td style="font-size: 0.8125rem;">${new Date(wallet.created_at).toLocaleDateString()}</td>
+                    <td>
+                        <button class="btn btn-primary" style="padding: 6px 16px; font-size: 0.8125rem;" onclick="viewWalletDetails('${wallet.id}')">
+                            View
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function viewWalletDetails(walletId) {
+            currentWalletId = walletId;
+            const wallet = allWallets.find(w => w.id === walletId);
+
+            if (!wallet) return;
+
+            document.getElementById('modal-wallet-name').textContent = wallet.nickname;
+            document.getElementById('detail-nickname').textContent = wallet.nickname;
+            document.getElementById('detail-balance').textContent = `${(wallet.cached_balance_btp || 0).toFixed(8)} BTPC`;
+            document.getElementById('detail-category').textContent = wallet.metadata?.category || 'default';
+            document.getElementById('detail-created').textContent = new Date(wallet.created_at).toLocaleString();
+            document.getElementById('detail-address').textContent = wallet.address;
+
+            document.getElementById('wallet-details-modal').style.display = 'block';
+        }
+
+        function closeWalletDetails() {
+            document.getElementById('wallet-details-modal').style.display = 'none';
+            currentWalletId = null;
+        }
+
+        async function createNewWallet() {
+            const nickname = document.getElementById('new-wallet-nickname').value.trim();
+            const category = document.getElementById('new-wallet-category').value;
+            const color = document.getElementById('new-wallet-color').value;
+            const description = document.getElementById('new-wallet-description').value.trim();
+            const password = document.getElementById('new-wallet-password').value;
+            const passwordConfirm = document.getElementById('new-wallet-password-confirm').value;
+
+            if (!nickname) {
+                toast.warning('Please enter a wallet nickname');
+                return;
+            }
+
+            if (!password) {
+                toast.warning('Please enter a password');
+                return;
+            }
+
+            if (password.length < 8) {
+                toast.warning('Password must be at least 8 characters long');
+                return;
+            }
+
+            if (password !== passwordConfirm) {
+                toast.error('Passwords do not match');
+                return;
+            }
+
+            if (!window.invoke) {
+                toast.error('Tauri API not ready. Please wait a moment and try again.');
+                return;
+            }
+
+            showLoading('Creating wallet...', 'Encrypting with Argon2id (2-3 seconds)');
+
+            try {
+                const response = await window.invoke('create_wallet_with_nickname', {
+                    request: {
+                        nickname: nickname,
+                        description: description || 'Created from desktop app',
+                        category: category,
+                        color: color,
+                        is_favorite: false,
+                        is_default: allWallets.length === 0,
+                        auto_backup: true,
+                        notifications_enabled: true,
+                        default_fee_credits: 10000,
+                        password: password,
+                        import_data: null
+                    }
+                });
+
+                hideLoading();
+
+                // Display wallet info and private key (SECURITY: show only once!)
+                const walletInfo = response.wallet_info;
+                const privateKeyHex = response.private_key_hex;
+
+                // Clear form (including sensitive password fields) BEFORE showing recovery modal
+                document.getElementById('new-wallet-nickname').value = '';
+                document.getElementById('new-wallet-category').value = 'personal';
+                document.getElementById('new-wallet-color').value = '#6366f1';
+                document.getElementById('new-wallet-description').value = '';
+                document.getElementById('new-wallet-password').value = '';
+                document.getElementById('new-wallet-password-confirm').value = '';
+
+                toast.success(`Wallet "${nickname}" created successfully!`);
+
+                // Show recovery modal with seed phrase, address, and private key
+                showRecoveryModal(walletInfo.address, response.seed_phrase, privateKeyHex);
+
+                // Reload wallets and switch to manage tab
+                await loadWallets();
+                switchTab('manage');
+            } catch (e) {
+                hideLoading();
+                toast.error(`Failed to create wallet: ${e}`);
+                console.error('Wallet creation error:', e);
+            }
+        }
+
+        async function refreshWallets() {
+            await loadWallets();
+            if (!window.invoke) return;
+            try {
+                await window.invoke('refresh_all_wallet_balances');
+                await loadWallets();
+            } catch (e) {
+                console.log('Failed to refresh balances:', e);
+            }
+        }
+
+        function copyAddress() {
+            const address = document.getElementById('detail-address').textContent;
+            copyToClipboard(address, 'Address copied to clipboard!');
+        }
+
+        async function importWallet() {
+            if (!window.invoke) {
+                toast.error('Tauri API not ready. Please wait a moment and try again.');
+                return;
+            }
+
+            const importType = document.querySelector('input[name="import-type"]:checked')?.value;
+            const nickname = document.getElementById('import-nickname').value.trim();
+            const password = document.getElementById('import-password').value.trim();
+
+            if (!importType) {
+                toast.warning('Please select an import method');
+                return;
+            }
+
+            if (!nickname) {
+                toast.warning('Please enter a nickname for the wallet');
+                return;
+            }
+
+            if (!password) {
+                toast.warning('Please enter a password');
+                return;
+            }
+
+            showLoading('Importing wallet...', 'Decrypting and validating keys');
+
+            try {
+                let result;
+
+                if (importType === 'key') {
+                    const privateKey = document.getElementById('import-key').value.trim();
+                    if (!privateKey) {
+                        hideLoading();
+                        toast.warning('Please enter a private key');
+                        return;
+                    }
+
+                    result = await window.invoke('import_wallet_from_key', {
+                        private_key: privateKey,
+                        nickname: nickname,
+                        password: password
+                    });
+                } else if (importType === 'seed') {
+                    const mnemonic = document.getElementById('import-seed').value.trim();
+                    if (!mnemonic) {
+                        hideLoading();
+                        toast.warning('Please enter a seed phrase');
+                        return;
+                    }
+
+                    result = await window.invoke('import_wallet_from_mnemonic', {
+                        mnemonic: mnemonic,
+                        nickname: nickname,
+                        password: password
+                    });
+                } else if (importType === 'file') {
+                    const backupPath = document.getElementById('import-file').value.trim();
+                    if (!backupPath) {
+                        hideLoading();
+                        toast.warning('Please enter a backup file path');
+                        return;
+                    }
+
+                    result = await window.invoke('import_wallet_from_backup', {
+                        backup_path: backupPath,
+                        nickname: nickname,
+                        password: password
+                    });
+                }
+
+                hideLoading();
+
+                const addressShort = result.address.substring(0, 16) + '...';
+                toast.success(`Wallet "${nickname}" imported! Address: ${addressShort}`);
+
+                // Clear form and refresh wallets
+                document.getElementById('import-nickname').value = '';
+                document.getElementById('import-password').value = '';
+                document.getElementById('import-key').value = '';
+                document.getElementById('import-seed').value = '';
+                document.getElementById('import-file').value = '';
+
+                await loadWallets();
+                switchTab('manage');
+            } catch (e) {
+                hideLoading();
+                toast.error(`Failed to import wallet: ${e}`);
+                console.error('Wallet import error:', e);
+            }
+        }
+
+        function exportWallets() {
+            alert('Export wallets feature coming soon!');
+        }
+
+        function sendFromWallet() {
+            // Redirect to transactions page with send tab active
+            closeWalletDetails();
+            window.location.href = 'transactions.html#send';
+        }
+
+        function receiveToWallet() {
+            // Redirect to transactions page with receive tab active
+            const wallet = allWallets.find(w => w.id === currentWalletId);
+            closeWalletDetails();
+            if (wallet) {
+                window.location.href = `transactions.html#receive-${wallet.address}`;
+            } else {
+                window.location.href = 'transactions.html#receive';
+            }
+        }
+
+        function viewHistory() {
+            window.location.href = 'transactions.html';
+        }
+
+        function mineToWallet() {
+            window.location.href = 'mining.html';
+        }
+
+        async function backupWallet() {
+            if (!window.invoke) {
+                alert('Tauri API not ready. Please wait a moment and try again.');
+                return;
+            }
+
+            const wallet = allWallets.find(w => w.id === currentWalletId);
+            if (!wallet) {
+                alert('Wallet not found');
+                return;
+            }
+
+            if (confirm(`Backup wallet "${wallet.nickname}"?\n\nThis will create an encrypted backup file in your wallet directory.`)) {
+                try {
+                    const result = await window.invoke('backup_wallet', {
+                        wallet_id: currentWalletId
+                    });
+
+                    alert(`${result}\n\nYour wallet has been safely backed up!`);
+                } catch (e) {
+                    alert(`Failed to backup wallet:\n${e}`);
+                }
+            }
+        }
+
+        async function deleteWallet() {
+            if (!currentWalletId) return;
+            if (!window.invoke) {
+                alert('Tauri API not ready');
+                return;
+            }
+
+            const wallet = allWallets.find(w => w.id === currentWalletId);
+            if (!confirm(`Are you sure you want to delete wallet "${wallet.nickname}"?`)) return;
+
+            try {
+                await window.invoke('delete_wallet', { walletId: currentWalletId });
+                alert('Wallet deleted successfully');
+                closeWalletDetails();
+                loadWallets();
+            } catch (e) {
+                alert(`Failed to delete wallet: ${e}`);
+            }
+        }
+
+        // Recovery Modal Functions
+        function showRecoveryModal(address, seedPhrase, privateKeyHex) {
+            // Populate modal with data
+            document.getElementById('recovery-address').textContent = address;
+            document.getElementById('recovery-seed-phrase').textContent = seedPhrase;
+            document.getElementById('recovery-private-key').textContent = privateKeyHex;
+
+            // Generate QR code for seed phrase (more user-friendly than hex)
+            const qrContainer = document.getElementById('recovery-qr-code');
+            qrContainer.innerHTML = ''; // Clear previous QR code
+
+            try {
+                if (typeof QRCode !== 'undefined') {
+                    new QRCode(qrContainer, {
+                        text: seedPhrase,
+                        width: 256,
+                        height: 256,
+                        colorDark: '#000000',
+                        colorLight: '#ffffff',
+                        correctLevel: QRCode.CorrectLevel.M
+                    });
+                } else {
+                    qrContainer.innerHTML = '<div style="width: 256px; height: 256px; display: flex; align-items: center; justify-content: center; padding: 20px; background: #fee; color: #c00; font-size: 0.875rem;">QR Code library not loaded</div>';
+                    console.error('QRCode library not loaded');
+                }
+            } catch (e) {
+                console.error('QR code generation failed:', e);
+                qrContainer.innerHTML = '<div style="width: 256px; height: 256px; display: flex; align-items: center; justify-content: center; padding: 20px; background: #fee; color: #c00; font-size: 0.875rem;">Failed to generate QR code</div>';
+            }
+
+            // Show modal
+            document.getElementById('recovery-modal').style.display = 'block';
+        }
+
+        function closeRecoveryModal() {
+            // Clear sensitive data from modal
+            document.getElementById('recovery-address').textContent = '-';
+            document.getElementById('recovery-seed-phrase').textContent = '-';
+            document.getElementById('recovery-private-key').textContent = '-';
+            document.getElementById('recovery-qr-code').innerHTML = '';
+
+            // Hide modal
+            document.getElementById('recovery-modal').style.display = 'none';
+        }
+
+        function copyRecoveryAddress() {
+            const address = document.getElementById('recovery-address').textContent;
+            copyToClipboard(address, 'Address copied!');
+        }
+
+        function copySeedPhrase() {
+            const seedPhrase = document.getElementById('recovery-seed-phrase').textContent;
+            copyToClipboard(seedPhrase, 'Seed phrase copied! Keep this secure and never share it.');
+        }
+
+        function copyPrivateKey() {
+            const privateKey = document.getElementById('recovery-private-key').textContent;
+            copyToClipboard(privateKey, 'Private key copied! Keep this secure and never share it.');
+        }
+
+        // Subscribe to updates (one-time only - prevent duplicate subscriptions causing stack overflow)
+        if (!window.walletManagerPageSubscribed) {
+            window.walletManagerPageSubscribed = true;
+            updateManager.subscribe((type, data, fullState) => {
+                if (type === 'wallet') {
+                    document.getElementById('wallet-balance').textContent = (data.balance || 0).toFixed(8);
+                } else if (type === 'blockchain') {
+                    document.getElementById('chain-height').textContent = (data.height || 0).toLocaleString();
+                }
+            });
+        }
+
+        // Load wallets on page load
+        loadWallets();
+        setInterval(loadWallets, 10000); // Refresh every 10 seconds
+
+        // Note: startAutoUpdate is called globally in btpc-common.js (Article XI compliance)
+        // Removed duplicate call here to prevent race condition
+
+        // Close modals when clicking outside
+        window.addEventListener('click', (event) => {
+            const copyModal = document.getElementById('copy-confirm-modal');
+            if (event.target === copyModal) {
+                closeCopyConfirmModal();
+            }
+        });
+    </script>
+</body>
+</html>

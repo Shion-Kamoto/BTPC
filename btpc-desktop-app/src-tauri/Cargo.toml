@@ -1,0 +1,80 @@
+[package]
+name = "btpc-desktop-app"
+version = "1.0.0"
+description = "BTPC Blockchain Manager Desktop Application"
+authors = ["BTPC Team"]
+license = "MIT"
+repository = "https://github.com/btpc/btpc"
+default-run = "btpc-desktop-app"
+edition = "2021"
+rust-version = "1.70"
+
+[workspace]
+
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+tauri = { version = "2.0", features = [] }
+tokio = { version = "1", features = ["full"] }
+anyhow = "1.0"
+colored = "2.0"
+dirs = "5.0"
+toml = "0.8"
+num_cpus = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+reqwest = { version = "0.12", features = ["json"] }
+hex = "0.4"
+libc = "0.2"  # For process detachment (setsid)
+fs2 = "0.4"  # Safe cross-platform file locking (replaces unsafe libc::flock)
+
+# Authentication and security dependencies
+argon2 = "0.5"
+rand = "0.8"
+aes-gcm = "0.10"
+subtle = "2.5"  # Constant-time comparison for authentication
+sha2 = "0.10"
+bip39 = "2.0"
+base64 = "0.22"
+lazy_static = "1.4"
+zeroize = { version = "1.7", features = ["derive"] }  # Secure password memory clearing
+
+# Crypto dependencies (from BTPC core)
+pqc_dilithium = "0.1"
+btpc-core = { path = "../../btpc-core" }
+
+# Database dependencies
+rocksdb = "0.21"  # Match workspace version to avoid native library conflicts
+bincode = "1.3"
+
+# Transaction management dependencies
+parking_lot = "0.12"  # Faster, deadlock-free mutexes for UTXO locking
+tracing = "0.1"  # Structured logging (Constitution Article V)
+
+# CLI parsing
+clap = { version = "4.0", features = ["derive"] }
+
+# Wallet manager dependencies
+uuid = { version = "1.6", features = ["v4", "serde"] }
+fastrand = "2.0"
+
+[dev-dependencies]
+# Testing framework
+tokio-test = "0.4"
+tempfile = "3.8"
+mockall = "0.12"
+serial_test = "3.0"
+# Performance testing
+criterion = { version = "0.5", features = ["html_reports"] }
+# Property-based testing
+proptest = "1.4"
+
+[lib]
+name = "btpc_desktop_app"
+path = "src/lib.rs"
+
+[[bin]]
+name = "btpc-desktop-app"
+path = "src/main.rs"
