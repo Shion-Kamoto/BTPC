@@ -16,9 +16,7 @@ use btpc_core::{
     Network,
 };
 use clap::{Arg, Command};
-use reqwest;
 use serde::{Deserialize, Serialize};
-use serde_json;
 
 /// Wallet configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -185,7 +183,7 @@ impl Wallet {
                 .ok_or("Address not found in wallet")?;
 
             let input = TransactionInput {
-                previous_output: outpoint.clone(),
+                previous_output: *outpoint,
                 script_sig: Script::new(), // Will be signed later
                 sequence: 0xffffffff,
             };
@@ -234,7 +232,7 @@ impl Wallet {
 
         // Add to transaction history
         self.transactions.push(WalletTransaction {
-            txid: txid.clone(),
+            txid,
             amount: -(amount as i64),
             fee: estimated_fee,
             block_height: None,
@@ -265,7 +263,7 @@ impl Wallet {
             .transactions
             .iter()
             .filter(|tx| tx.block_height.is_none())
-            .map(|tx| tx.txid.clone())
+            .map(|tx| tx.txid)
             .collect();
 
         for txid in pending_txids {
@@ -508,6 +506,7 @@ impl Wallet {
             .as_secs();
 
         let wallet_data = WalletData {
+            wallet_id: uuid::Uuid::new_v4().to_string(), // T012: Required for wallet identification
             network: self.config.network.as_str().to_string(),
             keys,
             created_at: now, // TODO: Track real creation time

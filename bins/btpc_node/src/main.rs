@@ -11,7 +11,6 @@ use btpc_core::{
     crypto::Hash,
     network::{
         discovery::PeerDiscovery,
-        protocol::BTPC_TESTNET_MAGIC,
         PeerEvent,
         SimplePeerManager,
         sync::SyncManager,
@@ -102,7 +101,7 @@ impl Node {
 
         let db_config = DatabaseConfig::from_storage_config(&storage_config);
         let database = Arc::new(Database::open(
-            &config.datadir.join("blockchain"),
+            config.datadir.join("blockchain"),
             db_config,
         )?);
 
@@ -246,6 +245,7 @@ impl Node {
         let blockchain_handlers = BlockchainRpcHandlers::new(
             Arc::clone(&blockchain_db),
             Arc::clone(&utxo_db),
+            config.network,
         );
         blockchain_handlers.register_methods(&rpc_server).await;
 
@@ -345,7 +345,7 @@ impl Node {
 
         // Take the event receiver from peer manager
         let mut event_rx = self.peer_manager.take_event_receiver().await
-            .ok_or_else(|| "Event receiver already taken")?;
+            .ok_or("Event receiver already taken")?;
 
         let blockchain_db = Arc::clone(&self.blockchain_db);
         let utxo_db = Arc::clone(&self.utxo_db);
@@ -533,7 +533,7 @@ impl Node {
                     inputs: vec![coinbase_input],
                     outputs: vec![coinbase_output],
                     lock_time: 0,
-                    fork_id: 0, // Testnet fork_id is 0
+                    fork_id: _network.fork_id(),
                 };
 
                 // TODO: Add transactions from mempool here
@@ -555,17 +555,21 @@ impl Node {
                     .unwrap()
                     .as_secs();
 
+                // Use network-appropriate difficulty
+                use btpc_core::consensus::DifficultyTarget;
+                let network_difficulty = DifficultyTarget::minimum_for_network(_network);
+
                 let header = BlockHeader {
                     version: 1,
                     prev_hash,
                     merkle_root,
                     timestamp,
-                    bits: 0x207fffff, // Easy difficulty for testnet
+                    bits: network_difficulty.bits,
                     nonce: 0,
                 };
 
-                // Mine the block
-                let target = MiningTarget::easy_target();
+                // Mine the block with network difficulty
+                let target = MiningTarget::from_bytes(*network_difficulty.as_bytes());
                 println!("Mining block {} at height {}...", block_count, height);
 
                 match ProofOfWork::mine(&header, &target) {
@@ -776,26 +780,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let daemon = matches.get_flag("daemon");
     let enable_mining = matches.get_flag("mine");
 
-    // Create node configuration
+    // Create node configuration with network-specific RPC rate limits
+    let mut rpc_config = RpcConfig::for_network(network);
+    rpc_config.bind_address = rpc_bind;
+    rpc_config.port = rpc_port;
+    rpc_config.enable_auth = false; // Disable auth for local testing
+
     let config = NodeConfig {
         network,
         datadir,
-        rpc: RpcConfig {
-            bind_address: rpc_bind,
-            port: rpc_port,
-            max_request_size: 1024 * 1024, // 1MB
-            enable_auth: false,
-            username: None,
-            password: None,
-            enable_tls: false,
-            tls_cert_path: None,
-            tls_key_path: None,
-            max_concurrent_requests: 100,
-            request_timeout_secs: 30,
-            max_connections_per_ip: 10,
-            rate_limit_per_ip: 60,
-            rate_limit_window_secs: 60,
-        },
+        rpc: rpc_config,
         max_peers: 8,
         enable_mining,
         listen_addr,

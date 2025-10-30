@@ -1,8 +1,11 @@
 //! BTPC Miner
 //!
 //! A dedicated mining application for BTPC with SHA-512 proof-of-work.
+//! Supports both CPU and GPU (OpenCL) mining.
 
 #![allow(unused_variables)]
+
+mod gpu_miner;
 
 use std::{
     sync::{
@@ -469,6 +472,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .help("Coinbase message")
                 .default_value("BTPC Miner v0.1.0"),
         )
+        .arg(
+            Arg::new("gpu")
+                .long("gpu")
+                .short('g')
+                .help("Enable GPU mining (requires --features gpu at compile time)")
+                .action(clap::ArgAction::SetTrue),
+        )
         .get_matches();
 
     // Parse configuration
@@ -484,13 +494,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let threads: usize = matches
         .get_one::<String>("threads")
-        .map(|s| s.parse().ok())
-        .flatten()
-        .unwrap_or_else(|| num_cpus::get());
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(num_cpus::get);
 
     let rpc_url = matches.get_one::<String>("rpc-url").unwrap().clone();
     let mining_address = matches.get_one::<String>("address").unwrap().clone();
     let coinbase_message = matches.get_one::<String>("message").unwrap().clone();
+    let use_gpu = matches.get_flag("gpu");
+
+    // Check GPU availability if requested
+    if use_gpu {
+        #[cfg(feature = "gpu")]
+        {
+            println!("GPU mining requested");
+            let gpu_config = gpu_miner::GpuMinerConfig::default();
+            match gpu_miner::GpuMiner::new(gpu_config) {
+                Ok(gpu) => {
+                    println!("✅ GPU mining enabled: {}", gpu.device_info());
+                    println!("⚠️  Note: Full GPU acceleration requires optimized OpenCL kernels");
+                    println!("   Currently using CPU-fallback implementation");
+                }
+                Err(e) => {
+                    eprintln!("❌ GPU mining failed: {}", e);
+                    eprintln!("   Falling back to CPU mining");
+                }
+            }
+        }
+
+        #[cfg(not(feature = "gpu"))]
+        {
+            eprintln!("❌ GPU mining not available - btpc_miner was not compiled with GPU support");
+            eprintln!("   Compile with: cargo build --features gpu");
+            eprintln!("   Falling back to CPU mining");
+        }
+    }
 
     // Create miner configuration
     let config = MinerConfig {

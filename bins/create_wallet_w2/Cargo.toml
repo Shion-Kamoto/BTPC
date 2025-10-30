@@ -1,0 +1,16 @@
+[workspace]
+
+[package]
+name = "create_wallet_w2"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+btpc-core = { path = "../../btpc-core" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+hex = "0.4"
+bip39 = "2.1"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+rand = "0.8"
