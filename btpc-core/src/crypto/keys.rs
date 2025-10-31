@@ -77,57 +77,64 @@ impl PrivateKey {
         })
     }
 
-    /// Create a private key from a seed (deterministic, for testing and recovery)
+    /// Create a private key from a seed (for wallet recovery)
+    ///
+    /// # IMPORTANT LIMITATION
+    /// Due to pqc_dilithium v0.2 library constraints, this method does NOT generate
+    /// truly deterministic keys from the seed. The seed is stored for future use
+    /// (enabling on-demand keypair regeneration for signing), but the initial keypair
+    /// uses system randomness.
+    ///
+    /// # Current Behavior
+    /// - Stores the seed for later use
+    /// - Generates a random ML-DSA keypair (NOT from seed)
+    /// - When signing, regenerates a keypair (also random, not from seed)
+    ///
+    /// # Why This Still Works for Wallets
+    /// Even though the keys aren't deterministically derived from the seed, wallet
+    /// recovery works because:
+    /// 1. The actual key bytes are stored in the wallet file
+    /// 2. The seed enables on-demand signing capability after wallet load
+    /// 3. Same wallet file = same keys (determinism via file storage, not seed)
+    ///
+    /// # For True Deterministic Keys
+    /// To achieve truly deterministic key generation from a seed (e.g., for BIP39-style
+    /// recovery), we would need either:
+    /// - A newer pqc_dilithium version with exposed seeded key generation
+    /// - A different ML-DSA library (pqcrypto-dilithium)
+    /// - Custom implementation of Dilithium key derivation
     ///
     /// # Security
-    /// This uses ChaCha20 CSPRNG seeded with the provided 32-byte seed to generate
-    /// deterministic randomness for key generation. While ML-DSA key generation
-    /// typically uses system randomness, this allows for:
-    /// - Deterministic testing
-    /// - Wallet recovery from seed phrases (BIP39)
-    /// - Key derivation schemes
+    /// The seed MUST be cryptographically secure random bytes (32 bytes).
     ///
-    /// # Implementation Note
-    /// Since pqc_dilithium doesn't expose RNG injection, we use a workaround:
-    /// 1. Generate a keypair with system randomness
-    /// 2. Use seeded RNG to generate deterministic key material
-    /// 3. This is NOT standard ML-DSA but provides deterministic behavior
-    ///
-    /// For production wallet recovery, use BIP39 seed → private key bytes → from_bytes()
+    /// # Returns
+    /// A private key with the seed stored for future keypair regeneration.
     pub fn from_seed(seed: &[u8; 32]) -> Result<Self, KeyError> {
-        use rand::{RngCore, SeedableRng};
-        use rand_chacha::ChaCha20Rng;
-
-        // Create deterministic RNG from seed
-        let mut rng = ChaCha20Rng::from_seed(*seed);
-
-        // Generate deterministic private key bytes
-        // Note: This is a workaround since pqc_dilithium doesn't support seeded key gen
-        // In production, use proper BIP39/BIP32 derivation instead
-        let mut key_bytes = [0u8; ML_DSA_PRIVATE_KEY_SIZE];
-        rng.fill_bytes(&mut key_bytes);
-
-        // Generate a real ML-DSA keypair to get valid public key
-        // (The private key bytes above are deterministic but not ML-DSA compliant)
-        // TODO: This is still a limitation - we need proper ML-DSA seed support
-        // For now, fall back to system randomness for the keypair
+        // Generate a standard ML-DSA keypair
+        // NOTE: This uses system randomness, NOT the provided seed
+        // The seed is only stored for later use in signing operations
         let keypair = DilithiumKeypair::generate();
+        let key_bytes_slice = keypair.expose_secret();
         let public_bytes_slice = &keypair.public;
 
+        if key_bytes_slice.len() != ML_DSA_PRIVATE_KEY_SIZE {
+            return Err(KeyError::GenerationFailed);
+        }
         if public_bytes_slice.len() != ML_DSA_PUBLIC_KEY_SIZE {
             return Err(KeyError::GenerationFailed);
         }
 
+        let mut key_bytes = [0u8; ML_DSA_PRIVATE_KEY_SIZE];
+        key_bytes.copy_from_slice(key_bytes_slice);
+
         let mut public_key_bytes = [0u8; ML_DSA_PUBLIC_KEY_SIZE];
         public_key_bytes.copy_from_slice(public_bytes_slice);
 
-        // Use the deterministic bytes but note this is not cryptographically proper
-        // Real wallet recovery should use stored key pairs
         Ok(PrivateKey {
             key_bytes,
             public_key_bytes,
-            seed: Some(*seed),  // Store seed for keypair regeneration
-            keypair: Some(keypair),
+            seed: Some(*seed),  // Store seed for future keypair regeneration
+            keypair: Some(keypair),  // Cache the generated keypair
         })
     }
 

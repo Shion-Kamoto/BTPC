@@ -69,16 +69,16 @@ impl StorageBlockValidator {
     async fn validate_block_context(&self, block: &Block) -> Result<(), StorageValidationError> {
         // Check if previous block exists (unless genesis)
         if !block.header.prev_hash.is_zero() {
-            let blockchain_db = self.blockchain_db.read().unwrap();
+            let blockchain_db = self.blockchain_db.read()
+                .map_err(|e| StorageValidationError::LockPoisoned(format!("blockchain_db read lock: {}", e)))?;
             let prev_block = blockchain_db.get_block(&block.header.prev_hash)?;
 
-            if prev_block.is_none() {
-                return Err(StorageValidationError::PreviousBlockNotFound(
+            let prev_block = match prev_block {
+                Some(block) => block,
+                None => return Err(StorageValidationError::PreviousBlockNotFound(
                     block.header.prev_hash,
-                ));
-            }
-
-            let prev_block = prev_block.unwrap();
+                )),
+            };
 
             drop(blockchain_db); // Release lock before additional storage queries
 
@@ -140,7 +140,8 @@ impl StorageBlockValidator {
         let period_start_height = height - DIFFICULTY_ADJUSTMENT_INTERVAL;
 
         // Walk backwards to find the first block of this period
-        let blockchain_db = self.blockchain_db.read().unwrap();
+        let blockchain_db = self.blockchain_db.read()
+            .map_err(|e| StorageValidationError::LockPoisoned(format!("blockchain_db read lock: {}", e)))?;
         let mut current_hash = block.header.prev_hash;
         let mut blocks_back = 1; // Start from prev_block
 
@@ -215,7 +216,8 @@ impl StorageBlockValidator {
         let mut total_fees = 0u64;
 
         // Check for duplicate transactions across all blocks (Issue #15)
-        let blockchain_db = self.blockchain_db.read().unwrap();
+        let blockchain_db = self.blockchain_db.read()
+            .map_err(|e| StorageValidationError::LockPoisoned(format!("blockchain_db read lock in validate_block_transactions: {}", e)))?;
         for transaction in &block.transactions {
             let txid = transaction.hash();
             if blockchain_db.has_transaction(&txid)? {
@@ -248,7 +250,8 @@ impl StorageBlockValidator {
         let tx_data = transaction.serialize_for_signature();
 
         // Get current blockchain height for coinbase maturity check
-        let blockchain_db = self.blockchain_db.read().unwrap();
+        let blockchain_db = self.blockchain_db.read()
+            .map_err(|e| StorageValidationError::LockPoisoned(format!("blockchain_db read lock in validate_transaction_with_utxos: {}", e)))?;
         let chain_tip = blockchain_db.get_chain_tip()?;
         let current_height = if let Some(tip) = chain_tip {
             // Calculate height of the tip block
@@ -261,7 +264,8 @@ impl StorageBlockValidator {
         };
 
         // Validate all inputs exist in UTXO set
-        let utxo_db = self.utxo_db.read().unwrap();
+        let utxo_db = self.utxo_db.read()
+            .map_err(|e| StorageValidationError::LockPoisoned(format!("utxo_db read lock in validate_transaction_with_utxos: {}", e)))?;
         for (input_index, input) in transaction.inputs.iter().enumerate() {
             let utxo = utxo_db.get_utxo(&input.previous_output)?;
 
@@ -396,7 +400,8 @@ impl StorageBlockValidator {
         }
 
         // Walk backwards through the chain until we hit genesis
-        let blockchain_db = self.blockchain_db.read().unwrap();
+        let blockchain_db = self.blockchain_db.read()
+            .map_err(|e| StorageValidationError::LockPoisoned(format!("blockchain_db read lock in get_block_height: {}", e)))?;
         loop {
             let prev_block = blockchain_db.get_block(&current_hash)?;
 
@@ -432,7 +437,8 @@ impl StorageBlockValidator {
         }
 
         // Retrieve up to `count` previous blocks
-        let blockchain_db = self.blockchain_db.read().unwrap();
+        let blockchain_db = self.blockchain_db.read()
+            .map_err(|e| StorageValidationError::LockPoisoned(format!("blockchain_db read lock in get_previous_blocks: {}", e)))?;
         for _ in 0..count {
             match blockchain_db.get_block(&current_hash)? {
                 Some(prev_block) => {
@@ -491,10 +497,10 @@ impl StorageBlockValidator {
             MAX_FUTURE_BLOCK_TIME, MIN_BLOCK_TIME, MEDIAN_TIME_PAST_WINDOW,
         };
 
-        // Get current system time
+        // Get current system time with fallback for clock issues
         let current_time = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_else(|_| std::time::Duration::from_secs(0))
             .as_secs();
 
         // Validate timestamp is not too far in the future
@@ -554,7 +560,8 @@ impl StorageBlockValidator {
         // CRITICAL SECTION: Acquire UTXO write lock for atomic application
         // This prevents race conditions where two threads try to spend the same UTXO
         {
-            let mut utxo_db = self.utxo_db.write().unwrap();
+            let mut utxo_db = self.utxo_db.write()
+                .map_err(|e| StorageValidationError::LockPoisoned(format!("utxo_db write lock in apply_block: {}", e)))?;
 
             // Re-validate that all UTXOs still exist under write lock (double-spend prevention)
             // This is the "check-lock-check" pattern to prevent TOCTOU (Time-Of-Check-Time-Of-Use) attacks
@@ -619,7 +626,8 @@ impl StorageBlockValidator {
 
         // Store the block (requires write lock)
         let block_hash = block.hash();
-        let mut blockchain_db = self.blockchain_db.write().unwrap();
+        let mut blockchain_db = self.blockchain_db.write()
+            .map_err(|e| StorageValidationError::LockPoisoned(format!("blockchain_db write lock in apply_block: {}", e)))?;
         blockchain_db.store_block(block)?;
 
         // Store transaction IDs for duplicate detection (Issue #15)
@@ -640,7 +648,8 @@ impl StorageBlockValidator {
         let txid = transaction.hash();
 
         // Acquire write lock for UTXO database
-        let mut utxo_db = self.utxo_db.write().unwrap();
+        let mut utxo_db = self.utxo_db.write()
+            .map_err(|e| StorageValidationError::LockPoisoned(format!("utxo_db write lock in apply_transaction: {}", e)))?;
 
         // Remove spent UTXOs (skip coinbase inputs)
         for input in &transaction.inputs {
@@ -671,13 +680,15 @@ impl StorageBlockValidator {
 
     /// Get current blockchain tip
     pub async fn get_chain_tip(&self) -> Result<Option<Block>, StorageValidationError> {
-        let blockchain_db = self.blockchain_db.read().unwrap();
+        let blockchain_db = self.blockchain_db.read()
+            .map_err(|e| StorageValidationError::LockPoisoned(format!("blockchain_db read lock in get_chain_tip: {}", e)))?;
         Ok(blockchain_db.get_chain_tip()?)
     }
 
     /// Check if a block is already in the blockchain
     pub async fn has_block(&self, block_hash: &Hash) -> Result<bool, StorageValidationError> {
-        let blockchain_db = self.blockchain_db.read().unwrap();
+        let blockchain_db = self.blockchain_db.read()
+            .map_err(|e| StorageValidationError::LockPoisoned(format!("blockchain_db read lock in has_block: {}", e)))?;
         let block = blockchain_db.get_block(block_hash)?;
         Ok(block.is_some())
     }
@@ -721,8 +732,13 @@ impl StorageTransactionValidator {
         &self,
         transaction: &Transaction,
     ) -> Result<(), StorageValidationError> {
-        let utxo_db = self.utxo_db.read().unwrap();
-        for input in &transaction.inputs {
+        let utxo_db = self.utxo_db.read()
+            .map_err(|e| StorageValidationError::LockPoisoned(format!("utxo_db read lock in validate_transaction_inputs: {}", e)))?;
+
+        // Get transaction data for signature verification
+        let tx_data = transaction.serialize_for_signature();
+
+        for (input_index, input) in transaction.inputs.iter().enumerate() {
             // Skip coinbase inputs
             if input.previous_output.txid == Hash::zero() {
                 continue;
@@ -737,7 +753,45 @@ impl StorageTransactionValidator {
                 ));
             }
 
-            // TODO: Validate signature and script execution
+            // Validate signature and script execution
+            let utxo = utxo.unwrap();
+            self.validate_input_signature(transaction, input_index, &utxo, &tx_data)?;
+        }
+
+        Ok(())
+    }
+
+    /// Validate a transaction input's signature
+    fn validate_input_signature(
+        &self,
+        transaction: &Transaction,
+        input_index: usize,
+        utxo: &crate::blockchain::UTXO,
+        tx_data: &[u8],
+    ) -> Result<(), StorageValidationError> {
+        let input = &transaction.inputs[input_index];
+
+        // Combine unlock script (script_sig) with lock script (script_pubkey)
+        let mut combined_script = input.script_sig.clone();
+        for op in utxo.output.script_pubkey.operations() {
+            combined_script.push_op(op.clone());
+        }
+
+        // Create script execution context
+        let context = crate::crypto::script::ScriptContext {
+            transaction_data: tx_data.to_vec(),
+            input_index,
+        };
+
+        // Execute combined script
+        let result = combined_script
+            .execute(&context)
+            .map_err(|e| StorageValidationError::ScriptExecutionFailed(format!("{}", e)))?;
+
+        if !result {
+            return Err(StorageValidationError::SignatureVerificationFailed(
+                input_index,
+            ));
         }
 
         Ok(())
@@ -813,6 +867,8 @@ pub enum StorageValidationError {
     ScriptExecutionFailed(String),
     #[error("Signature verification failed for input {0}")]
     SignatureVerificationFailed(usize),
+    #[error("Lock poisoned: {0}")]
+    LockPoisoned(String),
 }
 
 impl From<ValidationError> for StorageValidationError {

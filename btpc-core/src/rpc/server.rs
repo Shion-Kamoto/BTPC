@@ -61,7 +61,11 @@ pub struct RpcRateLimiter {
 impl RpcRateLimiter {
     /// Create new rate limiter
     pub fn new(requests_per_minute: u32, window_secs: u64) -> Self {
-        let requests = NonZeroU32::new(requests_per_minute).unwrap_or(NonZeroU32::new(60).unwrap());
+        // Fallback to 60 requests/minute if input is 0
+        let requests = NonZeroU32::new(requests_per_minute).unwrap_or_else(|| {
+            // SAFETY: 60 is always non-zero
+            unsafe { NonZeroU32::new_unchecked(60) }
+        });
         Self {
             limiters: Arc::new(DashMap::new()),
             requests_per_window: requests,
@@ -74,8 +78,11 @@ impl RpcRateLimiter {
         // Get or create limiter for this IP
         let limiter = self.limiters.entry(ip)
             .or_insert_with(|| {
+                // SAFETY: Quota::with_period only fails with zero duration.
+                // window_duration is set in constructor from Duration::from_secs(window_secs),
+                // which cannot be zero in valid configurations.
                 let quota = Quota::with_period(self.window_duration)
-                    .unwrap()
+                    .expect("Quota::with_period should not fail - window_duration is non-zero")
                     .allow_burst(self.requests_per_window);
                 Arc::new(GovernorRateLimiter::direct(quota))
             })

@@ -12,7 +12,7 @@ use crate::AppState;
 use crate::events::{TransactionEvent, UTXOEvent, ReleaseReason};
 use crate::transaction_builder::{TransactionBuilder, TransactionSummary};
 use crate::utxo_manager::{Transaction, TxInput};
-use btpc_core::crypto::Address;
+use btpc_core::crypto::{Address, Script};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -379,19 +379,23 @@ pub async fn sign_transaction(
     let private_key = key_entry.to_private_key()
         .map_err(|e| format!("Failed to load private key: {}", e))?;
 
-    // T025: Sign each input with ML-DSA
-    for (i, input) in transaction.inputs.iter_mut().enumerate() {
-        // Create the signing message (transaction hash without signatures)
-        // For simplicity, we'll sign the transaction ID + input index
-        let signing_message = format!("{}:{}", transaction.txid, i);
-        let message_bytes = signing_message.as_bytes();
+    // Get public key for script creation
+    let public_key = private_key.public_key();
 
-        // Sign with ML-DSA (automatically uses seed regeneration if needed)
-        let signature = private_key.sign(message_bytes)
+    // T025: Sign each input with ML-DSA using proper transaction serialization
+    // Serialize transaction WITHOUT signatures (critical for correct signing!)
+    let tx_data = serialize_for_signature(&transaction);
+
+    for (i, input) in transaction.inputs.iter_mut().enumerate() {
+        // Sign the properly serialized transaction data (matches blockchain validation)
+        let signature = private_key.sign(&tx_data)
             .map_err(|e| format!("Failed to sign input {}: {}", i, e))?;
 
-        // Store signature in signature_script field
-        input.signature_script = signature.to_bytes().to_vec();
+        // Create P2PKH unlock script with signature + public key (matches blockchain format)
+        let unlock_script = Script::unlock_p2pkh(&signature.to_bytes(), &public_key.to_bytes());
+
+        // Convert Script to raw bytes
+        input.signature_script = unlock_script.to_bytes();
 
         // Emit input_signed event
         let _ = app.emit("transaction:input_signed", TransactionEvent::InputSigned {
@@ -400,7 +404,7 @@ pub async fn sign_transaction(
             signature_algorithm: "ML-DSA-87".to_string(),
         });
 
-        println!("✅ Signed input {} with ML-DSA signature", i);
+        println!("✅ Signed input {} with ML-DSA signature + P2PKH script", i);
     }
 
     // Update transaction in state manager
@@ -594,6 +598,47 @@ fn serialize_transaction_to_bytes(tx: &Transaction) -> Vec<u8> {
 
         bytes
     })
+}
+
+/// Helper: Serialize transaction for signing (WITHOUT signatures)
+/// This matches btpc-core's serialize_for_signature() behavior
+fn serialize_for_signature(tx: &Transaction) -> Vec<u8> {
+    let mut bytes = Vec::new();
+
+    // Version (4 bytes)
+    bytes.extend_from_slice(&tx.version.to_le_bytes());
+
+    // Input count
+    bytes.extend_from_slice(&(tx.inputs.len() as u32).to_le_bytes());
+
+    // Inputs WITHOUT signature_script (critical for signing!)
+    for input in &tx.inputs {
+        // Txid (assume 64 bytes for SHA-512)
+        bytes.extend_from_slice(input.prev_txid.as_bytes());
+        // Vout
+        bytes.extend_from_slice(&input.prev_vout.to_le_bytes());
+        // Empty signature script (length 0)
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        // Sequence
+        bytes.extend_from_slice(&input.sequence.to_le_bytes());
+    }
+
+    // Output count
+    bytes.extend_from_slice(&(tx.outputs.len() as u32).to_le_bytes());
+
+    // Outputs
+    for output in &tx.outputs {
+        // Value
+        bytes.extend_from_slice(&output.value.to_le_bytes());
+        // Script pubkey length + data
+        bytes.extend_from_slice(&(output.script_pubkey.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&output.script_pubkey);
+    }
+
+    // Lock time
+    bytes.extend_from_slice(&tx.lock_time.to_le_bytes());
+
+    bytes
 }
 
 /// T029: Get transaction status

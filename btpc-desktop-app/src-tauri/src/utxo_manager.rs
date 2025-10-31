@@ -546,13 +546,13 @@ impl UTXOManager {
         let total_input: u64 = selected_utxos.iter().map(|u| u.value_credits).sum();
         let change_amount = total_input - amount_credits - fee_credits;
 
-        // Create inputs
+        // Create inputs (unsigned - will be signed by sign_transaction command)
         let inputs: Vec<TxInput> = selected_utxos
             .iter()
             .map(|utxo| TxInput {
                 prev_txid: utxo.txid.clone(),
                 prev_vout: utxo.vout,
-                signature_script: Vec::new(), // TODO: Implement proper signing
+                signature_script: Vec::new(), // Empty until signed with ML-DSA + P2PKH script
                 sequence: 0xffffffff,
             })
             .collect();
@@ -764,6 +764,30 @@ impl UTXOManager {
         let reserved = self.reserved_utxos.lock();
         let normalized_addr = normalize_address(address);
 
+        // Diagnostic counts
+        let total_utxos = self.utxos.len();
+        let unspent_utxos: Vec<_> = self.utxos.iter().filter(|(_, u)| !u.spent).collect();
+        let matching_address: Vec<_> = unspent_utxos.iter()
+            .filter(|(_, u)| normalize_address(&u.address) == normalized_addr)
+            .collect();
+        let not_reserved: Vec<_> = matching_address.iter()
+            .filter(|(key, _)| !reserved.contains(*key))
+            .collect();
+
+        println!("🔍 UTXO Selection Debug:");
+        println!("  Requested address: {} (normalized: {})", address, normalized_addr);
+        println!("  Total UTXOs in system: {}", total_utxos);
+        println!("  Unspent UTXOs: {}", unspent_utxos.len());
+        println!("  Matching address: {}", matching_address.len());
+        println!("  Not reserved: {}", not_reserved.len());
+
+        // Show unique addresses in system for debugging
+        let unique_addrs: std::collections::HashSet<String> = self.utxos.iter()
+            .filter(|(_, u)| !u.spent)
+            .map(|(_, u)| normalize_address(&u.address))
+            .collect();
+        println!("  Unique addresses in system: {:?}", unique_addrs);
+
         // Get all unspent UTXOs for the address
         let mut available_utxos: Vec<UTXO> = self.utxos
             .iter()
@@ -791,14 +815,26 @@ impl UTXOManager {
             selected.push(utxo.clone());
             total_selected += utxo.value_credits;
             if total_selected >= amount_credits {
+                println!("✅ Selected {} UTXOs with total {} credits", selected.len(), total_selected);
                 return Ok(selected);
             }
         }
 
+        let amount_btpc = amount_credits as f64 / 100_000_000.0;
+        let available_btpc = total_selected as f64 / 100_000_000.0;
+
         Err(anyhow!(
-            "Insufficient funds: need {} credits, have {} credits available (some may be reserved)",
+            "Insufficient funds for address {}:\n\
+             Need: {} BTPC ({} credits)\n\
+             Available: {} BTPC ({} credits)\n\
+             UTXOs matching this address: {}\n\
+             Hint: Check if you selected the correct wallet with sufficient balance",
+            address,
+            amount_btpc,
             amount_credits,
-            total_selected
+            available_btpc,
+            total_selected,
+            not_reserved.len()
         ))
     }
 
