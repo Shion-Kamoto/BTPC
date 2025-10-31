@@ -34,20 +34,24 @@
 [Extract from feature spec: primary requirement + technical approach from research]
 
 ## Technical Context
-**Language/Version**: [e.g., Python 3.11, Swift 5.9, Rust 1.75 or NEEDS CLARIFICATION]  
-**Primary Dependencies**: [e.g., FastAPI, UIKit, LLVM or NEEDS CLARIFICATION]  
-**Storage**: [if applicable, e.g., PostgreSQL, CoreData, files or N/A]  
-**Testing**: [e.g., pytest, XCTest, cargo test or NEEDS CLARIFICATION]  
-**Target Platform**: [e.g., Linux server, iOS 15+, WASM or NEEDS CLARIFICATION]
+**Language/Version**: Rust 1.75+ (required for all core blockchain components)
+**Primary Dependencies**: [e.g., tokio, serde, RocksDB, Dilithium5 crypto, or NEEDS CLARIFICATION]
+**Storage**: [e.g., RocksDB for blockchain data, files for wallet, or NEEDS CLARIFICATION]
+**Testing**: cargo test (unit), cargo bench (performance), integration tests
+**Target Platform**: [e.g., Linux server, WASM for web wallet, Docker containers, or NEEDS CLARIFICATION]
 **Project Type**: [single/web/mobile - determines source structure]  
-**Performance Goals**: [domain-specific, e.g., 1000 req/s, 10k lines/sec, 60 fps or NEEDS CLARIFICATION]  
-**Constraints**: [domain-specific, e.g., <200ms p95, <100MB memory, offline-capable or NEEDS CLARIFICATION]  
-**Scale/Scope**: [domain-specific, e.g., 10k users, 1M LOC, 50 screens or NEEDS CLARIFICATION]
+**Performance Goals**: [blockchain-specific, e.g., 1000 TPS, <10ms block validation, <2ms signature gen, or NEEDS CLARIFICATION]
+**Constraints**: [crypto-specific, e.g., <200ms p95 RPC, quantum-resistant only, memory-safe, or NEEDS CLARIFICATION]
+**Scale/Scope**: [network-specific, e.g., 10k nodes, 1M transactions/day, 24h sync time, or NEEDS CLARIFICATION]
 
 ## Constitution Check
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+**Security Gate**: All cryptographic operations MUST use post-quantum algorithms
+**Testing Gate**: >90% test coverage required, Miri validation for unsafe code
+**Performance Gate**: Signature ops <2ms, block validation <10ms
+**Memory Safety Gate**: All Rust code, no unsafe blocks without justification
+**Dependency Gate**: All dependencies audited with cargo-audit
 
 ## Project Structure
 
@@ -70,39 +74,57 @@ specs/[###-feature]/
   not include Option labels.
 -->
 ```
-# [REMOVE IF UNUSED] Option 1: Single project (DEFAULT)
+# Option 1: Blockchain Core (DEFAULT)
 src/
-├── models/
-├── services/
-├── cli/
-└── lib/
+├── consensus/          # PoW consensus, difficulty adjustment
+├── crypto/             # Dilithium5, SHA-512, key management
+├── blockchain/         # Block, transaction, UTXO structures
+├── network/            # P2P networking, node discovery
+├── rpc/               # HTTP/JSON-RPC API server
+├── storage/           # RocksDB abstractions
+└── wallet/            # Wallet integration interfaces
 
 tests/
-├── contract/
-├── integration/
-└── unit/
+├── consensus/         # Consensus mechanism tests
+├── crypto/            # Cryptographic function tests
+├── integration/       # End-to-end blockchain tests
+└── benchmarks/        # Performance validation
 
-# [REMOVE IF UNUSED] Option 2: Web application (when "frontend" + "backend" detected)
-backend/
+# Option 2: Desktop Wallet App (Tauri-based)
+backend/ (Tauri/Rust)
 ├── src/
-│   ├── models/
-│   ├── services/
-│   └── api/
+│   ├── btpc_integration/  # Blockchain node communication
+│   ├── wallet/           # Key management, transaction building
+│   ├── security/         # Encryption, secure storage
+│   └── unified_launcher/ # Process management
 └── tests/
 
-frontend/
+frontend/ (Web technologies)
 ├── src/
-│   ├── components/
-│   ├── pages/
-│   └── services/
+│   ├── components/       # UI components
+│   ├── wallet/          # Wallet interface
+│   ├── transactions/    # Transaction history, sending
+│   └── mining/          # Mining interface
 └── tests/
 
-# [REMOVE IF UNUSED] Option 3: Mobile + API (when "iOS/Android" detected)
-api/
-└── [same as backend above]
+# Option 3: CLI Wallet (Standalone)
+src/
+├── wallet/
+│   ├── key_management/   # Dilithium5 key operations
+│   ├── transaction/      # UTXO transaction building
+│   ├── network/         # Node communication
+│   └── storage/         # Wallet file management
+├── cli/
+│   ├── commands/        # CLI command implementations
+│   └── config/          # Configuration management
+└── utils/
+    ├── crypto/          # Crypto utilities
+    └── serialization/   # Data encoding/decoding
 
-ios/ or android/
-└── [platform-specific structure: feature modules, UI flows, platform tests]
+tests/
+├── wallet/              # Wallet functionality tests
+├── cli/                 # CLI interface tests
+└── integration/         # Wallet-node integration tests
 ```
 
 **Structure Decision**: [Document the selected structure and reference the real
