@@ -378,13 +378,13 @@
                 receiveSelect.innerHTML = '<option value="">Choose a wallet...</option>';
 
                 allWallets.forEach(wallet => {
-                    // CRITICAL: Clean addresses before storing in dropdown values
-                    // This ensures QR codes and copy operations get clean Base58 addresses
+                    // CRITICAL: Use wallet ID as value for reliable lookups
+                    // Display shows nickname and balance for user clarity
                     const cleanAddr = cleanAddress(wallet.address);
                     console.log('🔧 DEBUG (loadWallets): Wallet', wallet.nickname, '-> Raw:', wallet.address, '-> Cleaned:', cleanAddr);
 
                     const sendOption = document.createElement('option');
-                    sendOption.value = cleanAddr; // Use cleaned address
+                    sendOption.value = wallet.id; // Use wallet ID for reliable lookup
                     sendOption.textContent = `${wallet.nickname} - ${(wallet.cached_balance_btp || 0).toFixed(8)} BTPC`;
                     sendSelect.appendChild(sendOption);
 
@@ -530,11 +530,11 @@
                 return;
             }
 
-            const fromAddress = document.getElementById('send-from-wallet').value;
+            const walletId = document.getElementById('send-from-wallet').value;
             const toAddress = document.getElementById('send-address').value.trim();
             const amount = parseFloat(document.getElementById('send-amount').value);
 
-            if (!fromAddress) {
+            if (!walletId) {
                 alert('Please select a wallet to send from');
                 return;
             }
@@ -544,8 +544,8 @@
                 return;
             }
 
-            // Find the wallet ID from the address
-            const wallet = allWallets.find(w => w.address === fromAddress);
+            // Find the wallet by ID
+            const wallet = allWallets.find(w => w.id === walletId);
             if (!wallet) {
                 alert('Selected wallet not found');
                 return;
@@ -604,8 +604,8 @@
             document.getElementById('password-modal').style.display = 'none';
             document.getElementById('wallet-password-input').value = '';
 
-            // Convert BTPC to satoshis (1 BTPC = 100,000,000 satoshis)
-            const amountSatoshis = Math.floor(txData.amount * 100000000);
+            // Convert BTPC to credits (1 BTPC = 100,000,000 credits)
+            const amountcredits = Math.floor(txData.amount * 100000000);
 
             try {
                 // Step 1: Create unsigned transaction
@@ -616,14 +616,14 @@
                     wallet_id: txData.walletId,
                     from_address: txData.fromAddress,
                     to_address: txData.toAddress,
-                    amount: amountSatoshis,
+                    amount: amountcredits,
                     fee_rate: null  // Use default fee rate
                 });
 
                 console.log('✅ Transaction created:', createResult);
                 const transactionId = createResult.transaction_id;
                 const feeBtpc = (createResult.summary.fee / 100000000).toFixed(8);
-                const totalBtpc = ((amountSatoshis + createResult.summary.fee) / 100000000).toFixed(8);
+                const totalBtpc = ((amountcredits + createResult.summary.fee) / 100000000).toFixed(8);
 
                 // Step 2: Sign transaction with ML-DSA
                 showLoading('Signing transaction...', `Fee: ${feeBtpc} BTPC (Total: ${totalBtpc} BTPC)`);
@@ -945,10 +945,12 @@
             window.transactionsPageSubscribed = true;
             updateManager.subscribe((type, data, fullState) => {
                 if (type === 'wallet') {
-                    document.getElementById('wallet-balance').textContent = (data.balance || 0).toFixed(8);
-                } else if (type === 'blockchain') {
-                    document.getElementById('chain-height').textContent = (data.height || 0).toLocaleString();
+                    const balanceEl = document.getElementById('wallet-balance');
+                    if (balanceEl) {
+                        balanceEl.textContent = (data.balance || 0).toFixed(8);
+                    }
                 }
+                // Note: transactions.html doesn't have chain-height element
             });
         }
 
