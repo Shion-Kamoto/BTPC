@@ -512,7 +512,7 @@ impl AppState {
         println!("Testing wallet balance from: {}", wallet_file.display());
 
         // Skip encrypted .dat files (require password to decrypt)
-        let is_encrypted = wallet_file.extension().map_or(false, |ext| ext == "dat");
+        let is_encrypted = wallet_file.extension().is_some_and(|ext| ext == "dat");
 
         if wallet_file.exists() && !is_encrypted {
             // Use UTXO-based balance calculation instead of binary method
@@ -1263,7 +1263,7 @@ async fn start_mining(app: tauri::AppHandle, state: State<'_, AppState>, address
     let network = state.config.network.to_string();
 
     // Build command arguments with optional --gpu flag
-    let mut args = vec!["--network", &network, "--address", &address];
+    let args = vec!["--network", &network, "--address", &address];
 
     // Add --gpu flag if GPU is available (pending btpc_miner GPU support)
     // For now, this is a placeholder for future GPU mining implementation
@@ -2322,9 +2322,7 @@ async fn migrate_to_encrypted(
         *locked_guard = false;
     }
 
-    Ok(format!(
-        "Migration successful. Plaintext backed up to wallets_metadata.json.backup"
-    ))
+    Ok("Migration successful. Plaintext backed up to wallets_metadata.json.backup".to_string())
 }
 
 // ============================================================================

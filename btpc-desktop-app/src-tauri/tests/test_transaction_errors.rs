@@ -11,6 +11,7 @@ mod tests {
 
     /// Test insufficient funds error with clear message
     #[tokio::test]
+    #[ignore = "Requires test infrastructure (T028-T032)"]
     async fn test_insufficient_funds_error_message() {
         // Given: Wallet with 0.5 BTPC
         let test_env = setup_test_environment().await;
@@ -39,6 +40,7 @@ mod tests {
 
     /// Test invalid address format validation
     #[tokio::test]
+    #[ignore = "Requires test infrastructure (T028-T032)"]
     async fn test_invalid_address_error() {
         // Given: Wallet with balance
         let test_env = setup_test_environment().await;
@@ -64,6 +66,7 @@ mod tests {
 
     /// Test network disconnection provides retry suggestion
     #[tokio::test]
+    #[ignore = "Requires test infrastructure (T028-T032)"]
     async fn test_network_disconnection_error() {
         // Given: Signed transaction ready to broadcast
         let test_env = setup_test_environment_with_disconnected_node().await;
@@ -94,6 +97,7 @@ mod tests {
 
     /// Test UTXOs released on signing failure
     #[tokio::test]
+    #[ignore = "Requires test infrastructure (T028-T032)"]
     async fn test_utxo_release_on_signing_failure() {
         // Given: Wallet without seed (will fail signing)
         let test_env = setup_test_environment().await;
@@ -130,6 +134,7 @@ mod tests {
 
     /// Test UTXOs released on broadcast failure
     #[tokio::test]
+    #[ignore = "Requires test infrastructure (T028-T032)"]
     async fn test_utxo_release_on_broadcast_failure() {
         // Given: Signed transaction
         let test_env = setup_test_environment_with_rejecting_mempool().await;
@@ -154,6 +159,7 @@ mod tests {
 
     /// Test partial rollback on transaction creation failure
     #[tokio::test]
+    #[ignore = "Requires test infrastructure (T028-T032)"]
     async fn test_partial_rollback_on_creation_failure() {
         // Given: Transaction creation that will fail mid-process
         let test_env = setup_test_environment().await;
@@ -184,6 +190,7 @@ mod tests {
 
     /// Test wallet corruption detection during signing
     #[tokio::test]
+    #[ignore = "Requires test infrastructure (T028-T032)"]
     async fn test_wallet_corruption_detection() {
         // Given: Wallet with corrupted file
         let test_env = setup_test_environment().await;
@@ -215,6 +222,7 @@ mod tests {
 
     /// Test wallet switching during transaction cancels pending transaction
     #[tokio::test]
+    #[ignore = "Requires test infrastructure (T028-T032)"]
     async fn test_wallet_switching_cancels_pending() {
         // Given: Wallet with pending transaction
         let test_env = setup_test_environment().await;
@@ -245,6 +253,7 @@ mod tests {
 
     /// Test exact balance transaction with fee handling
     #[tokio::test]
+    #[ignore = "Requires test infrastructure (T028-T032)"]
     async fn test_exact_balance_with_fee() {
         // Given: Wallet with exactly 1 BTPC
         let test_env = setup_test_environment().await;
@@ -270,6 +279,7 @@ mod tests {
 
     /// Test multiple consecutive failures don't leak resources
     #[tokio::test]
+    #[ignore = "Requires test infrastructure (T028-T032)"]
     async fn test_multiple_failures_no_resource_leak() {
         // Given: Wallet
         let test_env = setup_test_environment().await;
@@ -306,6 +316,7 @@ mod tests {
 
     /// Test error recovery with subsequent successful transaction
     #[tokio::test]
+    #[ignore = "Requires test infrastructure (T028-T032)"]
     async fn test_error_recovery_then_success() {
         // Given: Wallet
         let test_env = setup_test_environment().await;
