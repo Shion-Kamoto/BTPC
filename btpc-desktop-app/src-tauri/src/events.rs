@@ -26,6 +26,14 @@ pub enum TransactionEvent {
         total_output: u64,
     },
 
+    /// Fee estimated for transaction (T018)
+    FeeEstimated {
+        transaction_id: Option<String>,
+        estimated_fee: u64,
+        fee_rate: u64,
+        estimated_size: usize,
+    },
+
     /// ML-DSA signature generation started
     SigningStarted {
         transaction_id: String,
@@ -221,6 +229,7 @@ impl<R: tauri::Runtime> EmitTransactionEvent for tauri::AppHandle<R> {
         let event_name = match &event {
             TransactionEvent::TransactionInitiated { .. } => event_names::TRANSACTION_INITIATED,
             TransactionEvent::TransactionValidated { .. } => event_names::TRANSACTION_VALIDATED,
+            TransactionEvent::FeeEstimated { .. } => event_names::FEE_ESTIMATED,
             TransactionEvent::SigningStarted { .. } => event_names::TRANSACTION_SIGNING_STARTED,
             TransactionEvent::InputSigned { .. } => event_names::TRANSACTION_INPUT_SIGNED,
             TransactionEvent::TransactionSigned { .. } => event_names::TRANSACTION_SIGNED,

@@ -72,6 +72,7 @@ pub mod state_management;  // StateManager<T> for Article XI compliance (auto ev
 mod transaction_builder;
 mod transaction_commands;
 mod transaction_monitor;
+mod fee_estimator;  // Dynamic fee estimation service (T017)
 pub mod events;  // Event types for Article XI compliance
 
 // Authentication modules (Feature 006: Application-Level Login/Logout)

@@ -226,41 +226,75 @@ pub async fn create_transaction(
         return Err(format!("Invalid to address: {}", e));
     }
 
-    // Get utxo_manager and tx_state from AppState
-    let utxo_manager = state.utxo_manager.lock().expect("Mutex poisoned");
+    // Get tx_state from AppState
     let tx_state = &state.tx_state_manager;
 
-    // Select UTXOs
-    let utxos = utxo_manager
-        .select_utxos_for_amount(&request.from_address, request.amount + 500_000) // Add buffer for fee
-        .map_err(|e| format!("Failed to select UTXOs: {}", e))?;
+    // Scope the utxo_manager lock to ensure it's dropped before async operations
+    let (utxos, utxo_keys, reservation, temp_tx_id, total_utxo_value, inputs_count) = {
+        let utxo_manager = state.utxo_manager.lock().expect("Mutex poisoned");
 
-    if utxos.is_empty() {
-        return Err("No UTXOs available for transaction".to_string());
-    }
+        // Select UTXOs
+        let utxos = utxo_manager
+            .select_utxos_for_amount(&request.from_address, request.amount + 500_000) // Add buffer for fee
+            .map_err(|e| format!("Failed to select UTXOs: {}", e))?;
 
-    // Reserve UTXOs
-    let utxo_keys: Vec<String> = utxos.iter()
-        .map(|utxo| format!("{}:{}", utxo.txid, utxo.vout))
-        .collect();
+        if utxos.is_empty() {
+            return Err("No UTXOs available for transaction".to_string());
+        }
 
-    let temp_tx_id = format!("tx_{}", Utc::now().timestamp_nanos_opt().unwrap_or(0));
-    let reservation = utxo_manager
-        .reserve_utxos(utxo_keys.clone(), Some(temp_tx_id.clone()))
-        .map_err(|e| format!("Failed to reserve UTXOs: {}", e))?;
+        // Reserve UTXOs
+        let utxo_keys: Vec<String> = utxos.iter()
+            .map(|utxo| format!("{}:{}", utxo.txid, utxo.vout))
+            .collect();
 
-    // Emit UTXO reserved event
-    let total_utxo_value: u64 = utxos.iter().map(|u| u.value_credits).sum();
+        let temp_tx_id = format!("tx_{}", Utc::now().timestamp_nanos_opt().unwrap_or(0));
+        let reservation = utxo_manager
+            .reserve_utxos(utxo_keys.clone(), Some(temp_tx_id.clone()))
+            .map_err(|e| format!("Failed to reserve UTXOs: {}", e))?;
+
+        let total_utxo_value: u64 = utxos.iter().map(|u| u.value_credits).sum();
+        let inputs_count = utxos.len();
+
+        // Return all needed values, utxo_manager drops here
+        (utxos, utxo_keys, reservation, temp_tx_id, total_utxo_value, inputs_count)
+    };
+
+    // Emit UTXO reserved event (after lock is dropped)
     let _ = app.emit("utxo:reserved", UTXOEvent::UTXOReserved {
         reservation_token: reservation.id.clone(),
         transaction_id: Some(temp_tx_id.clone()),
-        utxo_count: utxos.len(),
+        utxo_count: inputs_count,
         total_amount: total_utxo_value,
         expires_at: Utc::now() + chrono::Duration::minutes(5),
     });
 
-    // Build transaction
-    let fee_rate = request.fee_rate.unwrap_or(100); // Default 100 sat/byte
+    // T018: Dynamic fee estimation using FeeEstimator service
+    let fee_rate = if let Some(custom_rate) = request.fee_rate {
+        // User provided custom fee rate - use it directly
+        custom_rate
+    } else {
+        // Use dynamic fee estimation
+        let rpc_port = *state.active_rpc_port.read().await;
+        let fee_estimator = crate::fee_estimator::FeeEstimator::new(rpc_port);
+
+        // Estimate with expected outputs count (recipient + change = 2)
+        let fee_estimate = fee_estimator.estimate_fee_for_transaction(inputs_count, 2).await
+            .map_err(|e| format!("Fee estimation failed: {}", e))?;
+
+        // Emit fee estimated event
+        let _ = app.emit("fee:estimated", TransactionEvent::FeeEstimated {
+            transaction_id: Some(temp_tx_id.clone()),
+            estimated_fee: fee_estimate.estimated_fee,
+            fee_rate: fee_estimate.fee_rate,
+            estimated_size: fee_estimate.estimated_size,
+        });
+
+        println!("💰 Dynamic fee estimation: {} sat/byte (estimated {} satoshis for {} bytes)",
+            fee_estimate.fee_rate, fee_estimate.estimated_fee, fee_estimate.estimated_size);
+
+        fee_estimate.fee_rate
+    };
+
     let builder = TransactionBuilder::new()
         .add_recipient(&request.to_address, request.amount)
         .select_utxos(&utxos)
@@ -369,6 +403,21 @@ pub async fn sign_transaction(
     let secure_password = btpc_core::crypto::SecurePassword::new(request.password.clone());
     let wallet_data = encrypted_wallet.decrypt(&secure_password)
         .map_err(|e| format!("Failed to decrypt wallet (wrong password?): {}", e))?;
+
+    // T015.1: Validate wallet integrity before signing
+    validate_wallet_integrity(&wallet_data, &wallet_path)
+        .map_err(|e| {
+            // Emit wallet corruption failure event
+            let _ = app.emit("transaction:failed", TransactionEvent::TransactionFailed {
+                transaction_id: Some(request.transaction_id.clone()),
+                stage: crate::events::TransactionStage::Signing,
+                error_type: "WALLET_CORRUPTED".to_string(),
+                error_message: e.clone(),
+                recoverable: false,
+                suggested_action: Some("Restore wallet from backup or seed phrase".to_string()),
+            });
+            e
+        })?;
 
     // Get the first key from the wallet
     let key_entry = wallet_data.keys.first()
@@ -516,8 +565,9 @@ pub async fn broadcast_transaction(
                 position: 0,
             });
 
-            // TODO: Release UTXO reservations after confirmation
-            // The sync service will update status when transaction confirms
+            // Note: UTXO reservations are automatically released by the transaction monitor
+            // (transaction_monitor.rs) when the transaction is confirmed.
+            // See transaction_monitor.rs:163 for implementation.
 
             println!("✅ Transaction broadcast to network");
 
@@ -639,6 +689,130 @@ fn serialize_for_signature(tx: &Transaction) -> Vec<u8> {
     bytes.extend_from_slice(&tx.lock_time.to_le_bytes());
 
     bytes
+}
+
+/// T015.1: Validate wallet file integrity before signing
+///
+/// Checks for:
+/// - Required fields presence (wallet_id, network, keys)
+/// - Non-empty keys array
+/// - Key structure integrity (private_key_bytes, public_key_bytes, address)
+/// - File truncation detection (key size validation)
+///
+/// Returns Ok(()) if wallet is valid, Err(String) with specific corruption details otherwise.
+fn validate_wallet_integrity(
+    wallet_data: &btpc_core::crypto::WalletData,
+    wallet_path: &std::path::Path,
+) -> Result<(), String> {
+    // Check 1: Validate wallet_id is not empty
+    if wallet_data.wallet_id.is_empty() {
+        return Err("Wallet corruption detected: wallet_id field is empty".to_string());
+    }
+
+    // Check 2: Validate network is not empty
+    if wallet_data.network.is_empty() {
+        return Err("Wallet corruption detected: network field is missing or empty".to_string());
+    }
+
+    // Check 3: Validate keys array is not empty
+    if wallet_data.keys.is_empty() {
+        return Err("Wallet corruption detected: wallet has no keys (keys array is empty)".to_string());
+    }
+
+    // Check 4: Validate each key entry structure
+    for (i, key_entry) in wallet_data.keys.iter().enumerate() {
+        // Check private key bytes size (ML-DSA-65 = 4000 bytes)
+        const EXPECTED_PRIVATE_KEY_SIZE: usize = 4000;
+        if key_entry.private_key_bytes.len() != EXPECTED_PRIVATE_KEY_SIZE {
+            return Err(format!(
+                "Wallet corruption detected: key {} has invalid private key size (expected {}, got {}). File may be truncated.",
+                i,
+                EXPECTED_PRIVATE_KEY_SIZE,
+                key_entry.private_key_bytes.len()
+            ));
+        }
+
+        // Check public key bytes size (ML-DSA-65 = 1952 bytes)
+        const EXPECTED_PUBLIC_KEY_SIZE: usize = 1952;
+        if key_entry.public_key_bytes.len() != EXPECTED_PUBLIC_KEY_SIZE {
+            return Err(format!(
+                "Wallet corruption detected: key {} has invalid public key size (expected {}, got {}). File may be truncated.",
+                i,
+                EXPECTED_PUBLIC_KEY_SIZE,
+                key_entry.public_key_bytes.len()
+            ));
+        }
+
+        // Check seed size if present (should be 32 bytes)
+        if let Some(seed) = &key_entry.seed {
+            const EXPECTED_SEED_SIZE: usize = 32;
+            if seed.len() != EXPECTED_SEED_SIZE {
+                return Err(format!(
+                    "Wallet corruption detected: key {} has invalid seed size (expected {}, got {})",
+                    i,
+                    EXPECTED_SEED_SIZE,
+                    seed.len()
+                ));
+            }
+        }
+
+        // Check address is not empty
+        if key_entry.address.is_empty() {
+            return Err(format!(
+                "Wallet corruption detected: key {} has empty address field",
+                i
+            ));
+        }
+
+        // Check label is not empty (should at least have a default value)
+        if key_entry.label.is_empty() {
+            // Warning, not fatal
+            println!("⚠️  Warning: key {} has empty label (non-critical)", i);
+        }
+    }
+
+    // Check 5: Validate file exists and has reasonable size
+    // (This helps detect partial file writes or filesystem corruption)
+    if let Ok(metadata) = std::fs::metadata(wallet_path) {
+        let file_size = metadata.len();
+        const MIN_WALLET_FILE_SIZE: u64 = 100; // Magic bytes + version + salt + nonce + minimal data
+        const MAX_WALLET_FILE_SIZE: u64 = 10 * 1024 * 1024; // 10 MB max (very generous)
+
+        if file_size < MIN_WALLET_FILE_SIZE {
+            return Err(format!(
+                "Wallet corruption detected: file size ({} bytes) is too small. File may be truncated.",
+                file_size
+            ));
+        }
+
+        if file_size > MAX_WALLET_FILE_SIZE {
+            return Err(format!(
+                "Wallet corruption detected: file size ({} bytes) exceeds maximum ({}). File may be corrupted.",
+                file_size,
+                MAX_WALLET_FILE_SIZE
+            ));
+        }
+    }
+
+    // Check 6: Validate timestamps are reasonable
+    // (Helps detect deserialization issues)
+    let current_timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    if wallet_data.created_at == 0 || wallet_data.modified_at == 0 {
+        return Err("Wallet corruption detected: invalid timestamps (zero values)".to_string());
+    }
+
+    // Future timestamps indicate corruption
+    if wallet_data.created_at > current_timestamp + 86400 ||
+       wallet_data.modified_at > current_timestamp + 86400 {
+        return Err("Wallet corruption detected: timestamps are in the future (clock skew or corruption)".to_string());
+    }
+
+    println!("✅ Wallet integrity check passed: {} keys validated", wallet_data.keys.len());
+    Ok(())
 }
 
 /// T029: Get transaction status

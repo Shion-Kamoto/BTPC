@@ -10,11 +10,109 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use chrono::{DateTime, Utc};
+use std::sync::{Arc, Mutex};
+use chrono::{DateTime, Utc, Duration};
 use uuid::Uuid;
 use crate::error::{BtpcError, BtpcResult};
 use crate::security::SecurityManager;
 use btpc_core::crypto::{EncryptedWallet, WalletData, KeyEntry, SecurePassword};
+
+/// UTXO Reservation Token for preventing double-spending during transaction creation
+///
+/// This token reserves specific UTXOs for a transaction, preventing them from being
+/// used by concurrent transaction creation attempts. Reservations expire after a
+/// configurable timeout (default 5 minutes) to prevent orphaned locks.
+///
+/// # Thread Safety
+/// This struct is designed to work with `Arc<Mutex<HashMap<Uuid, ReservationToken>>>`
+/// for thread-safe concurrent access across multiple transaction creation requests.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReservationToken {
+    /// Unique reservation identifier
+    pub id: Uuid,
+    /// Associated transaction ID (if transaction has been created)
+    pub transaction_id: Option<String>,
+    /// List of reserved UTXOs: (transaction_hash, output_index)
+    pub utxos: Vec<(String, u32)>,
+    /// Timestamp when reservation was created
+    pub created_at: DateTime<Utc>,
+    /// Timestamp when reservation expires (default: created_at + 5 minutes)
+    pub expires_at: DateTime<Utc>,
+    /// Wallet ID that owns these UTXOs
+    pub wallet_id: String,
+}
+
+impl ReservationToken {
+    /// Create a new UTXO reservation
+    ///
+    /// # Parameters
+    /// - `wallet_id`: The wallet that owns the UTXOs
+    /// - `utxos`: List of UTXOs to reserve (txid, vout)
+    /// - `transaction_id`: Optional transaction ID if already created
+    /// - `expiry_minutes`: Minutes until reservation expires (default: 5)
+    ///
+    /// # Returns
+    /// New ReservationToken with unique ID and expiry timestamp
+    pub fn new(
+        wallet_id: String,
+        utxos: Vec<(String, u32)>,
+        transaction_id: Option<String>,
+        expiry_minutes: Option<i64>,
+    ) -> Self {
+        let now = Utc::now();
+        let expiry_duration = Duration::minutes(expiry_minutes.unwrap_or(5));
+
+        Self {
+            id: Uuid::new_v4(),
+            transaction_id,
+            utxos,
+            created_at: now,
+            expires_at: now + expiry_duration,
+            wallet_id,
+        }
+    }
+
+    /// Check if this reservation has expired
+    ///
+    /// # Returns
+    /// `true` if current time is past expiry timestamp
+    pub fn is_expired(&self) -> bool {
+        Utc::now() > self.expires_at
+    }
+
+    /// Extend the expiry time of this reservation
+    ///
+    /// # Parameters
+    /// - `additional_minutes`: Additional minutes to extend (added to current expires_at)
+    ///
+    /// # Returns
+    /// New expiry timestamp
+    pub fn extend_expiry(&mut self, additional_minutes: i64) -> DateTime<Utc> {
+        self.expires_at = self.expires_at + Duration::minutes(additional_minutes);
+        self.expires_at
+    }
+
+    /// Release this reservation (marks it for deletion)
+    ///
+    /// Returns the list of UTXOs that were reserved
+    pub fn release(self) -> Vec<(String, u32)> {
+        self.utxos
+    }
+
+    /// Get the number of UTXOs reserved by this token
+    pub fn utxo_count(&self) -> usize {
+        self.utxos.len()
+    }
+
+    /// Check if a specific UTXO is reserved by this token
+    ///
+    /// # Parameters
+    /// - `txid`: Transaction hash
+    /// - `vout`: Output index
+    pub fn contains_utxo(&self, txid: &str, vout: u32) -> bool {
+        self.utxos.iter().any(|(tx, v)| tx == txid && *v == vout)
+    }
+}
 
 /// Comprehensive wallet information structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -230,6 +328,9 @@ pub struct WalletManager {
     wallets: HashMap<String, WalletInfo>,
     security: SecurityManager,
     metadata_file: PathBuf,
+    /// Thread-safe storage for UTXO reservations
+    /// Key: Reservation UUID, Value: ReservationToken
+    reservations: Arc<Mutex<HashMap<Uuid, ReservationToken>>>,
 }
 
 impl Default for WalletManagerConfig {
@@ -281,6 +382,7 @@ impl WalletManager {
             wallets: HashMap::new(),
             security,
             metadata_file,
+            reservations: Arc::new(Mutex::new(HashMap::new())),
         };
 
         // Load existing wallets
@@ -781,6 +883,213 @@ impl WalletManager {
             }))?;
 
         Ok((address.trim().to_string(), seed_phrase, private_key_hex))
+    }
+
+    // ========================================================================
+    // UTXO Reservation Methods (Feature 007: Fix Transaction Sending)
+    // ========================================================================
+
+    /// Reserve UTXOs for a transaction to prevent double-spending
+    ///
+    /// Creates a ReservationToken that locks the specified UTXOs for exclusive use
+    /// by a single transaction. This prevents concurrent transaction attempts from
+    /// selecting the same UTXOs.
+    ///
+    /// # Parameters
+    /// - `wallet_id`: The wallet that owns the UTXOs
+    /// - `utxos`: List of UTXOs to reserve (transaction_hash, output_index)
+    /// - `transaction_id`: Optional transaction ID if already created
+    ///
+    /// # Returns
+    /// `ReservationToken` if successful, error if UTXOs are already locked
+    ///
+    /// # Thread Safety
+    /// This method is thread-safe and can be called concurrently from multiple threads.
+    pub fn reserve_utxos(
+        &self,
+        wallet_id: String,
+        utxos: Vec<(String, u32)>,
+        transaction_id: Option<String>,
+    ) -> BtpcResult<ReservationToken> {
+        let mut reservations = self.reservations.lock()
+            .map_err(|_| BtpcError::mutex_poison("WalletManager", "reservation_lock"))?;
+
+        // Check if any of the requested UTXOs are already reserved
+        for (txid, vout) in &utxos {
+            for existing_reservation in reservations.values() {
+                // Skip expired reservations
+                if existing_reservation.is_expired() {
+                    continue;
+                }
+
+                if existing_reservation.wallet_id == wallet_id &&
+                   existing_reservation.contains_utxo(txid, *vout) {
+                    return Err(BtpcError::Validation(crate::error::ValidationError::CustomValidation {
+                        rule: "utxo_available".to_string(),
+                        message: format!(
+                            "UTXO {}:{} is already reserved by transaction {:?}",
+                            txid, vout, existing_reservation.transaction_id
+                        ),
+                    }));
+                }
+            }
+        }
+
+        // Create new reservation
+        let token = ReservationToken::new(wallet_id, utxos, transaction_id, None);
+        let token_id = token.id;
+        reservations.insert(token_id, token.clone());
+
+        tracing::info!(
+            "Reserved {} UTXOs for wallet with token {}",
+            token.utxo_count(),
+            token_id
+        );
+
+        Ok(token)
+    }
+
+    /// Release a UTXO reservation
+    ///
+    /// Removes the reservation from the active reservations map, making the UTXOs
+    /// available for other transactions.
+    ///
+    /// # Parameters
+    /// - `token`: The ReservationToken to release
+    ///
+    /// # Returns
+    /// Number of UTXOs that were released
+    pub fn release_reservation(&self, token: &ReservationToken) -> BtpcResult<usize> {
+        let mut reservations = self.reservations.lock()
+            .map_err(|_| BtpcError::mutex_poison("WalletManager", "reservation_lock"))?;
+
+        let utxo_count = token.utxo_count();
+
+        if reservations.remove(&token.id).is_some() {
+            tracing::info!(
+                "Released reservation {} ({} UTXOs)",
+                token.id,
+                utxo_count
+            );
+            Ok(utxo_count)
+        } else {
+            // Reservation already released or doesn't exist
+            Ok(0)
+        }
+    }
+
+    /// Clean up expired reservations
+    ///
+    /// Removes all reservations that have passed their expiry timestamp.
+    /// This prevents orphaned reservations from permanently locking UTXOs.
+    ///
+    /// # Returns
+    /// Number of expired reservations that were cleaned up
+    pub fn cleanup_expired_reservations(&self) -> BtpcResult<usize> {
+        let mut reservations = self.reservations.lock()
+            .map_err(|_| BtpcError::mutex_poison("WalletManager", "reservation_lock"))?;
+
+        let expired_ids: Vec<Uuid> = reservations
+            .iter()
+            .filter(|(_, token)| token.is_expired())
+            .map(|(id, _)| *id)
+            .collect();
+
+        let count = expired_ids.len();
+
+        for id in expired_ids {
+            reservations.remove(&id);
+        }
+
+        if count > 0 {
+            tracing::info!("Cleaned up {} expired UTXO reservations", count);
+        }
+
+        Ok(count)
+    }
+
+    /// Get all active reservations for a wallet
+    ///
+    /// Returns a list of all non-expired reservations for the specified wallet.
+    ///
+    /// # Parameters
+    /// - `wallet_id`: The wallet to query
+    ///
+    /// # Returns
+    /// Vector of active ReservationTokens
+    pub fn get_active_reservations(&self, wallet_id: &str) -> BtpcResult<Vec<ReservationToken>> {
+        let reservations = self.reservations.lock()
+            .map_err(|_| BtpcError::mutex_poison("WalletManager", "reservation_lock"))?;
+
+        let active: Vec<ReservationToken> = reservations
+            .values()
+            .filter(|token| token.wallet_id == wallet_id && !token.is_expired())
+            .cloned()
+            .collect();
+
+        Ok(active)
+    }
+
+    /// Check if a specific UTXO is currently reserved
+    ///
+    /// # Parameters
+    /// - `wallet_id`: The wallet that owns the UTXO
+    /// - `txid`: Transaction hash
+    /// - `vout`: Output index
+    ///
+    /// # Returns
+    /// `true` if the UTXO is reserved by a non-expired reservation
+    pub fn is_utxo_reserved(&self, wallet_id: &str, txid: &str, vout: u32) -> BtpcResult<bool> {
+        let reservations = self.reservations.lock()
+            .map_err(|_| BtpcError::mutex_poison("WalletManager", "reservation_lock"))?;
+
+        let is_reserved = reservations
+            .values()
+            .any(|token| {
+                token.wallet_id == wallet_id &&
+                !token.is_expired() &&
+                token.contains_utxo(txid, vout)
+            });
+
+        Ok(is_reserved)
+    }
+
+    /// Start periodic cleanup task for expired UTXO reservations
+    ///
+    /// Spawns a background tokio task that runs every 60 seconds to clean up
+    /// expired reservations. This prevents memory leaks from abandoned reservations.
+    ///
+    /// # Returns
+    /// `JoinHandle` for the background task (can be used to cancel if needed)
+    ///
+    /// # Example
+    /// ```rust
+    /// let cleanup_handle = wallet_manager.start_cleanup_task();
+    /// // Task runs in background...
+    /// // To stop: cleanup_handle.abort();
+    /// ```
+    pub fn start_cleanup_task(self: Arc<Self>) -> tokio::task::JoinHandle<()> {
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
+
+            loop {
+                interval.tick().await;
+
+                match self.cleanup_expired_reservations() {
+                    Ok(count) => {
+                        if count > 0 {
+                            tracing::info!(
+                                "Background cleanup: Removed {} expired UTXO reservations",
+                                count
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Background cleanup failed: {}", e);
+                    }
+                }
+            }
+        })
     }
 }
 
