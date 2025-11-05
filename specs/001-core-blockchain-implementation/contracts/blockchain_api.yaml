@@ -1,0 +1,339 @@
+openapi: 3.0.3
+info:
+  title: BTPC Blockchain API
+  description: Core blockchain operations for BTPC quantum-resistant cryptocurrency
+  version: 1.0.0
+  contact:
+    name: BTPC Project
+    email: contact@btpc.org
+
+paths:
+  /blockchain/block/{height}:
+    get:
+      summary: Get block by height
+      description: Retrieves block data at specified height
+      parameters:
+        - name: height
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+            description: Block height
+      responses:
+        '200':
+          description: Block data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Block'
+        '404':
+          description: Block not found
+
+  /blockchain/block/hash/{hash}:
+    get:
+      summary: Get block by hash
+      description: Retrieves block data by SHA-512 hash
+      parameters:
+        - name: hash
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-fA-F0-9]{128}$'
+            description: SHA-512 block hash (128 hex chars)
+      responses:
+        '200':
+          description: Block data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Block'
+        '404':
+          description: Block not found
+
+  /blockchain/transaction/{txid}:
+    get:
+      summary: Get transaction by ID
+      description: Retrieves transaction data by transaction hash
+      parameters:
+        - name: txid
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-fA-F0-9]{128}$'
+            description: SHA-512 transaction hash
+      responses:
+        '200':
+          description: Transaction data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transaction'
+        '404':
+          description: Transaction not found
+
+  /blockchain/utxo/{txid}/{vout}:
+    get:
+      summary: Get UTXO by outpoint
+      description: Retrieves unspent transaction output
+      parameters:
+        - name: txid
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-fA-F0-9]{128}$'
+        - name: vout
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        '200':
+          description: UTXO data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UTXO'
+        '404':
+          description: UTXO not found (already spent)
+
+  /blockchain/validate/block:
+    post:
+      summary: Validate block
+      description: Validates block structure and proof-of-work
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Block'
+      responses:
+        '200':
+          description: Block validation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                  errors:
+                    type: array
+                    items:
+                      type: string
+                  validation_time_ms:
+                    type: number
+                    description: Time taken for validation
+        '400':
+          description: Invalid block format
+
+  /blockchain/validate/transaction:
+    post:
+      summary: Validate transaction
+      description: Validates transaction signatures and UTXO references
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Transaction'
+      responses:
+        '200':
+          description: Transaction validation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                  errors:
+                    type: array
+                    items:
+                      type: string
+                  fee:
+                    type: integer
+                    description: Transaction fee in base units
+        '400':
+          description: Invalid transaction format
+
+  /blockchain/mining/template:
+    get:
+      summary: Get block template for mining
+      description: Returns block template for miners with current difficulty
+      responses:
+        '200':
+          description: Mining block template
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version:
+                    type: integer
+                  previous_hash:
+                    type: string
+                    format: hex
+                  merkle_root:
+                    type: string
+                    format: hex
+                  timestamp:
+                    type: integer
+                  bits:
+                    type: integer
+                    description: Difficulty target compact format
+                  height:
+                    type: integer
+                  transactions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Transaction'
+                  coinbase_value:
+                    type: integer
+                    description: Block reward + fees
+
+  /blockchain/mining/submit:
+    post:
+      summary: Submit mined block
+      description: Submits solved block with proof-of-work nonce
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Block'
+      responses:
+        '200':
+          description: Block accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted:
+                    type: boolean
+                  hash:
+                    type: string
+                    format: hex
+                  height:
+                    type: integer
+        '400':
+          description: Invalid block or insufficient proof-of-work
+
+components:
+  schemas:
+    Block:
+      type: object
+      properties:
+        header:
+          $ref: '#/components/schemas/BlockHeader'
+        transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Transaction'
+      required: [header, transactions]
+
+    BlockHeader:
+      type: object
+      properties:
+        version:
+          type: integer
+        prev_hash:
+          type: string
+          format: hex
+          pattern: '^[a-fA-F0-9]{128}$'
+        merkle_root:
+          type: string
+          format: hex
+          pattern: '^[a-fA-F0-9]{128}$'
+        timestamp:
+          type: integer
+          minimum: 0
+        bits:
+          type: integer
+          description: Difficulty target compact format
+        nonce:
+          type: integer
+          minimum: 0
+      required: [version, prev_hash, merkle_root, timestamp, bits, nonce]
+
+    Transaction:
+      type: object
+      properties:
+        version:
+          type: integer
+        inputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionInput'
+        outputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionOutput'
+        lock_time:
+          type: integer
+          minimum: 0
+      required: [version, inputs, outputs, lock_time]
+
+    TransactionInput:
+      type: object
+      properties:
+        previous_output:
+          $ref: '#/components/schemas/OutPoint'
+        script_sig:
+          type: string
+          format: hex
+          description: Unlock script with ML-DSA signature
+        sequence:
+          type: integer
+      required: [previous_output, script_sig, sequence]
+
+    TransactionOutput:
+      type: object
+      properties:
+        value:
+          type: integer
+          minimum: 0
+          description: Amount in BTPC base units
+        script_pubkey:
+          type: string
+          format: hex
+          description: Lock script defining spending conditions
+      required: [value, script_pubkey]
+
+    OutPoint:
+      type: object
+      properties:
+        txid:
+          type: string
+          format: hex
+          pattern: '^[a-fA-F0-9]{128}$'
+        vout:
+          type: integer
+          minimum: 0
+      required: [txid, vout]
+
+    UTXO:
+      type: object
+      properties:
+        outpoint:
+          $ref: '#/components/schemas/OutPoint'
+        output:
+          $ref: '#/components/schemas/TransactionOutput'
+        height:
+          type: integer
+          description: Block height when created
+        is_coinbase:
+          type: boolean
+          description: Whether this is a coinbase UTXO
+      required: [outpoint, output, height, is_coinbase]
+
+# Performance Requirements:
+# - Block validation: <10ms per 1MB block
+# - Transaction validation: <5ms per transaction
+# - UTXO lookup: <1ms average
+# - API response time: <200ms p95

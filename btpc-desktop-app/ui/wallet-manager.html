@@ -334,11 +334,11 @@
             </div>
 
             <!-- Private Key Recovery Modal (shown once after wallet creation) -->
-            <div id="recovery-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.95); z-index: 2000; padding: 40px;">
-                <div class="card" style="max-width: 700px; margin: 0 auto; max-height: 90vh; overflow-y: auto; border: 3px solid #dc2626;">
-                    <div class="card-header" style="background: linear-gradient(135deg, #dc2626, #991b1b); color: white;">
+            <div id="recovery-modal" class="modal">
+                <div class="modal-content" style="max-width: 700px; border: 2px solid var(--status-error);">
+                    <div class="modal-header" style="background: var(--status-error); border-bottom: 1px solid var(--border-color);">
                         <span><span class="icon icon-alert-triangle"></span> WALLET RECOVERY INFORMATION</span>
-                        <button class="btn" onclick="closeRecoveryModal()" style="padding: 6px 16px; background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3);">✕ Close</button>
+                        <button class="modal-close" onclick="closeRecoveryModal()" style="color: white;">&times;</button>
                     </div>
 
                     <div style="background: #fef2f2; border: 2px solid #fca5a5; border-radius: 8px; padding: 16px; margin: 20px 0;">
@@ -408,11 +408,11 @@
             </div>
 
             <!-- Wallet Details Modal (Hidden by default) -->
-            <div id="wallet-details-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 1000; padding: 40px;">
-                <div class="card" style="max-width: 800px; margin: 0 auto; max-height: 90vh; overflow-y: auto;">
-                    <div class="card-header">
+            <div id="wallet-details-modal" class="modal">
+                <div class="modal-content" style="max-width: 800px;">
+                    <div class="modal-header">
                         <span id="modal-wallet-name">Wallet Details</span>
-                        <button class="btn btn-secondary" onclick="closeWalletDetails()" style="padding: 6px 16px;">✕ Close</button>
+                        <button class="modal-close" onclick="closeWalletDetails()">&times;</button>
                     </div>
 
                     <div class="detail-section">
@@ -708,7 +708,7 @@
             document.getElementById('detail-created').textContent = new Date(wallet.created_at).toLocaleString();
             document.getElementById('detail-address').textContent = wallet.address;
 
-            document.getElementById('wallet-details-modal').style.display = 'block';
+            document.getElementById('wallet-details-modal').style.display = 'flex';
         }
 
         function closeWalletDetails() {
@@ -865,7 +865,7 @@
                     }
 
                     result = await window.invoke('import_wallet_from_mnemonic', {
-                        mnemonic: mnemonic,
+                        mnemonic_phrase: mnemonic,
                         nickname: nickname,
                         password: password
                     });
@@ -970,7 +970,7 @@
             if (!confirm(`Are you sure you want to delete wallet "${wallet.nickname}"?`)) return;
 
             try {
-                await window.invoke('delete_wallet', { walletId: currentWalletId });
+                await window.invoke('delete_wallet', { wallet_id: currentWalletId });
                 alert('Wallet deleted successfully');
                 closeWalletDetails();
                 loadWallets();
@@ -1010,7 +1010,7 @@
             }
 
             // Show modal
-            document.getElementById('recovery-modal').style.display = 'block';
+            document.getElementById('recovery-modal').style.display = 'flex';
         }
 
         function closeRecoveryModal() {
@@ -1044,12 +1044,66 @@
             window.walletManagerPageSubscribed = true;
             updateManager.subscribe((type, data, fullState) => {
                 if (type === 'wallet') {
-                    document.getElementById('wallet-balance').textContent = (data.balance || 0).toFixed(8);
-                } else if (type === 'blockchain') {
-                    document.getElementById('chain-height').textContent = (data.height || 0).toLocaleString();
+                    const balanceEl = document.getElementById('wallet-balance');
+                    if (balanceEl) {
+                        balanceEl.textContent = (data.balance || 0).toFixed(8);
+                    }
                 }
+                // Note: wallet-manager.html doesn't have chain-height element
             });
         }
+
+        // ============================================================================
+        // Feature 007: Wallet Balance Event Listener (T027)
+        // ============================================================================
+        // Real-time balance updates when transactions complete (Article XI.3)
+        let walletBalanceListener = null;
+
+        async function setupWalletBalanceListener() {
+            if (!window.__TAURI__ || !window.__TAURI__.event) {
+                console.warn('[Feature 007] Tauri event API not available for wallet balance listener');
+                return;
+            }
+
+            try {
+                const { listen } = window.__TAURI__.event;
+
+                // wallet:balance_updated - fires after transaction confirmation
+                walletBalanceListener = await listen('wallet:balance_updated', async (event) => {
+                    console.log('[Event] wallet:balance_updated', event.payload);
+                    const { wallet_id, balance } = event.payload;
+
+                    // Refresh wallet list to show updated balances immediately
+                    await loadWallets();
+
+                    // Update total balance in sidebar
+                    const balanceEl = document.getElementById('wallet-balance');
+                    if (balanceEl && balance && balance.total !== undefined) {
+                        balanceEl.textContent = (balance.total / 100000000).toFixed(8);
+                    }
+
+                    console.log(`Wallet ${wallet_id} balance updated: confirmed=${balance.confirmed}, pending=${balance.pending}, total=${balance.total}`);
+                });
+
+                console.log('[Feature 007] Wallet balance event listener initialized (T027)');
+            } catch (e) {
+                console.error('[Feature 007] Failed to setup wallet balance listener:', e);
+            }
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', async () => {
+            await setupWalletBalanceListener();
+        });
+
+        // Clean up event listener on page unload (Article XI, Section 11.6)
+        window.addEventListener('beforeunload', () => {
+            if (walletBalanceListener && typeof walletBalanceListener === 'function') {
+                console.log('[Feature 007] Cleaning up wallet balance event listener...');
+                walletBalanceListener();
+                walletBalanceListener = null;
+            }
+        });
 
         // Load wallets on page load
         loadWallets();

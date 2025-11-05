@@ -360,14 +360,19 @@ impl<'a> ScriptEngine<'a> {
                 if stack.is_empty() {
                     return Err(ScriptError::StackUnderflow);
                 }
-                let top = stack.last().unwrap().clone();
+                let top = stack
+                    .last()
+                    .expect("Stack non-empty validated above")
+                    .clone();
                 stack.push(top);
             }
             ScriptOp::OpHash160 => {
                 if stack.is_empty() {
                     return Err(ScriptError::StackUnderflow);
                 }
-                let data = stack.pop().unwrap();
+                let data = stack
+                    .pop()
+                    .expect("Stack non-empty validated above");
                 let hash = Hash::hash(&data);
                 // Use first 20 bytes for RIPEMD-160 compatibility
                 stack.push(hash.as_slice()[..20].to_vec());
@@ -376,16 +381,16 @@ impl<'a> ScriptEngine<'a> {
                 if stack.len() < 2 {
                     return Err(ScriptError::StackUnderflow);
                 }
-                let b = stack.pop().unwrap();
-                let a = stack.pop().unwrap();
+                let b = stack.pop().expect("Stack size >=2 validated above");
+                let a = stack.pop().expect("Stack size >=2 validated above");
                 stack.push(if a == b { vec![1] } else { vec![0] });
             }
             ScriptOp::OpEqualVerify => {
                 if stack.len() < 2 {
                     return Err(ScriptError::StackUnderflow);
                 }
-                let b = stack.pop().unwrap();
-                let a = stack.pop().unwrap();
+                let b = stack.pop().expect("Stack size >=2 validated above");
+                let a = stack.pop().expect("Stack size >=2 validated above");
                 if a != b {
                     return Err(ScriptError::VerificationFailed);
                 }
@@ -394,8 +399,8 @@ impl<'a> ScriptEngine<'a> {
                 if stack.len() < 2 {
                     return Err(ScriptError::StackUnderflow);
                 }
-                let pubkey_bytes = stack.pop().unwrap();
-                let signature_bytes = stack.pop().unwrap();
+                let pubkey_bytes = stack.pop().expect("Stack size >=2 validated above");
+                let signature_bytes = stack.pop().expect("Stack size >=2 validated above");
 
                 let is_valid = self.verify_ml_dsa_signature(&signature_bytes, &pubkey_bytes)?;
                 stack.push(if is_valid { vec![1] } else { vec![0] });
@@ -404,8 +409,8 @@ impl<'a> ScriptEngine<'a> {
                 if stack.len() < 2 {
                     return Err(ScriptError::StackUnderflow);
                 }
-                let pubkey_bytes = stack.pop().unwrap();
-                let signature_bytes = stack.pop().unwrap();
+                let pubkey_bytes = stack.pop().expect("Stack size >=2 validated above");
+                let signature_bytes = stack.pop().expect("Stack size >=2 validated above");
 
                 let is_valid = self.verify_ml_dsa_signature(&signature_bytes, &pubkey_bytes)?;
                 if !is_valid {
@@ -416,7 +421,9 @@ impl<'a> ScriptEngine<'a> {
                 if stack.is_empty() {
                     return Err(ScriptError::StackUnderflow);
                 }
-                let value = stack.pop().unwrap();
+                let value = stack
+                    .pop()
+                    .expect("Stack non-empty validated above");
                 if !self.is_true(&value) {
                     return Err(ScriptError::VerificationFailed);
                 }

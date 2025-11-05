@@ -218,7 +218,8 @@ impl BlockchainDatabase for BlockchainDb {
             // Get current tip height
             let current_tip_height = match self.db.get(b"meta:tip_height") {
                 Ok(Some(bytes)) if bytes.len() == 4 => {
-                    let height_bytes: [u8; 4] = bytes[0..4].try_into().unwrap();
+                    let height_bytes: [u8; 4] = bytes[0..4].try_into()
+                        .expect("Slice length validated as 4 bytes by match guard above");
                     u32::from_le_bytes(height_bytes)
                 }
                 _ => 0, // No tip set yet, this is first block

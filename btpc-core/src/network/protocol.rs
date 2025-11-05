@@ -114,7 +114,7 @@ impl NetworkAddress {
         NetworkAddress {
             time: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_else(|_| std::time::Duration::from_secs(0))
                 .as_secs() as u32,
             services: services.0,
             ip,
@@ -254,7 +254,7 @@ impl VersionMessage {
             services: services.0,
             timestamp: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_else(|_| std::time::Duration::from_secs(0))
                 .as_secs() as i64,
             addr_recv,
             addr_from,
@@ -465,7 +465,9 @@ impl ProtocolCodec {
             .map_err(|e| ProtocolError::Io(e.to_string()))?;
 
         // Parse header
-        let magic: [u8; 4] = header_bytes[0..4].try_into().unwrap();
+        let magic: [u8; 4] = header_bytes[0..4]
+            .try_into()
+            .expect("Magic bytes slice is exactly 4 bytes");
         if magic != self.magic {
             return Err(ProtocolError::InvalidMagic);
         }
@@ -475,8 +477,14 @@ impl ProtocolCodec {
             .trim_end_matches('\0')
             .to_string();
 
-        let length = u32::from_le_bytes(header_bytes[16..20].try_into().unwrap());
-        let checksum: [u8; 4] = header_bytes[20..24].try_into().unwrap();
+        let length = u32::from_le_bytes(
+            header_bytes[16..20]
+                .try_into()
+                .expect("Length bytes slice is exactly 4 bytes"),
+        );
+        let checksum: [u8; 4] = header_bytes[20..24]
+            .try_into()
+            .expect("Checksum bytes slice is exactly 4 bytes");
 
         if length as usize > MAX_MESSAGE_SIZE {
             return Err(ProtocolError::MessageTooLarge(length as usize));
@@ -588,14 +596,22 @@ impl ProtocolCodec {
                 if payload.len() != 8 {
                     return Err(ProtocolError::InvalidFormat);
                 }
-                let nonce = u64::from_le_bytes(payload.try_into().unwrap());
+                let nonce = u64::from_le_bytes(
+                    payload
+                        .try_into()
+                        .expect("Payload length verified as 8 bytes above"),
+                );
                 Message::Ping(nonce)
             }
             "pong" => {
                 if payload.len() != 8 {
                     return Err(ProtocolError::InvalidFormat);
                 }
-                let nonce = u64::from_le_bytes(payload.try_into().unwrap());
+                let nonce = u64::from_le_bytes(
+                    payload
+                        .try_into()
+                        .expect("Payload length verified as 8 bytes above"),
+                );
                 Message::Pong(nonce)
             }
             "getaddr" => Message::GetAddr,

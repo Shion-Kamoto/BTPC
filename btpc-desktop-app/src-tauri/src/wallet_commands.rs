@@ -210,7 +210,7 @@ pub async fn send_btpc_from_wallet(
 /// Sign a transaction with ML-DSA private key and broadcast to network
 async fn sign_and_broadcast_transaction(
     state: State<'_, AppState>,
-    mut transaction: crate::utxo_manager::Transaction,
+    mut transaction: btpc_desktop_app::utxo_manager::Transaction,
     wallet_path: &std::path::Path,
     password: &str,
     wallet_nickname: &str,
@@ -258,7 +258,7 @@ async fn sign_and_broadcast_transaction(
         .map_err(|e| format!("Failed to serialize transaction: {}", e))?;
 
     // Broadcast transaction via RPC
-    let rpc_client = crate::rpc_client::RpcClient::new(
+    let rpc_client = btpc_desktop_app::rpc_client::RpcClient::new(
         &state.config.rpc.host,
         state.config.rpc.port,
     );

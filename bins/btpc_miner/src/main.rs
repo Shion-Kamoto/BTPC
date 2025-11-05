@@ -91,8 +91,20 @@ struct BlockTemplate {
     version: u32,
     height: u32,
     previousblockhash: String,
+    #[serde(deserialize_with = "deserialize_bits_from_hex")]
     bits: u32,
     curtime: u64,
+}
+
+/// Deserialize bits from hex string (e.g., "1d0fffff") to u32
+fn deserialize_bits_from_hex<'de, D>(deserializer: D) -> Result<u32, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::Error;
+    let s: String = Deserialize::deserialize(deserializer)?;
+    u32::from_str_radix(s.trim_start_matches("0x"), 16)
+        .map_err(|e| Error::custom(format!("Failed to parse bits as hex: {}", e)))
 }
 
 /// BTPC Miner implementation

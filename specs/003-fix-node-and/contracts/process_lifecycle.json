@@ -1,0 +1,119 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Process Lifecycle Schema",
+  "description": "JSON schema for ProcessHandle lifecycle and state transitions",
+  "type": "object",
+  "definitions": {
+    "ProcessType": {
+      "type": "string",
+      "enum": ["Node", "Miner", "WalletCLI"],
+      "description": "Type of child process being managed"
+    },
+    "ProcessStatus": {
+      "type": "string",
+      "enum": ["Running", "Crashed", "Stopped"],
+      "description": "Current status of the process"
+    },
+    "ProcessHandle": {
+      "type": "object",
+      "properties": {
+        "process_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "OS process ID (PID)"
+        },
+        "process_type": {
+          "$ref": "#/definitions/ProcessType"
+        },
+        "status": {
+          "$ref": "#/definitions/ProcessStatus"
+        },
+        "crash_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Number of crashes (reset after 1 hour stable)"
+        },
+        "start_time": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When process was started"
+        },
+        "last_health_check": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last time process health was checked (every 5 seconds)"
+        },
+        "command_line": {
+          "type": "array",
+          "items": {"type": "string"},
+          "minItems": 1,
+          "description": "Command line arguments used to start process"
+        }
+      },
+      "required": ["process_id", "process_type", "status", "crash_count", "start_time"]
+    },
+    "ProcessLifecycleTransitions": {
+      "type": "object",
+      "description": "Valid state transitions for ProcessHandle",
+      "properties": {
+        "from_running": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["Crashed", "Stopped"]
+          },
+          "description": "Running can transition to Crashed or Stopped"
+        },
+        "from_crashed": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["Running", "Stopped"]
+          },
+          "description": "Crashed can transition to Running (restart) or Stopped (user cancel)"
+        },
+        "from_stopped": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["Running"]
+          },
+          "description": "Stopped can transition to Running (user starts)"
+        }
+      }
+    },
+    "CrashRecoveryPolicy": {
+      "type": "object",
+      "description": "Policy for automatic crash recovery",
+      "properties": {
+        "auto_restart_on_first_crash": {
+          "type": "boolean",
+          "const": true,
+          "description": "Automatically restart process on first crash (crash_count == 0)"
+        },
+        "prompt_user_on_second_crash": {
+          "type": "boolean",
+          "const": true,
+          "description": "Show notification asking user to restart on second crash (crash_count > 0)"
+        },
+        "crash_counter_reset_time": {
+          "type": "integer",
+          "const": 3600,
+          "description": "Reset crash counter after 1 hour (3600 seconds) of stable operation"
+        },
+        "health_check_interval": {
+          "type": "integer",
+          "const": 5,
+          "description": "Check process health every 5 seconds"
+        },
+        "graceful_shutdown_timeout": {
+          "type": "integer",
+          "const": 10,
+          "description": "Wait 10 seconds for graceful shutdown (SIGTERM) before SIGKILL"
+        }
+      }
+    }
+  },
+  "$ref": "#/definitions/ProcessHandle"
+}

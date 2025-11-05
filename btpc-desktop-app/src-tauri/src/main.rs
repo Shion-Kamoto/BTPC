@@ -54,11 +54,11 @@ use tokio::sync::RwLock;
 
 mod btpc_integration;
 mod security;
-mod utxo_manager;
+// mod utxo_manager; // Already in lib.rs (used by transaction_state)
 mod wallet_manager;
 mod wallet_commands;
 pub mod error;  // Public for integration tests
-mod rpc_client;
+// mod rpc_client; // Moved to lib.rs for TD-001 refactoring
 mod sync_service;
 mod process_manager;
 mod address_book;
@@ -69,7 +69,7 @@ mod gpu_detection;  // GPU detection for mining optimization (TDD v1.1)
 pub mod state_management;  // StateManager<T> for Article XI compliance (auto event emission)
 
 // Transaction modules (Feature 007: Transaction Sending)
-mod transaction_builder;
+// mod transaction_builder; // Moved to lib.rs for TD-001 refactoring
 mod transaction_commands;
 mod transaction_monitor;
 mod fee_estimator;  // Dynamic fee estimation service (T017)
@@ -86,7 +86,7 @@ use error::{BtpcError, BtpcResult};
 
 use btpc_integration::BtpcIntegration;
 use security::{SecurityManager, UserSession, RecoveryData};
-use utxo_manager::{UTXOManager, UTXO, UTXOStats};
+use btpc_desktop_app::utxo_manager::{UTXOManager, UTXO, UTXOStats};
 use wallet_manager::{WalletManager, WalletManagerConfig};
 use sync_service::{BlockchainSyncService, SyncConfig, SyncStats};
 use address_book::{AddressBookManager, AddressBookEntry, AddAddressBookRequest, UpdateAddressBookRequest};
@@ -431,8 +431,8 @@ pub struct AppState {
     tx_storage: Arc<tx_storage::TransactionStorage>, // RocksDB-based transaction storage (Constitution Article V)
     wallet_password: Arc<RwLock<Option<btpc_core::crypto::SecurePassword>>>, // Session password for encrypted wallets
     wallets_locked: Arc<RwLock<bool>>, // Whether wallets are currently locked
-    // Feature 007: Transaction state manager for transaction lifecycle tracking
-    tx_state_manager: Arc<transaction_commands::TransactionStateManager>,
+    // Feature 007: Transaction state manager for transaction lifecycle tracking (moved to lib.rs in TD-001)
+    tx_state_manager: Arc<btpc_desktop_app::transaction_state::TransactionStateManager>,
 }
 
 impl AppState {
@@ -475,8 +475,8 @@ impl AppState {
         let tx_storage = tx_storage::TransactionStorage::open(config.data_dir.join("tx_storage"))
             .map_err(|e| BtpcError::Application(format!("Failed to initialize transaction storage: {}", e)))?;
 
-        // Feature 007: Initialize transaction state manager
-        let tx_state_manager = transaction_commands::TransactionStateManager::new();
+        // Feature 007: Initialize transaction state manager (moved to lib.rs in TD-001)
+        let tx_state_manager = btpc_desktop_app::transaction_state::TransactionStateManager::new();
 
         let app_state = Self {
             config: config.clone(),
@@ -506,6 +506,11 @@ impl AppState {
             tx_state_manager: Arc::new(tx_state_manager), // Feature 007: Transaction state manager
         };
 
+        // REMOVED: Automatic wallet creation at startup (2025-11-01)
+        // Reason: Should NOT create wallets automatically - wallets already exist
+        // User complained: "wallets have been created and there should be no automatic wallet creation at all!"
+
+        /* COMMENTED OUT - DO NOT UNCOMMENT:
         // Test wallet functionality on startup for debugging
         let wallet_file = app_state.config.data_dir.join("wallet").join(&app_state.config.wallet.default_wallet_file);
         println!("=== STARTUP WALLET TEST ===");
@@ -550,6 +555,7 @@ impl AppState {
                 Err(e) => println!("Wallet creation FAILED: {}", e),
             }
         }
+        */
 
         // Migrate UTXOs from wallet_utxos.json to RocksDB if RocksDB is empty
         // Constitution Article V: Atomic migration with structured logging
@@ -613,15 +619,16 @@ impl AppState {
         let mut success_count = 0;
         for utxo in &utxos {
             // Create a Transaction from UTXO (these are all coinbase transactions)
-            let transaction = utxo_manager::Transaction {
+            let transaction = btpc_desktop_app::utxo_manager::Transaction {
                 txid: utxo.txid.clone(),
                 version: 1,
                 inputs: vec![], // Coinbase transactions have no inputs
-                outputs: vec![utxo_manager::TxOutput {
+                outputs: vec![btpc_desktop_app::utxo_manager::TxOutput {
                     value: utxo.value_credits,
                     script_pubkey: utxo.script_pubkey.clone(),
                 }],
                 lock_time: 0,
+                fork_id: 2, // Regtest network (migration code)
                 block_height: Some(utxo.block_height),
                 confirmed_at: Some(utxo.created_at),
                 is_coinbase: true,
@@ -983,16 +990,11 @@ async fn get_wallet_balance(state: State<'_, AppState>) -> Result<String, String
     };
 
     // Strip "Address: " prefix if it exists
-    println!("🔧 DEBUG (get_wallet_balance): Raw address from wallet: '{}'", address);
     let clean_address = if address.starts_with("Address: ") {
-        let cleaned = address.strip_prefix("Address: ").unwrap_or(&address).to_string();
-        println!("🔧 DEBUG (get_wallet_balance): Cleaned address: '{}'", cleaned);
-        cleaned
+        address.strip_prefix("Address: ").unwrap_or(&address).to_string()
     } else {
-        println!("🔧 DEBUG (get_wallet_balance): Address is already clean: '{}'", address);
         address
     };
-    println!("🔧 DEBUG (get_wallet_balance): Final address passed to UTXO manager: '{}'", clean_address);
 
     // Get balance from UTXO manager
     let (total_credits, total_btp) = {
@@ -1181,16 +1183,11 @@ async fn get_wallet_balance_with_mined(state: State<'_, AppState>) -> Result<Str
     };
 
     // Clean the address by stripping the "Address: " prefix if present
-    println!("🔧 DEBUG: Raw address from wallet: '{}'", address);
     let clean_address = if address.starts_with("Address: ") {
-        let cleaned = address.strip_prefix("Address: ").unwrap_or(&address).to_string();
-        println!("🔧 DEBUG: Cleaned address: '{}'", cleaned);
-        cleaned
+        address.strip_prefix("Address: ").unwrap_or(&address).to_string()
     } else {
-        println!("🔧 DEBUG: Address is already clean: '{}'", address);
         address
     };
-    println!("🔧 DEBUG: Final address passed to UTXO manager: '{}'", clean_address);
 
     // Get balance from UTXO set
     let (total_credits, total_btp) = {
@@ -1262,8 +1259,11 @@ async fn start_mining(app: tauri::AppHandle, state: State<'_, AppState>, address
     // Note: btpc_miner doesn't support --blocks parameter, it mines continuously until stopped
     let network = state.config.network.to_string();
 
-    // Build command arguments with optional --gpu flag
-    let args = vec!["--network", &network, "--address", &address];
+    // Build RPC URL from config (fixed 2025-11-01: miner was using default port 8332)
+    let rpc_url = format!("http://{}:{}", state.config.rpc.host, state.config.rpc.port);
+
+    // Build command arguments with --rpc-url and optional --gpu flag
+    let args = vec!["--network", &network, "--address", &address, "--rpc-url", &rpc_url];
 
     // Add --gpu flag if GPU is available (pending btpc_miner GPU support)
     // For now, this is a placeholder for future GPU mining implementation
@@ -1360,7 +1360,8 @@ async fn start_mining(app: tauri::AppHandle, state: State<'_, AppState>, address
                 // NOTE: With blockchain sync service enabled, UTXOs are automatically tracked
                 // when blocks are synced from the node. This manual UTXO insertion is only
                 // needed if blockchain sync is disabled or not yet caught up.
-                if trimmed_line.contains("Block found by thread") || (trimmed_line.contains("✅ Block") && trimmed_line.contains("mined successfully")) {
+                // Fixed 2025-11-01: btpc_miner outputs "submitted successfully" not "mined successfully"
+                if trimmed_line.contains("Block found by thread") || trimmed_line.contains("Block submitted successfully") {
                     // Increment block counter
                     {
                         let mut stats = mining_stats_clone.lock().unwrap_or_else(|e| {
@@ -1819,7 +1820,7 @@ async fn sync_wallet_utxos(state: State<'_, AppState>) -> Result<String, String>
 }
 
 #[tauri::command]
-async fn get_transaction_history(state: State<'_, AppState>) -> Result<Vec<utxo_manager::Transaction>, String> {
+async fn get_transaction_history(state: State<'_, AppState>) -> Result<Vec<btpc_desktop_app::utxo_manager::Transaction>, String> {
     // ⚠️ DEPRECATED: This command is inefficient (O(n×m) complexity)
     // Use get_paginated_transaction_history for list queries
     // Use get_transaction_from_storage for single transaction lookups
@@ -1850,7 +1851,7 @@ async fn get_transaction_history(state: State<'_, AppState>) -> Result<Vec<utxo_
 
     let utxo_manager = state.utxo_manager.lock()
         .map_err(|_| BtpcError::mutex_poison("utxo_manager", "get_transaction_history").to_string())?;
-    let transactions: Vec<utxo_manager::Transaction> = utxo_manager.get_transaction_history(&address)
+    let transactions: Vec<btpc_desktop_app::utxo_manager::Transaction> = utxo_manager.get_transaction_history(&address)
         .into_iter()
         .cloned()
         .collect();
@@ -1898,7 +1899,7 @@ async fn get_paginated_transaction_history(
 async fn add_transaction_to_storage(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
-    tx: utxo_manager::Transaction,
+    tx: btpc_desktop_app::utxo_manager::Transaction,
     address: String,
 ) -> Result<String, String> {
     // Add transaction to RocksDB
@@ -1942,7 +1943,7 @@ async fn add_transaction_to_storage(
 async fn get_transaction_from_storage(
     state: State<'_, AppState>,
     txid: String,
-) -> Result<Option<utxo_manager::Transaction>, String> {
+) -> Result<Option<btpc_desktop_app::utxo_manager::Transaction>, String> {
     state.tx_storage.get_transaction(&txid)
         .map_err(|e| format!("Failed to get transaction from storage: {}", e))
 }
@@ -2400,7 +2401,7 @@ async fn get_address_balance_from_node(
     address: String,
 ) -> Result<u64, String> {
     // Create a temporary RPC client to query the node
-    use crate::rpc_client::RpcClient;
+    use btpc_desktop_app::rpc_client::RpcClient;
     let rpc_client = RpcClient::new(&state.config.rpc.host, state.config.rpc.port);
 
     rpc_client.get_address_balance(&address)
@@ -2528,7 +2529,7 @@ pub struct BlockchainInfo {
 
 #[tauri::command]
 async fn get_blockchain_info(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    use crate::rpc_client::RpcClient;
+    use btpc_desktop_app::rpc_client::RpcClient;
     let rpc_client = RpcClient::new(&state.config.rpc.host, state.config.rpc.port);
 
     // Get blockchain info from node, with graceful fallback when node is offline
@@ -2579,7 +2580,7 @@ async fn get_recent_blocks(
     limit: usize,
     offset: usize,
 ) -> Result<Vec<BlockInfo>, String> {
-    use crate::rpc_client::RpcClient;
+    use btpc_desktop_app::rpc_client::RpcClient;
     let rpc_client = RpcClient::new(&state.config.rpc.host, state.config.rpc.port);
 
     // Get current blockchain height
@@ -2629,7 +2630,7 @@ async fn get_recent_transactions(
     limit: usize,
     offset: usize,
 ) -> Result<Vec<TransactionInfo>, String> {
-    use crate::rpc_client::RpcClient;
+    use btpc_desktop_app::rpc_client::RpcClient;
     let rpc_client = RpcClient::new(&state.config.rpc.host, state.config.rpc.port);
 
     // Get recent transactions from node
@@ -2664,7 +2665,7 @@ async fn search_blockchain(
     state: State<'_, AppState>,
     query: String,
 ) -> Result<SearchResult, String> {
-    use crate::rpc_client::RpcClient;
+    use btpc_desktop_app::rpc_client::RpcClient;
     let rpc_client = RpcClient::new(&state.config.rpc.host, state.config.rpc.port);
 
     // Try to parse as block height

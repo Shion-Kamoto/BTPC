@@ -176,6 +176,21 @@
                         <button class="btn btn-secondary" onclick="switchTab('history')"><span class="icon icon-chart"></span> View History</button>
                         <button class="btn btn-secondary" onclick="saveCurrentAddressToBook()" title="Save current recipient address to Address Book"><span class="icon icon-bookmark"></span> Save Address</button>
                     </div>
+
+                    <!-- Transaction Status Display (Real-time Event Updates) -->
+                    <div id="transaction-status" style="display: none; margin-top: 20px; padding: 16px; border-radius: 8px; background: var(--bg-secondary); border-left: 4px solid var(--btpc-primary);">
+                        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+                            <div id="status-icon" style="font-size: 1.5rem;"></div>
+                            <div>
+                                <div id="status-title" style="font-weight: 600; color: var(--text-primary);"></div>
+                                <div id="status-message" style="color: var(--text-secondary); font-size: 0.875rem; margin-top: 4px;"></div>
+                            </div>
+                        </div>
+                        <div id="status-details" style="font-size: 0.8125rem; color: var(--text-muted); margin-top: 8px; font-family: monospace;"></div>
+                        <div id="status-progress" style="margin-top: 12px; height: 4px; background: var(--bg-tertiary); border-radius: 2px; overflow: hidden; display: none;">
+                            <div id="status-progress-bar" style="height: 100%; background: var(--btpc-primary); width: 0%; transition: width 0.3s ease;"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -954,12 +969,196 @@
             });
         }
 
+        // ============================================================================
+        // Feature 007: Real-Time Transaction Event Listeners (Article XI)
+        // ============================================================================
+        // Store unlisten functions for proper cleanup (prevents memory leaks)
+        let transactionEventListeners = [];
+
+        // Transaction status update functions
+        function showTransactionStatus(icon, title, message, details = '', progress = null) {
+            const statusEl = document.getElementById('transaction-status');
+            if (!statusEl) return;
+
+            document.getElementById('status-icon').textContent = icon;
+            document.getElementById('status-title').textContent = title;
+            document.getElementById('status-message').textContent = message;
+            document.getElementById('status-details').textContent = details;
+
+            const progressEl = document.getElementById('status-progress');
+            const progressBar = document.getElementById('status-progress-bar');
+            if (progress !== null) {
+                progressEl.style.display = 'block';
+                progressBar.style.width = `${progress}%`;
+            } else {
+                progressEl.style.display = 'none';
+            }
+
+            statusEl.style.display = 'block';
+        }
+
+        function hideTransactionStatus() {
+            const statusEl = document.getElementById('transaction-status');
+            if (statusEl) {
+                statusEl.style.display = 'none';
+            }
+        }
+
+        // Initialize transaction event listeners (Article XI, Section 11.3)
+        async function setupTransactionEventListeners() {
+            if (!window.__TAURI__ || !window.__TAURI__.event) {
+                console.warn('[Feature 007] Tauri event API not available for transaction listeners');
+                return;
+            }
+
+            try {
+                const { listen } = window.__TAURI__.event;
+
+                // transaction:initiated
+                transactionEventListeners.push(await listen('transaction:initiated', (event) => {
+                    console.log('[Event] transaction:initiated', event.payload);
+                    const { recipient, amount } = event.payload;
+                    const btpc = (amount / 100000000).toFixed(8);
+                    showTransactionStatus('📤', 'Transaction Initiated', `Sending ${btpc} BTPC`, `To: ${recipient.substring(0, 20)}...`, 10);
+                }));
+
+                // fee:estimated
+                transactionEventListeners.push(await listen('fee:estimated', (event) => {
+                    console.log('[Event] fee:estimated', event.payload);
+                    const { total_fee, fee_rate, transaction_size } = event.payload;
+                    const feeBtpc = (total_fee / 100000000).toFixed(8);
+                    showTransactionStatus('💰', 'Fee Estimated', `${feeBtpc} BTPC`, `Rate: ${fee_rate} sat/byte | Size: ${transaction_size} bytes`, 15);
+                }));
+
+                // utxo:reserved
+                transactionEventListeners.push(await listen('utxo:reserved', (event) => {
+                    console.log('[Event] utxo:reserved', event.payload);
+                    const { utxo_count, total_amount } = event.payload;
+                    const btpc = (total_amount / 100000000).toFixed(8);
+                    showTransactionStatus('🔒', 'UTXOs Reserved', `Locked ${utxo_count} UTXOs`, `Total: ${btpc} BTPC`, 20);
+                }));
+
+                // transaction:validated
+                transactionEventListeners.push(await listen('transaction:validated', (event) => {
+                    console.log('[Event] transaction:validated', event.payload);
+                    const { inputs_count, outputs_count, fee } = event.payload;
+                    const feeBtpc = (fee / 100000000).toFixed(8);
+                    showTransactionStatus('✅', 'Transaction Validated', `Ready to sign`, `${inputs_count} inputs, ${outputs_count} outputs | Fee: ${feeBtpc} BTPC`, 30);
+                }));
+
+                // transaction:signing_started
+                transactionEventListeners.push(await listen('transaction:signing_started', (event) => {
+                    console.log('[Event] transaction:signing_started', event.payload);
+                    const { inputs_to_sign } = event.payload;
+                    showTransactionStatus('✍️', 'Signing Transaction', `Generating ML-DSA signatures...`, `Signing ${inputs_to_sign} input(s)`, 40);
+                }));
+
+                // transaction:input_signed
+                transactionEventListeners.push(await listen('transaction:input_signed', (event) => {
+                    console.log('[Event] transaction:input_signed', event.payload);
+                    const { input_index, signature_algorithm } = event.payload;
+                    showTransactionStatus('✍️', 'Signing In Progress', `Input ${input_index + 1} signed`, `Algorithm: ${signature_algorithm}`, 50);
+                }));
+
+                // transaction:signed
+                transactionEventListeners.push(await listen('transaction:signed', (event) => {
+                    console.log('[Event] transaction:signed', event.payload);
+                    const { signatures_count } = event.payload;
+                    showTransactionStatus('🔏', 'Transaction Signed', `All ${signatures_count} signature(s) verified`, 'Ready to broadcast', 60);
+                }));
+
+                // transaction:broadcast
+                transactionEventListeners.push(await listen('transaction:broadcast', (event) => {
+                    console.log('[Event] transaction:broadcast', event.payload);
+                    const { broadcast_to_peers } = event.payload;
+                    showTransactionStatus('📡', 'Broadcasting', `Sending to ${broadcast_to_peers} peer(s)...`, 'Waiting for network confirmation', 70);
+                }));
+
+                // transaction:mempool_accepted
+                transactionEventListeners.push(await listen('transaction:mempool_accepted', (event) => {
+                    console.log('[Event] transaction:mempool_accepted', event.payload);
+                    const { mempool_size, position } = event.payload;
+                    showTransactionStatus('⏳', 'In Mempool', `Position ${position} of ${mempool_size}`, 'Waiting for block confirmation', 80);
+                }));
+
+                // transaction:confirmed
+                transactionEventListeners.push(await listen('transaction:confirmed', (event) => {
+                    console.log('[Event] transaction:confirmed', event.payload);
+                    const { block_height, confirmations } = event.payload;
+                    showTransactionStatus('✅', 'Transaction Confirmed!', `Included in block #${block_height}`, `${confirmations} confirmation(s)`, 100);
+
+                    // Refresh transaction list and wallets
+                    loadTransactions();
+                    loadWallets();
+
+                    // Hide status after 5 seconds
+                    setTimeout(hideTransactionStatus, 5000);
+                }));
+
+                // transaction:confirmation_update
+                transactionEventListeners.push(await listen('transaction:confirmation_update', (event) => {
+                    console.log('[Event] transaction:confirmation_update', event.payload);
+                    const { confirmations, is_final } = event.payload;
+                    if (is_final) {
+                        showTransactionStatus('🎉', 'Transaction Final', `${confirmations} confirmations`, 'Fully confirmed and irreversible', 100);
+                        setTimeout(hideTransactionStatus, 3000);
+                    }
+                }));
+
+                // transaction:failed
+                transactionEventListeners.push(await listen('transaction:failed', (event) => {
+                    console.log('[Event] transaction:failed', event.payload);
+                    const { stage, error_type, error_message, suggested_action } = event.payload;
+                    const action = suggested_action ? ` | ${suggested_action}` : '';
+                    showTransactionStatus('❌', 'Transaction Failed', `Failed at ${stage}: ${error_type}`, error_message + action, null);
+
+                    // Refresh to update wallet state
+                    loadWallets();
+                }));
+
+                // transaction:cancelled
+                transactionEventListeners.push(await listen('transaction:cancelled', (event) => {
+                    console.log('[Event] transaction:cancelled', event.payload);
+                    const { utxos_released } = event.payload;
+                    showTransactionStatus('🚫', 'Transaction Cancelled', `Released ${utxos_released} UTXO(s)`, 'Funds available again', null);
+                    setTimeout(hideTransactionStatus, 3000);
+                }));
+
+                // utxo:released
+                transactionEventListeners.push(await listen('utxo:released', (event) => {
+                    console.log('[Event] utxo:released', event.payload);
+                    const { reason, utxo_count } = event.payload;
+                    console.log(`UTXOs released: ${utxo_count} (reason: ${reason})`);
+                    // Refresh wallet to show updated available balance
+                    loadWallets();
+                }));
+
+                console.log('[Feature 007] Transaction event listeners initialized (Article XI.3)');
+            } catch (e) {
+                console.error('[Feature 007] Failed to setup transaction event listeners:', e);
+            }
+        }
+
         // Initialize TabManager on page load
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             tabManager = new TabManager({
                 page: 'transactions',
                 defaultTab: 'send'
             });
+
+            // Setup transaction event listeners (Article XI, Section 11.3)
+            await setupTransactionEventListeners();
+        });
+
+        // Clean up event listeners on page unload (Article XI, Section 11.6)
+        window.addEventListener('beforeunload', () => {
+            console.log('[Feature 007] Cleaning up transaction event listeners...');
+            transactionEventListeners.forEach(unlisten => {
+                if (unlisten && typeof unlisten === 'function') {
+                    unlisten();
+                }
+            });
+            transactionEventListeners = [];
         });
 
         // Load data on page load

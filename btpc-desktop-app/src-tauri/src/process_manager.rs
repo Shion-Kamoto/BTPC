@@ -206,7 +206,7 @@ impl ProcessManager {
             // If the process is still running, this will eventually reap it when it exits
             #[cfg(unix)]
             {
-                use std::os::unix::process::ExitStatusExt;
+                
                 // Wait in non-blocking mode for this specific child
                 // This prevents zombie accumulation
                 let _ = child.wait();

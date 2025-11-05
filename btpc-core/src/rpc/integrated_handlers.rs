@@ -372,7 +372,7 @@ impl IntegratedRpcHandlers {
         let consensus = consensus_engine.read().await;
         let chain_tip = blockchain_db
             .read()
-            .unwrap()
+            .map_err(|e| RpcServerError::Internal(format!("Lock poisoned: {}", e)))?
             .get_chain_tip()
             .map_err(|e| RpcServerError::Internal(e.to_string()))?;
 
@@ -439,7 +439,10 @@ impl IntegratedRpcHandlers {
         let hash = Hash::from_hex(block_hash)
             .map_err(|_| RpcServerError::InvalidParams("Invalid hash format".to_string()))?;
 
-        match blockchain_db.read().unwrap().get_block(&hash) {
+        let db = blockchain_db
+            .read()
+            .map_err(|e| RpcServerError::Internal(format!("Lock poisoned: {}", e)))?;
+        match db.get_block(&hash) {
             Ok(Some(block)) => {
                 // Validate block
                 let validation_result = block_validator.validate_block_with_context(&block).await;
@@ -565,7 +568,7 @@ impl IntegratedRpcHandlers {
         let consensus = consensus_engine.read().await;
         let chain_tip = blockchain_db
             .read()
-            .unwrap()
+            .map_err(|e| RpcServerError::Internal(format!("Lock poisoned: {}", e)))?
             .get_chain_tip()
             .map_err(|e| RpcServerError::Internal(e.to_string()))?;
 
@@ -868,7 +871,7 @@ impl IntegratedRpcHandlers {
         // Get chain tip to start iteration
         let tip_block = blockchain_db
             .read()
-            .unwrap()
+            .map_err(|e| RpcServerError::Internal(format!("Lock poisoned: {}", e)))?
             .get_chain_tip()
             .map_err(|e| RpcServerError::Internal(e.to_string()))?;
 
@@ -879,10 +882,12 @@ impl IntegratedRpcHandlers {
 
         // Iterate backwards through the blockchain
         while transactions.len() < limit && current_hash.is_some() {
-            let hash = current_hash.unwrap();
+            let Some(hash) = current_hash else {
+                break; // Redundant but explicit
+            };
             let block = blockchain_db
                 .read()
-                .unwrap()
+                .map_err(|e| RpcServerError::Internal(format!("Lock poisoned: {}", e)))?
                 .get_block(&hash)
                 .map_err(|e| RpcServerError::Internal(e.to_string()))?;
 

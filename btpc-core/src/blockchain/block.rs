@@ -215,7 +215,8 @@ impl Block {
         let coinbase = Transaction::coinbase(calculate_block_reward(0), Hash::random());
 
         // Calculate correct merkle root for the coinbase transaction
-        let merkle_root = calculate_merkle_root(&[coinbase.clone()]).unwrap();
+        let merkle_root = calculate_merkle_root(&[coinbase.clone()])
+            .expect("Merkle root calculation should not fail for test block with single coinbase transaction");
 
         let header = BlockHeader {
             version: 1,
@@ -258,7 +259,8 @@ impl Block {
         );
 
         // Calculate merkle root
-        header.merkle_root = calculate_merkle_root(&[coinbase.clone()]).unwrap();
+        header.merkle_root = calculate_merkle_root(&[coinbase.clone()])
+            .expect("Merkle root calculation should not fail for genesis block with single coinbase transaction");
 
         // Mine the block (find valid nonce)
         Self::mine_genesis_block(&mut header);
@@ -336,7 +338,7 @@ impl BlockHeader {
         // Check timestamp (must be reasonable)
         let current_time = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_else(|_| std::time::Duration::from_secs(0))
             .as_secs();
 
         // Not too far in the future (2 hours)

@@ -1,0 +1,19 @@
+{
+  "network": "Testnet",
+  "timestamp": 1727913600,
+  "message": "BTPC Testnet Genesis - Oct 2025 - Quantum-Resistant Blockchain",
+  "rewards": [
+    {
+      "address": "btpc_testnet_faucet_00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "amount": 5000000000000,
+      "label": "Testnet Faucet (50,000 BTPC)"
+    },
+    {
+      "address": "btpc_testnet_treasury_0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "amount": 5000000000000,
+      "label": "Testnet Treasury (50,000 BTPC)"
+    }
+  ],
+  "difficulty_target": 545259519,
+  "max_nonce": 10000000
+}

@@ -342,7 +342,9 @@ impl RpcMethods {
 
         // Iterate backwards through the blockchain
         while transactions.len() < limit && current_hash.is_some() {
-            let hash = current_hash.unwrap();
+            let Some(hash) = current_hash else {
+                break; // Redundant but explicit
+            };
             let block = self
                 .blockchain_db
                 .get_block(&hash)

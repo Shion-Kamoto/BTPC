@@ -30,8 +30,8 @@
 
 use crate::auth_crypto::{
     constant_time_compare, decrypt_aes_gcm, derive_key_argon2id, encrypt_aes_gcm,
-    generate_random_nonce, generate_random_salt, AES_KEY_SIZE, AES_NONCE_SIZE, AES_TAG_SIZE,
-    ARGON2_ITERATIONS, ARGON2_MEMORY_KB, ARGON2_PARALLELISM, SALT_SIZE,
+    generate_random_nonce, generate_random_salt, AES_KEY_SIZE,
+    ARGON2_ITERATIONS, ARGON2_MEMORY_KB, ARGON2_PARALLELISM,
 };
 use crate::auth_state::{get_credentials_path, MasterCredentials, SessionState};
 use serde::{Deserialize, Serialize};
@@ -237,7 +237,7 @@ pub fn create_master_password(
     );
 
     // Save to file
-    if let Err(_) = credentials.save_to_file(&creds_path) {
+    if credentials.save_to_file(&creds_path).is_err() {
         return CreatePasswordResponse {
             success: false,
             message: None,

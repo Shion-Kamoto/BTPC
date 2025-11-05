@@ -295,11 +295,13 @@ impl BlockChain {
     /// Create test blockchain with blocks
     #[cfg(test)]
     pub fn create_test_blockchain_with_blocks(count: u32) -> Self {
-        let mut chain = BlockChain::new_for_network(Network::Regtest).unwrap();
+        let mut chain = BlockChain::new_for_network(Network::Regtest)
+            .expect("Test blockchain creation should not fail");
 
         // Add genesis
         let genesis = Block::create_genesis_block();
-        chain.initialize_with_genesis(genesis).unwrap();
+        chain.initialize_with_genesis(genesis)
+            .expect("Test genesis initialization should not fail");
 
         // Add additional blocks
         for i in 1..count {
@@ -309,9 +311,11 @@ impl BlockChain {
 
             // Recalculate merkle root
             block.header.merkle_root =
-                crate::blockchain::calculate_merkle_root(&block.transactions).unwrap();
+                crate::blockchain::calculate_merkle_root(&block.transactions)
+                    .expect("Test merkle root calculation should not fail");
 
-            chain.add_block(block).unwrap();
+            chain.add_block(block)
+                .expect("Test block addition should not fail");
         }
 
         chain

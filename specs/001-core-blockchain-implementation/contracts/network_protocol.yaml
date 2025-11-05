@@ -1,0 +1,352 @@
+openapi: 3.0.3
+info:
+  title: BTPC P2P Network Protocol
+  description: Bitcoin-compatible P2P networking for BTPC quantum-resistant blockchain
+  version: 1.0.0
+  contact:
+    name: BTPC Project
+    email: contact@btpc.org
+
+# Note: This represents the P2P protocol as REST-like API for documentation
+# The actual implementation uses TCP binary protocol compatible with Bitcoin
+
+paths:
+  /p2p/handshake:
+    post:
+      summary: Initiate peer handshake
+      description: Establishes connection with remote BTPC node
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                version:
+                  type: integer
+                  description: Protocol version
+                services:
+                  type: integer
+                  description: Node services bitmask
+                timestamp:
+                  type: integer
+                  description: Current timestamp
+                addr_recv:
+                  $ref: '#/components/schemas/NetworkAddress'
+                addr_from:
+                  $ref: '#/components/schemas/NetworkAddress'
+                nonce:
+                  type: integer
+                  description: Random nonce for connection identification
+                user_agent:
+                  type: string
+                  description: Node software identification
+                start_height:
+                  type: integer
+                  description: Current blockchain height
+                relay:
+                  type: boolean
+                  description: Whether to relay transactions
+              required: [version, services, timestamp, addr_recv, addr_from, nonce, user_agent, start_height]
+      responses:
+        '200':
+          description: Handshake accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HandshakeResponse'
+        '400':
+          description: Invalid handshake parameters
+        '403':
+          description: Peer rejected or banned
+
+  /p2p/blocks/inventory:
+    post:
+      summary: Block inventory announcement
+      description: Announces availability of new blocks to peers
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                inventory:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/InventoryItem'
+                  maxItems: 500
+              required: [inventory]
+      responses:
+        '200':
+          description: Inventory processed
+        '400':
+          description: Invalid inventory format
+
+  /p2p/blocks/request:
+    post:
+      summary: Request blocks from peer
+      description: Requests specific blocks by hash or height range
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                block_hashes:
+                  type: array
+                  items:
+                    type: string
+                    format: hex
+                    pattern: '^[a-fA-F0-9]{128}$'
+                  maxItems: 500
+                start_height:
+                  type: integer
+                  minimum: 0
+                  description: Start of height range (alternative to hashes)
+                end_height:
+                  type: integer
+                  minimum: 0
+                  description: End of height range
+      responses:
+        '200':
+          description: Block request queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  queued_count:
+                    type: integer
+                    description: Number of blocks queued for sending
+        '400':
+          description: Invalid request parameters
+        '429':
+          description: Rate limited
+
+  /p2p/transactions/relay:
+    post:
+      summary: Relay transaction to network
+      description: Broadcasts transaction to connected peers
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Transaction'
+      responses:
+        '200':
+          description: Transaction relayed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  txid:
+                    type: string
+                    format: hex
+                  relayed_to:
+                    type: integer
+                    description: Number of peers transaction was sent to
+        '400':
+          description: Invalid transaction
+        '409':
+          description: Transaction already known
+
+  /p2p/peers/discovery:
+    get:
+      summary: Discover new peers
+      description: Gets list of known peers for network expansion
+      parameters:
+        - name: count
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+          description: Number of peers to return
+      responses:
+        '200':
+          description: Peer list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  peers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PeerInfo'
+                  timestamp:
+                    type: integer
+                    description: Timestamp of peer list generation
+
+  /p2p/ping:
+    post:
+      summary: Ping peer for connectivity
+      description: Tests connection and measures latency
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nonce:
+                  type: integer
+                  description: Random nonce for ping identification
+              required: [nonce]
+      responses:
+        '200':
+          description: Pong response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nonce:
+                    type: integer
+                    description: Echo of ping nonce
+                  timestamp:
+                    type: integer
+                    description: Peer timestamp
+
+components:
+  schemas:
+    NetworkAddress:
+      type: object
+      properties:
+        services:
+          type: integer
+          description: Node services bitmask
+        ip:
+          type: string
+          format: ipv4
+          description: IPv4 address
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+          description: TCP port
+      required: [services, ip, port]
+
+    HandshakeResponse:
+      type: object
+      properties:
+        version:
+          type: integer
+        services:
+          type: integer
+        timestamp:
+          type: integer
+        nonce:
+          type: integer
+        user_agent:
+          type: string
+        start_height:
+          type: integer
+        relay:
+          type: boolean
+        accepted:
+          type: boolean
+          description: Whether handshake was accepted
+      required: [version, services, timestamp, nonce, user_agent, start_height, relay, accepted]
+
+    InventoryItem:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: ["block", "transaction"]
+        hash:
+          type: string
+          format: hex
+          pattern: '^[a-fA-F0-9]{128}$'
+          description: SHA-512 hash of item
+      required: [type, hash]
+
+    PeerInfo:
+      type: object
+      properties:
+        address:
+          $ref: '#/components/schemas/NetworkAddress'
+        last_seen:
+          type: integer
+          description: Timestamp of last successful connection
+        version:
+          type: integer
+          description: Protocol version supported
+        user_agent:
+          type: string
+          description: Node software identification
+        height:
+          type: integer
+          description: Last known blockchain height
+        latency_ms:
+          type: number
+          description: Average connection latency
+      required: [address, last_seen]
+
+    Transaction:
+      type: object
+      properties:
+        version:
+          type: integer
+        inputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionInput'
+        outputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionOutput'
+        lock_time:
+          type: integer
+      required: [version, inputs, outputs, lock_time]
+
+    TransactionInput:
+      type: object
+      properties:
+        previous_output:
+          $ref: '#/components/schemas/OutPoint'
+        script_sig:
+          type: string
+          format: hex
+          description: ML-DSA signature script
+        sequence:
+          type: integer
+      required: [previous_output, script_sig, sequence]
+
+    TransactionOutput:
+      type: object
+      properties:
+        value:
+          type: integer
+          minimum: 0
+        script_pubkey:
+          type: string
+          format: hex
+      required: [value, script_pubkey]
+
+    OutPoint:
+      type: object
+      properties:
+        txid:
+          type: string
+          format: hex
+          pattern: '^[a-fA-F0-9]{128}$'
+        vout:
+          type: integer
+          minimum: 0
+      required: [txid, vout]
+
+# Network Protocol Constants:
+# - Magic Bytes: 0x42544001 (mainnet), 0x4254FF01 (testnet), 0x4254FFFF (regtest)
+# - Protocol Version: 70016 (Bitcoin-compatible base)
+# - Default Port: 8333 (mainnet), 18333 (testnet), 18444 (regtest)
+# - Max Message Size: 32MB
+# - Max Inventory Items: 50000 per message
+# - Connection Timeout: 60 seconds
+# - Ping Interval: 120 seconds

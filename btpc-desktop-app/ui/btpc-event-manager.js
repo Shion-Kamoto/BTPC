@@ -309,8 +309,8 @@ if (typeof module !== 'undefined' && module.exports) {
     };
 }
 
-// Make available globally
-window.btpcEventManager = {
+// Make available globally (renamed to avoid conflict with btpc-event-listeners.js)
+window.btpcEventUtils = {
     EventListenerManager,
     PageController,
     CrossPageEventManager,

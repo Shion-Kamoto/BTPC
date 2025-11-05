@@ -1,0 +1,416 @@
+openapi: 3.0.3
+info:
+  title: BTPC Wallet API
+  description: |
+    Wallet management API for BTPC quantum-resistant cryptocurrency.
+    Handles ML-DSA key generation, transaction creation, and address management.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8333
+    description: Local wallet service
+
+paths:
+  /api/v1/wallet/create:
+    post:
+      summary: Create new wallet
+      description: Creates a new HD wallet with ML-DSA key generation
+      operationId: createWallet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - passphrase
+              properties:
+                name:
+                  type: string
+                  description: Wallet name
+                passphrase:
+                  type: string
+                  description: Wallet encryption passphrase
+                network:
+                  type: string
+                  enum: ["mainnet", "testnet", "regtest"]
+                  default: "mainnet"
+      responses:
+        '200':
+          description: Wallet created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletInfo'
+
+  /api/v1/wallet/address/new:
+    post:
+      summary: Generate new address
+      description: Generates a new ML-DSA address for receiving funds
+      operationId: generateAddress
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - wallet_name
+              properties:
+                wallet_name:
+                  type: string
+                  description: Wallet name
+                label:
+                  type: string
+                  description: Address label
+      responses:
+        '200':
+          description: New address generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Address'
+
+  /api/v1/wallet/transaction/create:
+    post:
+      summary: Create transaction
+      description: Creates a new transaction with ML-DSA signatures
+      operationId: createTransaction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - wallet_name
+                - outputs
+              properties:
+                wallet_name:
+                  type: string
+                  description: Source wallet name
+                outputs:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - address
+                      - amount
+                    properties:
+                      address:
+                        type: string
+                        description: Destination BTPC address
+                      amount:
+                        type: number
+                        description: Amount to send in BTPC
+                fee_rate:
+                  type: number
+                  description: Fee rate per byte
+                  default: 1.0
+      responses:
+        '200':
+          description: Transaction created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnsignedTransaction'
+
+  /api/v1/wallet/transaction/sign:
+    post:
+      summary: Sign transaction
+      description: Signs a transaction with ML-DSA private keys
+      operationId: signTransaction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - wallet_name
+                - transaction_hex
+                - passphrase
+              properties:
+                wallet_name:
+                  type: string
+                  description: Wallet name
+                transaction_hex:
+                  type: string
+                  description: Unsigned transaction (hex)
+                passphrase:
+                  type: string
+                  description: Wallet passphrase
+      responses:
+        '200':
+          description: Transaction signed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignedTransaction'
+
+  /api/v1/wallet/keys/export:
+    post:
+      summary: Export wallet keys
+      description: Exports wallet private keys (encrypted)
+      operationId: exportKeys
+      security:
+        - WalletAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - wallet_name
+                - passphrase
+              properties:
+                wallet_name:
+                  type: string
+                  description: Wallet name
+                passphrase:
+                  type: string
+                  description: Wallet passphrase
+                format:
+                  type: string
+                  enum: ["wif", "json", "seed"]
+                  default: "json"
+      responses:
+        '200':
+          description: Keys exported
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportedKeys'
+
+components:
+  securitySchemes:
+    WalletAuth:
+      type: http
+      scheme: bearer
+      description: Wallet authentication token
+
+  schemas:
+    WalletInfo:
+      type: object
+      required:
+        - name
+        - network
+        - addresses_generated
+        - balance
+        - encrypted
+      properties:
+        name:
+          type: string
+          description: Wallet name
+        network:
+          type: string
+          enum: ["mainnet", "testnet", "regtest"]
+          description: Network type
+        addresses_generated:
+          type: integer
+          description: Number of generated addresses
+        balance:
+          $ref: '#/components/schemas/Balance'
+        encrypted:
+          type: boolean
+          description: Whether wallet is encrypted
+        creation_time:
+          type: integer
+          description: Wallet creation timestamp
+        backup_seed:
+          type: string
+          description: Mnemonic backup seed (only returned on creation)
+
+    Address:
+      type: object
+      required:
+        - address
+        - public_key
+        - derivation_path
+      properties:
+        address:
+          type: string
+          description: BTPC address (starts with 'btpc_')
+          pattern: '^btpc_[0-9a-f]{40}$'
+        public_key:
+          type: string
+          description: ML-DSA public key (hex, 1952 bytes)
+          pattern: '^[0-9a-f]{3904}$'
+        derivation_path:
+          type: string
+          description: HD derivation path
+          pattern: '^m/\d+/\d+/\d+$'
+        label:
+          type: string
+          description: Address label
+        balance:
+          $ref: '#/components/schemas/Balance'
+        used:
+          type: boolean
+          description: Whether address has been used
+
+    Balance:
+      type: object
+      required:
+        - confirmed
+        - unconfirmed
+        - total
+      properties:
+        confirmed:
+          type: number
+          minimum: 0
+          description: Confirmed balance in BTPC
+        unconfirmed:
+          type: number
+          minimum: 0
+          description: Unconfirmed balance in BTPC
+        total:
+          type: number
+          minimum: 0
+          description: Total balance in BTPC
+        utxo_count:
+          type: integer
+          minimum: 0
+          description: Number of UTXOs
+
+    UnsignedTransaction:
+      type: object
+      required:
+        - transaction_hex
+        - inputs
+        - outputs
+        - fee
+        - size
+      properties:
+        transaction_hex:
+          type: string
+          description: Unsigned transaction data (hex)
+        inputs:
+          type: array
+          items:
+            type: object
+            properties:
+              txid:
+                type: string
+                description: Input transaction hash
+              vout:
+                type: integer
+                description: Input output index
+              amount:
+                type: number
+                description: Input amount
+              address:
+                type: string
+                description: Input address
+        outputs:
+          type: array
+          items:
+            type: object
+            properties:
+              address:
+                type: string
+                description: Output address
+              amount:
+                type: number
+                description: Output amount
+        fee:
+          type: number
+          description: Transaction fee
+        size:
+          type: integer
+          description: Transaction size in bytes
+        weight:
+          type: integer
+          description: Transaction weight
+
+    SignedTransaction:
+      type: object
+      required:
+        - transaction_hex
+        - signatures
+        - ready_to_broadcast
+      properties:
+        transaction_hex:
+          type: string
+          description: Signed transaction data (hex)
+        signatures:
+          type: array
+          items:
+            type: object
+            properties:
+              input_index:
+                type: integer
+                description: Input index
+              signature_hex:
+                type: string
+                description: ML-DSA signature (hex, 3309 bytes)
+                pattern: '^[0-9a-f]{6618}$'
+              public_key:
+                type: string
+                description: Signing public key (hex)
+              sighash_type:
+                type: integer
+                description: Signature hash type
+        ready_to_broadcast:
+          type: boolean
+          description: Whether transaction is ready for broadcast
+        txid:
+          type: string
+          description: Transaction ID after signing
+
+    ExportedKeys:
+      type: object
+      required:
+        - format
+        - encrypted
+        - data
+      properties:
+        format:
+          type: string
+          enum: ["wif", "json", "seed"]
+          description: Export format
+        encrypted:
+          type: boolean
+          description: Whether exported data is encrypted
+        data:
+          oneOf:
+            - type: string
+              description: Exported data (WIF or seed format)
+            - type: object
+              description: Exported data (JSON format)
+              properties:
+                addresses:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      address:
+                        type: string
+                      private_key:
+                        type: string
+                        description: Encrypted private key
+                      public_key:
+                        type: string
+                      derivation_path:
+                        type: string
+        checksum:
+          type: string
+          description: Data integrity checksum
+
+    Error:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          description: Error code
+        message:
+          type: string
+          description: Error description
+        details:
+          type: object
+          description: Additional error details

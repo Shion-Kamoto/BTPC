@@ -3,10 +3,10 @@
 //! Background service that monitors broadcast transactions for confirmations
 //! and automatically releases UTXO reservations when transactions are confirmed.
 
-use crate::rpc_client::RpcClient;
-use crate::transaction_commands::{TransactionState, TransactionStateManager, TransactionStatus};
+use btpc_desktop_app::rpc_client::RpcClient;
+use btpc_desktop_app::transaction_state::{TransactionState, TransactionStateManager, TransactionStatus};
 use crate::events::{TransactionEvent, UTXOEvent, ReleaseReason};
-use crate::utxo_manager::UTXOManager;
+use btpc_desktop_app::utxo_manager::UTXOManager;
 use crate::AppState;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -120,7 +120,7 @@ impl TransactionMonitor {
     }
 
     /// Handle a confirmed transaction
-    async fn handle_confirmation(&self, tx_state: &TransactionState, confirmations: u64, tx_info: &crate::rpc_client::TransactionInfo) {
+    async fn handle_confirmation(&self, tx_state: &TransactionState, confirmations: u64, tx_info: &btpc_desktop_app::rpc_client::TransactionInfo) {
         let tx_id = &tx_state.transaction_id;
 
         // Only process if not already marked as confirmed

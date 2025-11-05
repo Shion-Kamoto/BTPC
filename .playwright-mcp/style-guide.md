@@ -1,15 +1,21 @@
 # BTPC Desktop Application Style Guide
 
+**Last Updated:** 2025-10-07
+**Version:** 2.0 (Post-Redesign)
+**Status:** Production Ready
+
 ## Overview
 
-This style guide defines the visual design system for the BTPC (Bitcoin Proof-of-Time Consensus) desktop application. It establishes a cohesive design language that blends terminal aesthetics with modern interface design principles, drawing inspiration from Monero GUI wallet's comprehensive user experience patterns.
+This style guide defines the visual design system for the BTPC (Bitcoin Post-Quantum Cryptocurrency) desktop application. It establishes a cohesive design language with a modern quantum-themed aesthetic, drawing inspiration from Monero GUI wallet's battle-tested user experience patterns while adapting to BTPC's unique quantum-resistant branding.
 
 ### Key Design Principles
 - **Clarity**: Every UI element should have a clear purpose and label
 - **Security-First**: Sensitive information (seeds, keys) must have clear warnings
-- **Progressive Disclosure**: Simple mode vs Advanced mode for different user needs
+- **Progressive Disclosure**: Essential features first, advanced options accessible
 - **Feedback**: Immediate visual feedback for all user actions
 - **Accessibility**: Full ARIA labels and keyboard navigation support
+- **Quantum Theme**: Indigo/purple color palette reflecting quantum computing
+- **Professional**: Clean, modern aesthetic suitable for production deployment
 
 ## Brand Identity
 

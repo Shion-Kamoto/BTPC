@@ -3,22 +3,26 @@ use serde::{Deserialize, Serialize, Deserializer};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use chrono::{DateTime, Utc, NaiveDateTime};
 use btpc_core::crypto::Address;
 use uuid::Uuid;
 use parking_lot::Mutex;
 
-/// Normalize address for case-insensitive comparison
+/// Normalize address for case-insensitive comparison ONLY
 ///
-/// BTPC addresses should be compared case-insensitively to handle variations
-/// like "BTPC..." vs "btpc..." from different sources (wallet, RPC, etc.)
-fn normalize_address(address: &str) -> String {
+/// IMPORTANT: This function should ONLY be used for comparisons, NOT for storage.
+/// BTPC addresses use case-sensitive base58check encoding and MUST be stored
+/// in their original case. Only use this function when comparing two addresses.
+fn normalize_address_for_comparison(address: &str) -> String {
     address.trim().to_lowercase()
 }
 
-/// Clean address by removing "Address: " prefix and normalizing case
+/// Clean address by removing "Address: " prefix ONLY (preserve case!)
+///
+/// IMPORTANT: This function removes prefixes but does NOT change case.
+/// Addresses MUST be stored in their original case (base58check encoding).
 fn clean_address(address: &str) -> String {
     let trimmed = address.trim();
     let without_prefix = if trimmed.starts_with("Address: ") {
@@ -26,8 +30,7 @@ fn clean_address(address: &str) -> String {
     } else {
         trimmed
     };
-    // Normalize to lowercase for case-insensitive comparison (T027)
-    normalize_address(without_prefix)
+    without_prefix.to_string()
 }
 
 /// Generate a Bitcoin-style block hash for display purposes
@@ -66,18 +69,11 @@ where
         .map_err(serde::de::Error::custom)
 }
 
-/// Custom deserializer for address fields that normalizes to lowercase (T028)
+/// REMOVED: deserialize_address_normalized - Addresses should NOT be normalized during storage!
 ///
-/// Ensures case-insensitive address comparison by normalizing all addresses
-/// to lowercase when loading UTXOs from disk. This fixes the balance bug
-/// where "BTPC..." from wallet doesn't match "btpc..." from stored UTXOs.
-fn deserialize_address_normalized<'de, D>(deserializer: D) -> Result<String, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let address = String::deserialize(deserializer)?;
-    Ok(normalize_address(&address))
-}
+/// BUG FIX (2025-11-05): This function was converting addresses to lowercase during deserialization,
+/// breaking base58check encoding. BTPC addresses MUST be stored in their original mixed case.
+/// Comparison should normalize, storage should preserve original case.
 
 
 /// Represents an Unspent Transaction Output
@@ -92,8 +88,8 @@ pub struct UTXO {
     pub value_credits: u64,
     /// Value in BTP (for display)
     pub value_btp: f64,
-    /// Address that can spend this UTXO (normalized to lowercase for case-insensitive comparison)
-    #[serde(deserialize_with = "deserialize_address_normalized")]
+    /// Address that can spend this UTXO (MUST be stored in original case!)
+    /// BUG FIX (2025-11-05): Removed deserialize_with to preserve original case
     pub address: String,
     /// Block height where this UTXO was created
     pub block_height: u64,
@@ -147,6 +143,10 @@ pub struct Transaction {
     pub outputs: Vec<TxOutput>,
     /// Lock time
     pub lock_time: u32,
+    /// Fork ID for replay protection (CRITICAL for signature validation!)
+    /// Mainnet=0, Testnet=1, Regtest=2
+    #[serde(default)]
+    pub fork_id: u8,
     /// Block height where this transaction was confirmed
     pub block_height: Option<u64>,
     /// Confirmation timestamp
@@ -246,25 +246,14 @@ impl UTXOManager {
 
     /// Load UTXOs from disk
     fn load_utxos(&mut self) -> Result<()> {
-        println!("📂 DEBUG: Loading UTXOs from: {}", self.utxo_file.display());
-
         if self.utxo_file.exists() {
             let content = fs::read_to_string(&self.utxo_file)?;
-            println!("📂 DEBUG: UTXO file content length: {} bytes", content.len());
-
             let utxos: Vec<UTXO> = serde_json::from_str(&content)?;
-            println!("📂 DEBUG: Parsed {} UTXOs from JSON", utxos.len());
 
             for utxo in utxos {
                 let key = format!("{}:{}", utxo.txid, utxo.vout);
-                println!("📂 DEBUG: Loading UTXO {} - Address: {}, Value: {} credits, Spent: {}",
-                        key, utxo.address, utxo.value_credits, utxo.spent);
                 self.utxos.insert(key, utxo);
             }
-
-            println!("📂 DEBUG: Final HashMap contains {} UTXOs", self.utxos.len());
-        } else {
-            println!("📂 DEBUG: UTXO file does not exist");
         }
         Ok(())
     }
@@ -345,6 +334,7 @@ impl UTXOManager {
                 script_pubkey: address.as_bytes().to_vec(), // Simplified
             }],
             lock_time: 0,
+            fork_id: 2, // Regtest by default (0=mainnet, 1=testnet, 2=regtest)
             block_height: Some(block_height),
             confirmed_at: Some(block_time),
             is_coinbase: true,
@@ -398,70 +388,39 @@ impl UTXOManager {
 
     /// Get all unspent UTXOs for an address
     pub fn get_unspent_utxos(&self, address: &str) -> Vec<&UTXO> {
-        // Clean the query address to ensure consistent comparison
+        // Clean and normalize the query address for case-insensitive comparison
         let clean_query_addr = clean_address(address);
-        println!("🔍 DEBUG: get_unspent_utxos called for address: '{}' -> cleaned: '{}' (length: {})",
-                 address, clean_query_addr, clean_query_addr.len());
-        println!("🔍 DEBUG: Total UTXOs in HashMap: {}", self.utxos.len());
+        let normalized_query_addr = normalize_address_for_comparison(&clean_query_addr);
 
-        let all_for_address: Vec<&UTXO> = self.utxos
+        self.utxos
             .values()
             .filter(|utxo| {
                 let utxo_clean = clean_address(&utxo.address);
-                utxo_clean == clean_query_addr
+                let utxo_normalized = normalize_address_for_comparison(&utxo_clean);
+                utxo_normalized == normalized_query_addr && !utxo.spent
             })
-            .collect();
-        println!("🔍 DEBUG: UTXOs matching address: {}", all_for_address.len());
-
-        let unspent: Vec<&UTXO> = self.utxos
-            .values()
-            .filter(|utxo| {
-                let utxo_clean = clean_address(&utxo.address);
-                let address_match = utxo_clean == clean_query_addr;
-                let is_unspent = !utxo.spent;
-                println!("🔍 DEBUG: UTXO {} - UTXO addr: '{}' (cleaned: '{}', len: {}), Requested addr: '{}' (cleaned: '{}', len: {}), Match: {}, Unspent: {}",
-                         utxo.txid,
-                         utxo.address,
-                         utxo_clean,
-                         utxo_clean.len(),
-                         address,
-                         clean_query_addr,
-                         clean_query_addr.len(),
-                         address_match,
-                         is_unspent);
-                address_match && is_unspent
-            })
-            .collect();
-
-        println!("🔍 DEBUG: Final unspent UTXOs count: {}", unspent.len());
-        unspent
+            .collect()
     }
 
     /// Get all UTXOs (spent and unspent) for an address
     pub fn get_all_utxos(&self, address: &str) -> Vec<&UTXO> {
         let clean_query_addr = clean_address(address);
+        let normalized_query_addr = normalize_address_for_comparison(&clean_query_addr);
         self.utxos
             .values()
             .filter(|utxo| {
                 let utxo_clean = clean_address(&utxo.address);
-                utxo_clean == clean_query_addr
+                let utxo_normalized = normalize_address_for_comparison(&utxo_clean);
+                utxo_normalized == normalized_query_addr
             })
             .collect()
     }
 
     /// Calculate balance for an address
     pub fn get_balance(&self, address: &str) -> (u64, f64) {
-        println!("💰 DEBUG: get_balance called for address: {}", address);
         let unspent = self.get_unspent_utxos(address);
-        println!("💰 DEBUG: Retrieved {} unspent UTXOs", unspent.len());
-
-        let total_credits: u64 = unspent.iter().map(|utxo| {
-            println!("💰 DEBUG: Adding UTXO {} with {} credits", utxo.txid, utxo.value_credits);
-            utxo.value_credits
-        }).sum();
-
+        let total_credits: u64 = unspent.iter().map(|utxo| utxo.value_credits).sum();
         let total_btp = total_credits as f64 / 100_000_000.0;
-        println!("💰 DEBUG: Final balance: {} credits ({:.8} BTP)", total_credits, total_btp);
         (total_credits, total_btp)
     }
 
@@ -586,6 +545,7 @@ impl UTXOManager {
             inputs,
             outputs,
             lock_time: 0,
+            fork_id: 2, // Regtest by default (TODO: get from network config)
             block_height: None,
             confirmed_at: None,
             is_coinbase: false,
@@ -762,13 +722,13 @@ impl UTXOManager {
     /// T018: Select UTXOs for a transaction (with reservation check)
     pub fn select_utxos_for_amount(&self, address: &str, amount_credits: u64) -> Result<Vec<UTXO>> {
         let reserved = self.reserved_utxos.lock();
-        let normalized_addr = normalize_address(address);
+        let normalized_addr = normalize_address_for_comparison(address);
 
         // Diagnostic counts
         let total_utxos = self.utxos.len();
         let unspent_utxos: Vec<_> = self.utxos.iter().filter(|(_, u)| !u.spent).collect();
         let matching_address: Vec<_> = unspent_utxos.iter()
-            .filter(|(_, u)| normalize_address(&u.address) == normalized_addr)
+            .filter(|(_, u)| normalize_address_for_comparison(&u.address) == normalized_addr)
             .collect();
         let not_reserved: Vec<_> = matching_address.iter()
             .filter(|(key, _)| !reserved.contains(*key))
@@ -784,7 +744,7 @@ impl UTXOManager {
         // Show unique addresses in system for debugging
         let unique_addrs: std::collections::HashSet<String> = self.utxos.iter()
             .filter(|(_, u)| !u.spent)
-            .map(|(_, u)| normalize_address(&u.address))
+            .map(|(_, u)| normalize_address_for_comparison(&u.address))
             .collect();
         println!("  Unique addresses in system: {:?}", unique_addrs);
 
@@ -793,7 +753,7 @@ impl UTXOManager {
             .iter()
             .filter_map(|(key, utxo)| {
                 if !utxo.spent &&
-                   normalize_address(&utxo.address) == normalized_addr &&
+                   normalize_address_for_comparison(&utxo.address) == normalized_addr &&
                    !reserved.contains(key) {  // T018: Skip reserved UTXOs
                     Some(utxo.clone())
                 } else {

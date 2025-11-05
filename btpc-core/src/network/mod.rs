@@ -199,7 +199,9 @@ impl NetworkConfig {
     /// Create default mainnet configuration
     pub fn mainnet() -> Self {
         NetworkConfig {
-            listen_addr: "0.0.0.0:8333".parse().unwrap(),
+            listen_addr: "0.0.0.0:8333"
+                .parse()
+                .expect("Valid mainnet listen address"),
             max_connections: 125,
             max_per_ip: 3,           // Bitcoin-style: max 3 connections per IP
             max_per_subnet_24: 10,   // Max 10 connections per /24 subnet
@@ -220,7 +222,9 @@ impl NetworkConfig {
     /// Create default testnet configuration
     pub fn testnet() -> Self {
         NetworkConfig {
-            listen_addr: "0.0.0.0:18333".parse().unwrap(),
+            listen_addr: "0.0.0.0:18333"
+                .parse()
+                .expect("Valid testnet listen address"),
             max_connections: 125,
             max_per_ip: 3,
             max_per_subnet_24: 10,

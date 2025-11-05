@@ -1,11 +1,20 @@
-<div align="center"> 
-  <img src="media/btpc-symbol-480.png" width="150" height="150"> <img src="https://raw.githubusercontent.com/btpc-ecosystem/meta/master/media/ecosystem-logo.png" width="150" height="150">
+<div align="center">
+  <img src="media/btpc-symbol-480.png" width="150" height="150">
 </div>
-<div align="center"> 
-  <h1>Guide for the btpc GUI wallet</h1>
-  <i>All you need to understand every single part of your btpc wallet, plus some useful tips</i>
-  <p>v1.9</p>
+<div align="center">
+  <h1>Guide for the BTPC Desktop Wallet</h1>
+  <i>Quantum-resistant cryptocurrency wallet with ML-DSA (Dilithium5) signatures</i>
+  <p>v2.0 - Production Ready</p>
 </div>
+
+---
+
+**Last Updated:** 2025-10-07
+**Status:** Production Ready (Grade A - 95/100)
+**UI Version:** 2.0 (Post-Redesign)
+**Architecture:** Tauri 2.0 + Rust Backend
+
+For detailed architecture information, see [`ARCHITECTURE.md`](../MD/ARCHITECTURE.md).
 
 &nbsp;
 

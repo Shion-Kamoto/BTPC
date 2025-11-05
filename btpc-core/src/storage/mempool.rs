@@ -38,8 +38,10 @@ impl Mempool {
         let tx_hash = tx.hash();
         let tx_size = tx.size();
 
-        let mut transactions = self.transactions.write().unwrap();
-        let mut current_size = self.current_size.write().unwrap();
+        let mut transactions = self.transactions.write()
+            .map_err(|e| MempoolError::LockPoisoned(e.to_string()))?;
+        let mut current_size = self.current_size.write()
+            .map_err(|e| MempoolError::LockPoisoned(e.to_string()))?;
 
         // Check if transaction already exists
         if transactions.contains_key(&tx_hash) {
@@ -60,14 +62,16 @@ impl Mempool {
 
     /// Get a transaction by hash
     pub fn get_transaction(&self, hash: &Hash) -> Option<Transaction> {
-        let transactions = self.transactions.read().unwrap();
+        let transactions = self.transactions.read().ok()?;
         transactions.get(hash).cloned()
     }
 
     /// Remove a transaction from the mempool
     pub fn remove_transaction(&self, hash: &Hash) -> Result<(), MempoolError> {
-        let mut transactions = self.transactions.write().unwrap();
-        let mut current_size = self.current_size.write().unwrap();
+        let mut transactions = self.transactions.write()
+            .map_err(|e| MempoolError::LockPoisoned(e.to_string()))?;
+        let mut current_size = self.current_size.write()
+            .map_err(|e| MempoolError::LockPoisoned(e.to_string()))?;
 
         if let Some(tx) = transactions.remove(hash) {
             *current_size = current_size.saturating_sub(tx.size());
@@ -79,8 +83,8 @@ impl Mempool {
 
     /// Remove multiple transactions (e.g., after block confirmation)
     pub fn remove_transactions(&self, hashes: &[Hash]) {
-        let mut transactions = self.transactions.write().unwrap();
-        let mut current_size = self.current_size.write().unwrap();
+        let Ok(mut transactions) = self.transactions.write() else { return };
+        let Ok(mut current_size) = self.current_size.write() else { return };
 
         for hash in hashes {
             if let Some(tx) = transactions.remove(hash) {
@@ -91,34 +95,38 @@ impl Mempool {
 
     /// Get all transactions in the mempool
     pub fn get_all_transactions(&self) -> Vec<Transaction> {
-        let transactions = self.transactions.read().unwrap();
+        let Ok(transactions) = self.transactions.read() else { return Vec::new() };
         transactions.values().cloned().collect()
     }
 
     /// Get transaction hashes for inventory announcements
     pub fn get_transaction_hashes(&self) -> Vec<Hash> {
-        let transactions = self.transactions.read().unwrap();
+        let Ok(transactions) = self.transactions.read() else { return Vec::new() };
         transactions.keys().cloned().collect()
     }
 
     /// Check if mempool contains a transaction
     pub fn contains(&self, hash: &Hash) -> bool {
-        let transactions = self.transactions.read().unwrap();
+        let Ok(transactions) = self.transactions.read() else { return false };
         transactions.contains_key(hash)
     }
 
     /// Clear all transactions from the mempool
     pub fn clear(&self) {
-        let mut transactions = self.transactions.write().unwrap();
-        let mut current_size = self.current_size.write().unwrap();
+        let Ok(mut transactions) = self.transactions.write() else { return };
+        let Ok(mut current_size) = self.current_size.write() else { return };
         transactions.clear();
         *current_size = 0;
     }
 
     /// Get statistics about the mempool
     pub fn get_statistics(&self) -> MempoolStats {
-        let transactions = self.transactions.read().unwrap();
-        let current_size = self.current_size.read().unwrap();
+        let Ok(transactions) = self.transactions.read() else {
+            return MempoolStats { transaction_count: 0, total_size: 0, total_fees: 0 }
+        };
+        let Ok(current_size) = self.current_size.read() else {
+            return MempoolStats { transaction_count: 0, total_size: 0, total_fees: 0 }
+        };
 
         MempoolStats {
             transaction_count: transactions.len(),
@@ -153,4 +161,6 @@ pub enum MempoolError {
     InvalidTransaction,
     #[error("Mempool full")]
     MempoolFull,
+    #[error("Lock poisoned: {0}")]
+    LockPoisoned(String),
 }

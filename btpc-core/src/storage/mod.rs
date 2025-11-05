@@ -280,10 +280,14 @@ impl StorageManager {
         let db_stats = self.database.get_statistics();
         let mempool_stats = self.mempool.get_statistics();
 
+        // Count UTXOs by iterating over keys with "utxo:" prefix
+        // This is efficient as it only counts keys, not reading values
+        let utxo_count = self.database.iter_prefix(b"utxo:").count();
+
         StorageStatistics {
             database_size: db_stats.total_size,
             blockchain_entries: db_stats.total_keys,
-            utxo_count: 0, // TODO: Implement UTXO count method
+            utxo_count,
             mempool_size: mempool_stats.total_size,
             mempool_transactions: mempool_stats.transaction_count,
             cache_hit_rate: db_stats.cache_hit_rate,

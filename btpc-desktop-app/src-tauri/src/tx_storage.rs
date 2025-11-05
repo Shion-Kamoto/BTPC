@@ -12,7 +12,7 @@ use chrono::{DateTime, Utc};
 use tracing::{info, warn, debug, instrument};
 
 // Re-export structures from utxo_manager
-use crate::utxo_manager::{UTXO, Transaction, TxInput, TxOutput};
+use btpc_desktop_app::utxo_manager::{UTXO, Transaction, TxInput};
 
 /// Column family names
 const CF_TRANSACTIONS: &str = "transactions";       // txid -> Transaction
@@ -97,7 +97,7 @@ impl TransactionStorage {
     }
 
     /// Get a column family handle
-    fn cf_handle(&self, name: &str) -> Result<Arc<BoundColumnFamily>> {
+    fn cf_handle(&self, name: &str) -> Result<Arc<BoundColumnFamily<'_>>> {
         self.db
             .cf_handle(name)
             .ok_or_else(|| anyhow!("Column family '{}' not found", name))

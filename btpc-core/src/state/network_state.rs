@@ -137,12 +137,15 @@ impl NetworkStateManager {
 
     /// Get current network state
     pub fn get_state(&self) -> Result<NetworkState> {
-        Ok(self.state.read().unwrap().clone())
+        let state = self.state.read()
+            .map_err(|e| anyhow!("Lock poisoned: {}", e))?;
+        Ok(state.clone())
     }
 
     /// Update state on new block
     pub fn on_new_block(&self, block: &Block, utxo_set_hash: [u8; 64], total_supply: u64) -> Result<()> {
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write()
+            .map_err(|e| anyhow!("Lock poisoned: {}", e))?;
         state.update_with_block(block, utxo_set_hash, total_supply);
 
         // Persist to database
@@ -153,7 +156,8 @@ impl NetworkStateManager {
 
     /// Recalculate network hashrate
     pub fn update_hashrate(&self, recent_blocks: &[Block]) -> Result<()> {
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write()
+            .map_err(|e| anyhow!("Lock poisoned: {}", e))?;
         state.calculate_hashrate(recent_blocks);
         self.save_state(&state)?;
         Ok(())
@@ -190,10 +194,12 @@ impl NetworkStateManager {
 
         // Try to load existing state
         if let Ok(stored_state) = manager.load_state() {
-            *manager.state.write().unwrap() = stored_state;
+            *manager.state.write()
+                .map_err(|e| anyhow!("Lock poisoned: {}", e))? = stored_state;
         } else {
             // Save genesis state
-            let state = manager.state.read().unwrap();
+            let state = manager.state.read()
+                .map_err(|e| anyhow!("Lock poisoned: {}", e))?;
             manager.save_state(&state)?;
         }
 

@@ -1,0 +1,14 @@
+{
+  "network": "Regtest",
+  "timestamp": 1760842137,
+  "message": "BTPC Regtest Genesis - Testing Quantum-Resistant Blockchain",
+  "rewards": [
+    {
+      "address": "genesis_dev_fund",
+      "amount": 100000000000000,
+      "label": "Development Fund"
+    }
+  ],
+  "difficulty_target": 545259519,
+  "max_nonce": 4294967295
+}

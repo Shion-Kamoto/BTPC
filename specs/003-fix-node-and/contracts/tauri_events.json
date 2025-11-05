@@ -1,0 +1,109 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Tauri Event Payloads Schema",
+  "description": "JSON schemas for all Tauri events emitted by backend (Article XI compliance)",
+  "type": "object",
+  "definitions": {
+    "ErrorOccurredPayload": {
+      "type": "object",
+      "properties": {
+        "error_type": {"type": "string"},
+        "user_message": {"type": "string"},
+        "technical_details": {"type": ["string", "null"]},
+        "timestamp": {"type": "string", "format": "date-time"},
+        "affected_component": {"type": "string"},
+        "crash_count": {"type": "integer"}
+      },
+      "required": ["error_type", "user_message", "timestamp", "affected_component", "crash_count"]
+    },
+    "ProcessStatusChangedPayload": {
+      "type": "object",
+      "properties": {
+        "process_type": {
+          "type": "string",
+          "enum": ["node", "miner", "wallet"],
+          "description": "Which process changed status"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["running", "stopped", "crashed"],
+          "description": "New status of the process"
+        },
+        "crash_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of times this process has crashed"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When status change occurred"
+        }
+      },
+      "required": ["process_type", "status", "crash_count", "timestamp"]
+    },
+    "BalanceUpdatedPayload": {
+      "type": "object",
+      "properties": {
+        "balance": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]{8}$",
+          "description": "Balance in BTP with 8 decimal places (e.g., '226.62500000')"
+        },
+        "utxo_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of UTXOs in the wallet"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When balance was calculated"
+        }
+      },
+      "required": ["balance", "utxo_count", "timestamp"]
+    },
+    "NodeStatusChangedPayload": {
+      "type": "object",
+      "properties": {
+        "running": {"type": "boolean"},
+        "blockchain_height": {"type": "integer", "minimum": 0},
+        "peer_count": {"type": "integer", "minimum": 0},
+        "sync_progress": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+        "network_type": {"type": "string", "enum": ["mainnet", "testnet", "regtest"]},
+        "auto_start_preference": {"type": ["boolean", "null"]},
+        "timestamp": {"type": "string", "format": "date-time"}
+      },
+      "required": ["running", "blockchain_height", "peer_count", "sync_progress", "network_type", "timestamp"]
+    },
+    "MiningStatusChangedPayload": {
+      "type": "object",
+      "properties": {
+        "active": {"type": "boolean"},
+        "hashrate": {"type": "number", "minimum": 0.0},
+        "blocks_found": {"type": "integer", "minimum": 0},
+        "thread_count": {"type": "integer", "minimum": 1},
+        "was_active_on_close": {"type": "boolean"},
+        "timestamp": {"type": "string", "format": "date-time"}
+      },
+      "required": ["active", "hashrate", "blocks_found", "thread_count", "timestamp"]
+    }
+  },
+  "events": {
+    "error_occurred": {
+      "$ref": "#/definitions/ErrorOccurredPayload"
+    },
+    "process_status_changed": {
+      "$ref": "#/definitions/ProcessStatusChangedPayload"
+    },
+    "balance_updated": {
+      "$ref": "#/definitions/BalanceUpdatedPayload"
+    },
+    "node_status_changed": {
+      "$ref": "#/definitions/NodeStatusChangedPayload"
+    },
+    "mining_status_changed": {
+      "$ref": "#/definitions/MiningStatusChangedPayload"
+    }
+  }
+}

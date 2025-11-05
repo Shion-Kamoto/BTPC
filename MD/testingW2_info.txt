@@ -1,0 +1,18 @@
+BTPC Wallet: testingW2
+==================================================
+
+Wallet ID:     6e78ab5a-9dc0-4b28-aeb0-c1160a9e119f
+Nickname:      testingW2
+Network:       Regtest
+Created:       2025-10-11T00:42:37.032371Z
+
+Address (Base58):
+mwjfUDDmMYdDyN54FyFKsNCCJMrYk3GCWY
+
+Seed Phrase:
+quantum resistant blockchain wallet secure protocol digital signature private public address network mining transaction output input script verify consensus proof hash chain block reward
+
+Private Key (hex):
+c3cc7f0d0c63a3922780719e61862e95f43689460a9eca4172011a307f4f8f7c
+
+⚠️  WARNING: Keep this information secure!

@@ -8,8 +8,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::time::sleep;
 
-use crate::rpc_client::{RpcClient, UTXOInfo};
-use crate::utxo_manager::{UTXOManager, UTXO, Transaction, TxInput, TxOutput};
+use btpc_desktop_app::rpc_client::{RpcClient, UTXOInfo};
+use btpc_desktop_app::utxo_manager::{UTXOManager, UTXO, Transaction, TxInput, TxOutput};
 use chrono::Utc;
 
 /// Blockchain synchronization service configuration
@@ -321,6 +321,7 @@ impl BlockchainSyncService {
                     })
                     .collect(),
                 lock_time: tx_info.locktime,
+                fork_id: 2, // Regtest network (sync service)
                 block_height: Some(height),
                 confirmed_at: Some(Utc::now()),
                 is_coinbase,

@@ -10,169 +10,14 @@
 
 use crate::AppState;
 use crate::events::{TransactionEvent, UTXOEvent, ReleaseReason};
-use crate::transaction_builder::{TransactionBuilder, TransactionSummary};
-use crate::utxo_manager::{Transaction, TxInput};
+use btpc_desktop_app::transaction_commands_core;  // TD-001: Import core business logic from lib.rs
+use btpc_desktop_app::transaction_builder::{TransactionBuilder, TransactionSummary};
+use btpc_desktop_app::transaction_state::{TransactionState, TransactionStatus, TransactionStateManager};
+use btpc_desktop_app::utxo_manager::Transaction;
 use btpc_core::crypto::{Address, Script};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use parking_lot::Mutex;
-use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
-
-/// Transaction state tracking with full transaction data
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TransactionState {
-    pub transaction_id: String,
-    pub status: TransactionStatus,
-    pub created_at: i64,
-    pub updated_at: i64,
-    pub error: Option<String>,
-    /// The actual transaction (if available)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub transaction: Option<Transaction>,
-    /// UTXO reservation token for cleanup
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reservation_token: Option<String>,
-    /// UTXO keys that were reserved
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub utxo_keys: Option<Vec<String>>,
-    /// Wallet ID for this transaction
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub wallet_id: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum TransactionStatus {
-    Creating,
-    Validating,
-    Signing,
-    Signed,
-    Broadcasting,
-    Broadcast,
-    Confirming,
-    Confirmed,
-    Failed,
-    Cancelled,
-}
-
-/// Global transaction state manager with transaction storage
-pub struct TransactionStateManager {
-    transactions: Arc<Mutex<std::collections::HashMap<String, TransactionState>>>,
-}
-
-impl TransactionStateManager {
-    pub fn new() -> Self {
-        Self {
-            transactions: Arc::new(Mutex::new(std::collections::HashMap::new())),
-        }
-    }
-
-    pub fn set_state(&self, tx_id: String, status: TransactionStatus, error: Option<String>) {
-        let mut txs = self.transactions.lock();
-        let now = Utc::now().timestamp();
-
-        txs.entry(tx_id.clone())
-            .and_modify(|state| {
-                state.status = status.clone();
-                state.updated_at = now;
-                state.error = error.clone();
-            })
-            .or_insert(TransactionState {
-                transaction_id: tx_id,
-                status,
-                created_at: now,
-                updated_at: now,
-                error,
-                transaction: None,
-                reservation_token: None,
-                utxo_keys: None,
-                wallet_id: None,
-            });
-    }
-
-    pub fn set_transaction(&self, tx_id: String, transaction: Transaction, status: TransactionStatus) {
-        let mut txs = self.transactions.lock();
-        let now = Utc::now().timestamp();
-
-        txs.entry(tx_id.clone())
-            .and_modify(|state| {
-                state.transaction = Some(transaction.clone());
-                state.status = status.clone();
-                state.updated_at = now;
-            })
-            .or_insert(TransactionState {
-                transaction_id: tx_id,
-                status,
-                created_at: now,
-                updated_at: now,
-                error: None,
-                transaction: Some(transaction),
-                reservation_token: None,
-                utxo_keys: None,
-                wallet_id: None,
-            });
-    }
-
-    /// Set transaction with full details including reservation info
-    pub fn set_transaction_with_reservation(
-        &self,
-        tx_id: String,
-        transaction: Transaction,
-        status: TransactionStatus,
-        reservation_token: String,
-        utxo_keys: Vec<String>,
-        wallet_id: String,
-    ) {
-        let mut txs = self.transactions.lock();
-        let now = Utc::now().timestamp();
-
-        txs.entry(tx_id.clone())
-            .and_modify(|state| {
-                state.transaction = Some(transaction.clone());
-                state.status = status.clone();
-                state.updated_at = now;
-                state.reservation_token = Some(reservation_token.clone());
-                state.utxo_keys = Some(utxo_keys.clone());
-                state.wallet_id = Some(wallet_id.clone());
-            })
-            .or_insert(TransactionState {
-                transaction_id: tx_id,
-                status,
-                created_at: now,
-                updated_at: now,
-                error: None,
-                transaction: Some(transaction),
-                reservation_token: Some(reservation_token),
-                utxo_keys: Some(utxo_keys),
-                wallet_id: Some(wallet_id),
-            });
-    }
-
-    pub fn get_state(&self, tx_id: &str) -> Option<TransactionState> {
-        self.transactions.lock().get(tx_id).cloned()
-    }
-
-    pub fn get_transaction(&self, tx_id: &str) -> Option<Transaction> {
-        self.transactions.lock().get(tx_id).and_then(|state| state.transaction.clone())
-    }
-
-    pub fn remove_state(&self, tx_id: &str) {
-        self.transactions.lock().remove(tx_id);
-    }
-
-    /// Get all transactions that are in Broadcast or Confirming state
-    pub fn get_pending_transactions(&self) -> Vec<TransactionState> {
-        self.transactions.lock()
-            .values()
-            .filter(|state| {
-                state.status == TransactionStatus::Broadcast ||
-                state.status == TransactionStatus::Confirming
-            })
-            .cloned()
-            .collect()
-    }
-}
 
 /// Request to create a transaction
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -202,13 +47,27 @@ pub struct CreateTransactionResponse {
 #[tauri::command]
 pub async fn create_transaction(
     state: State<'_, AppState>,
-    request: CreateTransactionRequest,
+    wallet_id: String,
+    from_address: String,
+    to_address: String,
+    amount: u64,
+    fee_rate: Option<u64>,
     app: AppHandle,
 ) -> Result<CreateTransactionResponse, String> {
+    // Reconstruct request from flattened parameters
+    let request = CreateTransactionRequest {
+        wallet_id: wallet_id.clone(),
+        from_address: from_address.clone(),
+        to_address: to_address.clone(),
+        amount,
+        fee_rate,
+    };
+
     println!("🔨 Creating transaction:");
-    println!("  From: {}", request.from_address);
-    println!("  To: {}", request.to_address);
-    println!("  Amount: {} satoshis", request.amount);
+    println!("  Wallet: {}", wallet_id);
+    println!("  From: {}", from_address);
+    println!("  To: {}", to_address);
+    println!("  Amount: {} satoshis", amount);
 
     // Emit transaction initiated event
     let _ = app.emit("transaction:initiated", TransactionEvent::TransactionInitiated {
@@ -489,14 +348,12 @@ pub struct BroadcastTransactionResponse {
     pub mempool_accepted: bool,
 }
 
-/// T028: Broadcast transaction to network
+/// T028: Broadcast transaction to network (THIN WRAPPER - TD-001)
 ///
-/// Steps:
-/// 1. Verify transaction is signed
-/// 2. Connect to node RPC
-/// 3. Submit transaction via sendrawtransaction
-/// 4. Monitor for mempool acceptance
-/// 5. Release UTXO reservation
+/// This is now a thin wrapper that:
+/// 1. Extracts Tauri-specific concerns (State, AppHandle, events)
+/// 2. Calls broadcast_transaction_core() with pure business logic
+/// 3. Emits events based on results
 #[tauri::command]
 pub async fn broadcast_transaction(
     state: State<'_, AppState>,
@@ -507,60 +364,37 @@ pub async fn broadcast_transaction(
 
     let tx_state = &state.tx_state_manager;
 
-    // Update state
+    // Update state to Broadcasting
     tx_state.set_state(request.transaction_id.clone(), TransactionStatus::Broadcasting, None);
 
     // Load signed transaction
     let transaction = tx_state.get_transaction(&request.transaction_id)
         .ok_or_else(|| format!("Transaction {} not found", request.transaction_id))?;
 
-    // Verify transaction is signed (all inputs have signatures)
-    let all_signed = transaction.inputs.iter().all(|input| !input.signature_script.is_empty());
-    if !all_signed {
-        tx_state.set_state(
-            request.transaction_id.clone(),
-            TransactionStatus::Failed,
-            Some("Transaction not fully signed".to_string()),
-        );
-        return Err("Transaction not fully signed - cannot broadcast".to_string());
-    }
-
-    // Serialize transaction to hex for RPC
-    let tx_bytes = serialize_transaction_to_bytes(&transaction);
-    let tx_hex = hex::encode(&tx_bytes);
-
-    // Connect to RPC node (from AppState config)
+    // Get RPC client
     let rpc_port = *state.active_rpc_port.read().await;
-    let rpc_client = crate::rpc_client::RpcClient::new("127.0.0.1", rpc_port);
+    let rpc_client = btpc_desktop_app::rpc_client::RpcClient::new("127.0.0.1", rpc_port);
 
-    // Test connection
-    if !rpc_client.ping().await.unwrap_or(false) {
-        tx_state.set_state(
-            request.transaction_id.clone(),
-            TransactionStatus::Failed,
-            Some("Cannot connect to BTPC node".to_string()),
-        );
-        return Err("Cannot connect to BTPC node - is the node running?".to_string());
-    }
+    // Call core business logic (TD-001: testable without Tauri!)
+    match transaction_commands_core::broadcast_transaction_core(
+        transaction,
+        &rpc_client,
+        tx_state,
+        &request.transaction_id,
+    ).await {
+        Ok(result) => {
+            println!("✅ Transaction broadcast successful: {}", result.transaction_id);
 
-    // Submit transaction via sendrawtransaction
-    match rpc_client.send_raw_transaction(&tx_hex).await {
-        Ok(txid) => {
-            println!("✅ Transaction broadcast successful: {}", txid);
-
-            // Update state to broadcast
-            tx_state.set_state(request.transaction_id.clone(), TransactionStatus::Broadcast, None);
-
-            // Emit transaction broadcast event
+            // Emit transaction broadcast event (Tauri-specific)
             let _ = app.emit("transaction:broadcast", TransactionEvent::TransactionBroadcast {
-                transaction_id: request.transaction_id.clone(),
-                broadcast_to_peers: 8, // Estimate based on typical peer count
-                network_response: format!("Accepted with txid: {}", txid),
+                transaction_id: result.transaction_id.clone(),
+                broadcast_to_peers: result.broadcast_to_peers,
+                network_response: result.network_response.clone(),
             });
 
             // Emit mempool accepted event
             let _ = app.emit("transaction:mempool_accepted", TransactionEvent::MempoolAccepted {
-                transaction_id: request.transaction_id.clone(),
+                transaction_id: result.transaction_id.clone(),
                 mempool_size: 0, // Will be updated by sync service
                 position: 0,
             });
@@ -572,23 +406,16 @@ pub async fn broadcast_transaction(
             println!("✅ Transaction broadcast to network");
 
             Ok(BroadcastTransactionResponse {
-                transaction_id: request.transaction_id,
-                broadcast_to_peers: 8,
-                mempool_accepted: true,
+                transaction_id: result.transaction_id,
+                broadcast_to_peers: result.broadcast_to_peers,
+                mempool_accepted: result.mempool_accepted,
             })
         }
         Err(e) => {
-            let error_msg = format!("RPC broadcast failed: {}", e);
+            let error_msg = e.to_string();
             println!("❌ {}", error_msg);
 
-            // Update state to failed
-            tx_state.set_state(
-                request.transaction_id.clone(),
-                TransactionStatus::Failed,
-                Some(error_msg.clone()),
-            );
-
-            // Emit failed event
+            // Emit failed event (Tauri-specific)
             let _ = app.emit("transaction:failed", TransactionEvent::TransactionFailed {
                 transaction_id: Some(request.transaction_id.clone()),
                 stage: crate::events::TransactionStage::Broadcasting,
@@ -687,6 +514,10 @@ fn serialize_for_signature(tx: &Transaction) -> Vec<u8> {
 
     // Lock time
     bytes.extend_from_slice(&tx.lock_time.to_le_bytes());
+
+    // CRITICAL FIX: Fork ID for replay protection (must match btpc-core validation!)
+    // This byte MUST be included for signatures to be valid
+    bytes.push(tx.fork_id);
 
     bytes
 }
@@ -815,7 +646,12 @@ fn validate_wallet_integrity(
     Ok(())
 }
 
-/// T029: Get transaction status
+/// T029: Get transaction status (THIN WRAPPER - TD-001)
+///
+/// This is now a thin wrapper that:
+/// 1. Extracts Tauri State
+/// 2. Calls get_transaction_status_core() with pure business logic
+/// 3. Maps error to String for Tauri
 #[tauri::command]
 pub async fn get_transaction_status(
     state: State<'_, AppState>,
@@ -823,11 +659,17 @@ pub async fn get_transaction_status(
 ) -> Result<TransactionState, String> {
     println!("🔍 Getting status for transaction: {}", transaction_id);
 
-    state.tx_state_manager.get_state(&transaction_id)
-        .ok_or_else(|| format!("Transaction {} not found", transaction_id))
+    // Call core business logic (TD-001: testable without Tauri!)
+    transaction_commands_core::get_transaction_status_core(&state.tx_state_manager, &transaction_id)
+        .map_err(|e| e.to_string())
 }
 
-/// T030: Cancel transaction
+/// T030: Cancel transaction (THIN WRAPPER - TD-001)
+///
+/// This is now a thin wrapper that:
+/// 1. Calls cancel_transaction_core() for validation and state update
+/// 2. Handles UTXO reservation release (side effect)
+/// 3. Emits events (Tauri-specific)
 #[tauri::command]
 pub async fn cancel_transaction(
     state: State<'_, AppState>,
@@ -836,27 +678,19 @@ pub async fn cancel_transaction(
 ) -> Result<(), String> {
     println!("❌ Cancelling transaction: {}", transaction_id);
 
-    let tx_state = &state.tx_state_manager;
+    // Call core business logic (TD-001: testable without Tauri!)
+    // This validates and updates state to Cancelled
+    let tx_status = transaction_commands_core::cancel_transaction_core(&state.tx_state_manager, &transaction_id)
+        .map_err(|e| e.to_string())?;
 
-    // Get current state
-    let tx_status = tx_state.get_state(&transaction_id)
-        .ok_or_else(|| format!("Transaction {} not found", transaction_id))?;
-
-    // Can only cancel if not yet broadcast
-    if tx_status.status == TransactionStatus::Broadcast
-        || tx_status.status == TransactionStatus::Confirmed {
-        return Err("Cannot cancel transaction that has been broadcast".to_string());
-    }
-
-    // Release UTXO reservations using stored reservation token
+    // Release UTXO reservations using stored reservation token (Tauri-specific side effect)
     if let (Some(reservation_token), Some(utxo_keys)) = (tx_status.reservation_token, tx_status.utxo_keys.clone()) {
         let utxo_manager = state.utxo_manager.lock().expect("Mutex poisoned");
-        // Release the reservation
         match utxo_manager.release_reservation(&reservation_token) {
             Ok(_) => {
                 println!("✅ Released UTXO reservation: {}", reservation_token);
 
-                // Emit UTXO released event
+                // Emit UTXO released event (Tauri-specific)
                 let _ = app.emit("utxo:released", UTXOEvent::UTXOReleased {
                     reservation_token: reservation_token.clone(),
                     reason: ReleaseReason::TransactionCancelled,
@@ -869,10 +703,7 @@ pub async fn cancel_transaction(
         }
     }
 
-    // Update state
-    tx_state.set_state(transaction_id.clone(), TransactionStatus::Cancelled, None);
-
-    // Emit transaction failed event (cancelled)
+    // Emit transaction failed event (cancelled) (Tauri-specific)
     let _ = app.emit("transaction:failed", TransactionEvent::TransactionFailed {
         transaction_id: Some(transaction_id.clone()),
         stage: crate::events::TransactionStage::Validation,
@@ -948,63 +779,4 @@ pub async fn estimate_fee(
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_transaction_state_manager() {
-        let manager = TransactionStateManager::new();
-
-        // Set state
-        manager.set_state(
-            "tx_123".to_string(),
-            TransactionStatus::Creating,
-            None,
-        );
-
-        // Get state
-        let state = manager.get_state("tx_123").unwrap();
-        assert_eq!(state.transaction_id, "tx_123");
-        assert_eq!(state.status, TransactionStatus::Creating);
-        assert!(state.error.is_none());
-
-        // Update state
-        manager.set_state(
-            "tx_123".to_string(),
-            TransactionStatus::Signed,
-            None,
-        );
-
-        let state = manager.get_state("tx_123").unwrap();
-        assert_eq!(state.status, TransactionStatus::Signed);
-
-        // Remove state
-        manager.remove_state("tx_123");
-        assert!(manager.get_state("tx_123").is_none());
-    }
-
-    #[test]
-    fn test_transaction_status_transitions() {
-        let manager = TransactionStateManager::new();
-        let tx_id = "tx_test".to_string();
-
-        // Valid transition: Creating -> Validating -> Signing -> Signed -> Broadcasting -> Broadcast
-        let transitions = vec![
-            TransactionStatus::Creating,
-            TransactionStatus::Validating,
-            TransactionStatus::Signing,
-            TransactionStatus::Signed,
-            TransactionStatus::Broadcasting,
-            TransactionStatus::Broadcast,
-            TransactionStatus::Confirming,
-            TransactionStatus::Confirmed,
-        ];
-
-        for status in transitions {
-            manager.set_state(tx_id.clone(), status.clone(), None);
-            let state = manager.get_state(&tx_id).unwrap();
-            assert_eq!(state.status, status);
-        }
-    }
-}
+// Tests for TransactionStateManager have been moved to transaction_state.rs module (TD-001)

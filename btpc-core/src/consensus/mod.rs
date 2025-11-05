@@ -414,7 +414,7 @@ impl ConsensusEngine {
     ) -> ConsensusResult<()> {
         let current_time = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_else(|_| std::time::Duration::from_secs(0))
             .as_secs();
 
         // Not too far in the future
@@ -465,7 +465,7 @@ impl ConsensusEngine {
     ) -> ConsensusResult<()> {
         let current_time = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_else(|_| std::time::Duration::from_secs(0))
             .as_secs();
 
         // Not too far in the future

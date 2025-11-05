@@ -15,11 +15,9 @@
 //! - No frontend state synchronization issues
 //! - Thread-safe Arc<RwLock> for concurrent access
 
-use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
@@ -280,7 +278,7 @@ impl MasterCredentials {
         }
 
         // [0-3] Magic bytes
-        if &bytes[0..4] != &MAGIC_BYTES {
+        if bytes[0..4] != MAGIC_BYTES {
             return Err(StateError::InvalidFormat("Invalid magic bytes".to_string()));
         }
 

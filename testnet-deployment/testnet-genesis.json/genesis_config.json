@@ -1,0 +1,14 @@
+{
+  "network": "Testnet",
+  "timestamp": 1759614480,
+  "message": "BTPC Genesis Block - Quantum-resistant Bitcoin",
+  "rewards": [
+    {
+      "address": "genesis_dev_fund",
+      "amount": 100000000000000,
+      "label": "Development Fund"
+    }
+  ],
+  "difficulty_target": 545259519,
+  "max_nonce": 4294967295
+}

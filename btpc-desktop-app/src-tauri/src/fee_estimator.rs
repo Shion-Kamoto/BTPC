@@ -56,7 +56,7 @@ impl FeeEstimator {
     /// Falls back to conservative estimate (1000 sat/byte) if RPC unavailable.
     pub async fn get_current_fee_rate(&self) -> Result<u64, String> {
         // Try to query RPC for current fee rate
-        let rpc_client = crate::rpc_client::RpcClient::new("127.0.0.1", self.rpc_port);
+        let rpc_client = btpc_desktop_app::rpc_client::RpcClient::new("127.0.0.1", self.rpc_port);
 
         // Test connection first
         match rpc_client.ping().await {

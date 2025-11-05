@@ -229,7 +229,9 @@ impl UTXOSet {
 
         // Spend all UTXOs
         for outpoint in outpoints {
-            let utxo = self.utxos.remove(outpoint).unwrap();
+            // Safe: We verified existence above in the validation loop
+            let utxo = self.utxos.remove(outpoint)
+                .expect("UTXO must exist - validated above");
             self.spent_outputs.insert(*outpoint);
             spent_utxos.push(utxo);
         }
@@ -302,7 +304,7 @@ impl UTXOSet {
         // Add some test UTXOs
         for i in 0..10 {
             let utxo = UTXO::create_test_utxo_with_id(i, 1000000, i == 0);
-            set.add_utxo(utxo).unwrap();
+            set.add_utxo(utxo).expect("Test UTXO addition should not fail");
         }
 
         set

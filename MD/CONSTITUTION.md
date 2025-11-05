@@ -1,7 +1,8 @@
 # BTPC (Bitcoin-Time Protocol Chain) Constitution
 
-**Version 1.0**
+**Version 1.1**
 **Effective Date: September 24, 2025**
+**Last Amendment: October 18, 2025** - Added Article VI, Section 6.3 (TDD Methodology)
 **Status: IMMUTABLE WITHOUT EXPLICIT AMENDMENT**
 
 ---
@@ -126,6 +127,72 @@ btpc-core/
 - **Network Compatibility**: Standard P2P protocols where possible
 - **API Compatibility**: Bitcoin-compatible RPC interface
 - **Wallet Compatibility**: Support standard wallet derivation paths
+
+### Section 6.3 - Test-Driven Development (TDD) Methodology (MANDATORY)
+
+**ALL development MUST follow strict TDD principles across ALL aspects of the project.**
+
+#### 6.3.1 - Red-Green-Refactor Cycle (REQUIRED)
+Every feature, bug fix, or code change MUST follow this exact sequence:
+
+1. **RED Phase - Write Failing Tests First**
+   - Write tests BEFORE any implementation code
+   - Tests must define expected behavior clearly
+   - Tests must fail initially (proving they test something)
+   - Document what the test validates
+
+2. **GREEN Phase - Implement Minimum Code**
+   - Write ONLY enough code to make tests pass
+   - No gold-plating or speculative features
+   - All tests must pass before proceeding
+
+3. **REFACTOR Phase - Improve Code Quality**
+   - Improve code structure while keeping tests green
+   - Maintain test coverage throughout refactoring
+   - All tests must still pass after refactoring
+
+#### 6.3.2 - TDD Coverage Requirements
+- **Unit Tests**: All public functions and methods
+- **Integration Tests**: All module interactions
+- **Contract Tests**: All RPC API endpoints
+- **Property Tests**: Cryptographic operations and consensus logic
+- **Regression Tests**: All bug fixes
+
+#### 6.3.3 - TDD Documentation Requirements
+Every code change MUST include:
+- Test file location and test names
+- Description of what tests validate
+- Evidence that RED phase occurred (initial test failure)
+- Evidence that GREEN phase succeeded (all tests pass)
+- Evidence that REFACTOR phase maintained test success
+
+#### 6.3.4 - TDD Enforcement
+- **NO implementation without tests first**
+- **NO merging code without passing tests**
+- **NO skipping RED-GREEN-REFACTOR cycle**
+- Session summaries MUST document TDD compliance
+- `/stop` command MUST verify TDD methodology followed
+- `/start` command MUST remind of TDD requirements
+
+#### 6.3.5 - TDD Examples and Evidence
+All session documentation MUST include:
+```markdown
+### TDD Compliance
+- ✅ RED: Test written first (test_feature_name.rs:45)
+- ✅ GREEN: Implementation passes (feature.rs:120)
+- ✅ REFACTOR: Code improved, tests still pass
+- ✅ Evidence: cargo test output showing pass
+```
+
+#### 6.3.6 - Prohibited Practices
+The following practices VIOLATE this Constitution:
+- Writing implementation code before tests
+- Skipping test writing for "simple" changes
+- Testing after implementation (test-after development)
+- Merging untested code
+- Disabling or commenting out failing tests
+
+**Violation of TDD methodology invalidates any code contribution.**
 
 ---
 

@@ -1,0 +1,189 @@
+openapi: 3.0.3
+info:
+  title: BTPC Cryptographic API
+  description: ML-DSA signature and SHA-512 hashing operations for BTPC blockchain
+  version: 1.0.0
+  contact:
+    name: BTPC Project
+    email: contact@btpc.org
+
+paths:
+  /crypto/sign:
+    post:
+      summary: Create ML-DSA (Dilithium) signature
+      description: Signs data using ML-DSA private key for quantum-resistant security
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: string
+                  format: hex
+                  description: Hex-encoded data to sign
+                private_key:
+                  type: string
+                  format: hex
+                  description: ML-DSA private key (hex-encoded)
+              required: [data, private_key]
+      responses:
+        '200':
+          description: Signature created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  signature:
+                    type: string
+                    format: hex
+                    description: ML-DSA signature (hex-encoded)
+                  algorithm:
+                    type: string
+                    enum: ["ML-DSA-65", "ML-DSA-87"]
+                    description: ML-DSA algorithm variant used
+        '400':
+          description: Invalid input data
+        '500':
+          description: Cryptographic operation failed
+
+  /crypto/verify:
+    post:
+      summary: Verify ML-DSA (Dilithium) signature
+      description: Verifies signature using ML-DSA public key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: string
+                  format: hex
+                  description: Original data that was signed
+                signature:
+                  type: string
+                  format: hex
+                  description: ML-DSA signature to verify
+                public_key:
+                  type: string
+                  format: hex
+                  description: ML-DSA public key
+              required: [data, signature, public_key]
+      responses:
+        '200':
+          description: Signature verification result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                    description: Whether signature is valid
+                  algorithm:
+                    type: string
+                    enum: ["ML-DSA-65", "ML-DSA-87"]
+                    description: ML-DSA algorithm variant detected
+        '400':
+          description: Invalid input data
+
+  /crypto/hash:
+    post:
+      summary: Compute SHA-512 hash
+      description: Computes SHA-512 double hash for proof-of-work and block validation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: string
+                  format: hex
+                  description: Data to hash
+                double_hash:
+                  type: boolean
+                  default: true
+                  description: Whether to perform double SHA-512 (Bitcoin-style)
+              required: [data]
+      responses:
+        '200':
+          description: Hash computed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hash:
+                    type: string
+                    format: hex
+                    description: SHA-512 hash (64 bytes hex-encoded)
+                  algorithm:
+                    type: string
+                    enum: ["SHA-512", "SHA-512d"]
+                    description: Hash algorithm used
+
+  /crypto/keygen:
+    post:
+      summary: Generate ML-DSA key pair
+      description: Generates new ML-DSA key pair for quantum-resistant cryptography
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                algorithm:
+                  type: string
+                  enum: ["ML-DSA-65", "ML-DSA-87"]
+                  default: "ML-DSA-65"
+                  description: ML-DSA algorithm variant
+                seed:
+                  type: string
+                  format: hex
+                  description: Optional entropy seed (hex-encoded)
+      responses:
+        '200':
+          description: Key pair generated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  private_key:
+                    type: string
+                    format: hex
+                    description: ML-DSA private key (hex-encoded)
+                  public_key:
+                    type: string
+                    format: hex
+                    description: ML-DSA public key (hex-encoded)
+                  algorithm:
+                    type: string
+                    enum: ["ML-DSA-65", "ML-DSA-87"]
+                    description: Algorithm used for key generation
+
+components:
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        code:
+          type: integer
+          description: Error code
+      required: [error, code]
+
+# Performance Requirements (per BTPC Constitution):
+# - ML-DSA signature generation: <2ms
+# - ML-DSA signature verification: <1.5ms
+# - SHA-512 hashing: <1ms for typical block data
+# - Memory usage: Constant-time operations for security

@@ -62,7 +62,7 @@ impl GenesisConfig {
         GenesisConfig {
             timestamp: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_else(|_| std::time::Duration::from_secs(0))
                 .as_secs(),
             message: "BTPC Regtest Genesis Block".to_string(),
             difficulty_target: DifficultyTarget::minimum_for_network(crate::Network::Regtest),

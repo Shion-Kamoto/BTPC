@@ -88,7 +88,7 @@ impl ReservationToken {
     /// # Returns
     /// New expiry timestamp
     pub fn extend_expiry(&mut self, additional_minutes: i64) -> DateTime<Utc> {
-        self.expires_at = self.expires_at + Duration::minutes(additional_minutes);
+        self.expires_at += Duration::minutes(additional_minutes);
         self.expires_at
     }
 

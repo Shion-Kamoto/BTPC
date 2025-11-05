@@ -10,8 +10,13 @@ pub mod process_health;
 pub mod lock_manager;
 pub mod utxo_manager;
 
+// RPC client module (moved from main.rs for TD-001 refactoring)
+pub mod rpc_client;
+
 // Transaction modules (Feature 007: Fix Transaction Sending)
 pub mod transaction_builder;
+pub mod transaction_commands_core; // TD-001: Testable business logic (no Tauri deps)
+pub mod transaction_state; // TD-001: Transaction state management (moved from transaction_commands.rs)
 // Note: transaction_commands is in main.rs only (needs access to AppState)
 
 // Authentication modules (Feature 006: Application-Level Login/Logout)
