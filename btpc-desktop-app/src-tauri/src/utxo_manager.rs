@@ -551,7 +551,7 @@ impl UTXOManager {
             inputs,
             outputs,
             lock_time: 0,
-            fork_id: 2, // Regtest by default (TODO: get from network config)
+            fork_id: 2, // Regtest (0=mainnet, 1=testnet, 2=regtest) - production: pass network from AppState
             block_height: None,
             confirmed_at: None,
             is_coinbase: false,
