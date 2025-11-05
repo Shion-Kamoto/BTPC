@@ -6,6 +6,7 @@
 #![allow(unused_variables)]
 
 mod gpu_miner;
+mod template_cache;
 
 use std::{
     sync::{
@@ -136,10 +137,25 @@ impl Miner {
 
         self.running.store(true, Ordering::SeqCst);
 
-        // Start mining threads
+        // Initialize template cache (60-second refresh interval)
+        println!("Initializing template cache (refresh interval: 60s)...");
+        let template_cache = Arc::new(template_cache::TemplateCache::new(
+            self.config.rpc_url.clone(),
+            Duration::from_secs(60),
+        ));
+
+        // Fetch initial template synchronously
+        println!("Fetching initial block template...");
+        template_cache.refresh_now()?;
+        println!("✅ Initial template fetched");
+
+        // Start background template updater
+        template_cache.clone().start_updater();
+
+        // Start mining threads with shared template cache
         let mut handles = Vec::new();
         for thread_id in 0..self.config.threads {
-            let handle = self.start_mining_thread(thread_id).await?;
+            let handle = self.start_mining_thread(thread_id, template_cache.clone()).await?;
             handles.push(handle);
         }
 
@@ -168,6 +184,7 @@ impl Miner {
     async fn start_mining_thread(
         &self,
         thread_id: usize,
+        template_cache: Arc<template_cache::TemplateCache>,
     ) -> Result<thread::JoinHandle<()>, Box<dyn std::error::Error>> {
         let running = Arc::clone(&self.running);
         let hash_counter = Arc::clone(&self.hash_counter);
@@ -177,7 +194,17 @@ impl Miner {
             println!("Mining thread {} started", thread_id);
 
             while running.load(Ordering::SeqCst) {
-                match Self::mine_block(&config, &hash_counter) {
+                // Get cached template (NO RPC CALL!)
+                let template = match template_cache.get_template() {
+                    Some(t) => t,
+                    None => {
+                        eprintln!("Thread {}: No template available, waiting...", thread_id);
+                        thread::sleep(Duration::from_secs(1));
+                        continue;
+                    }
+                };
+
+                match Self::mine_block_with_template(&template, &hash_counter) {
                     Ok(Some(block)) => {
                         println!("🎉 Block found by thread {}!", thread_id);
                         println!("Block hash: {}", block.hash().to_hex());
@@ -205,14 +232,11 @@ impl Miner {
         Ok(handle)
     }
 
-    /// Mine a single block attempt
-    fn mine_block(
-        config: &MinerConfig,
+    /// Mine a single block attempt with cached template (NO RPC CALL!)
+    fn mine_block_with_template(
+        block_template: &Block,
         hash_counter: &Arc<AtomicU64>,
     ) -> Result<Option<Block>, Box<dyn std::error::Error>> {
-        // Create a mining block template
-        let block_template = Self::create_block_template(config)?;
-
         // Use actual network difficulty from template
         use btpc_core::consensus::DifficultyTarget;
         let difficulty_target = DifficultyTarget::from_bits(block_template.header.bits);
