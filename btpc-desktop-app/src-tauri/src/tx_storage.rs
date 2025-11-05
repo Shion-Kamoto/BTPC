@@ -51,7 +51,6 @@ pub struct PaginatedTransactions {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransactionWithOutputs {
     pub txid: String,
-    pub version: u32,
     pub inputs: Vec<TxInput>,
     pub outputs: Vec<OutputWithAddress>,
     pub lock_time: u32,
@@ -280,7 +279,6 @@ impl TransactionStorage {
 
                 transactions.push(TransactionWithOutputs {
                     txid: tx.txid,
-                    version: tx.version,
                     inputs: tx.inputs,
                     outputs: outputs_with_address,
                     lock_time: tx.lock_time,
@@ -364,6 +362,68 @@ impl TransactionStorage {
         }
 
         Ok(count)
+    }
+
+    /// Get coinbase transactions (mining history) for an address
+    /// Returns most recent first
+    pub fn get_coinbase_transactions(&self, address: &str) -> Result<Vec<TransactionWithOutputs>> {
+        let cf_by_address = self.cf_handle(CF_TX_BY_ADDRESS)?;
+        let cf_tx = self.cf_handle(CF_TRANSACTIONS)?;
+
+        // Create prefix for address
+        let prefix = format!("{}:", address);
+
+        // Collect all transaction IDs for this address
+        let mut tx_ids = Vec::new();
+        let iter = self.db.iterator_cf(&cf_by_address, IteratorMode::From(prefix.as_bytes(), rocksdb::Direction::Forward));
+
+        for item in iter {
+            let (key, txid_bytes) = item?;
+            let key_str = String::from_utf8_lossy(&key);
+
+            // Stop if we've moved past this address's transactions
+            if !key_str.starts_with(&prefix) {
+                break;
+            }
+
+            let txid = String::from_utf8_lossy(&txid_bytes).to_string();
+            tx_ids.push(txid);
+        }
+
+        // Reverse for most-recent-first ordering
+        tx_ids.reverse();
+
+        // Fetch full transactions and filter for coinbase only
+        let mut coinbase_txs = Vec::new();
+        for txid in tx_ids {
+            if let Some(tx_bytes) = self.db.get_cf(&cf_tx, txid.as_bytes())? {
+                let tx: Transaction = bincode::deserialize(&tx_bytes)?;
+
+                // Only include coinbase transactions
+                if tx.is_coinbase {
+                    // Convert to TransactionWithOutputs
+                    let outputs_with_address: Vec<OutputWithAddress> = tx.outputs.iter().map(|out| {
+                        OutputWithAddress {
+                            value: out.value,
+                            address: Some(address.to_string()),
+                            script_pubkey: out.script_pubkey.clone(),
+                        }
+                    }).collect();
+
+                    coinbase_txs.push(TransactionWithOutputs {
+                        txid: tx.txid,
+                        inputs: tx.inputs,
+                        outputs: outputs_with_address,
+                        lock_time: tx.lock_time,
+                        block_height: tx.block_height,
+                        confirmed_at: tx.confirmed_at,
+                        is_coinbase: tx.is_coinbase,
+                    });
+                }
+            }
+        }
+
+        Ok(coinbase_txs)
     }
 
     /// Clear all data (for testing)

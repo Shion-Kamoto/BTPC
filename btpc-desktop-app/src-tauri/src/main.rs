@@ -1994,6 +1994,130 @@ async fn get_transaction_count_from_storage(
         .map_err(|e| format!("Failed to get transaction count: {}", e))
 }
 
+/// Get mining history (coinbase transactions) from RocksDB storage
+/// Returns all mined blocks for the current wallet address
+#[tauri::command]
+async fn get_mining_history_from_storage(
+    state: State<'_, AppState>,
+) -> Result<Vec<tx_storage::TransactionWithOutputs>, String> {
+    // Get wallet address from WalletManager
+    let address = {
+        let wallet_manager = state.wallet_manager.lock()
+            .map_err(|e| format!("Failed to lock wallet manager: {}", e))?;
+
+        match wallet_manager.get_default_wallet() {
+            Some(wallet) => wallet.address.clone(),
+            None => return Ok(Vec::new()),
+        }
+    };
+
+    state.tx_storage.get_coinbase_transactions(&address)
+        .map_err(|e| format!("Failed to get mining history: {}", e))
+}
+
+/// Migrate transactions from JSON wallet file to RocksDB
+#[tauri::command]
+async fn migrate_json_transactions_to_rocksdb(
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    use std::fs;
+    use chrono::DateTime;
+
+    // Get wallet address
+    let address = {
+        let wallet_manager = state.wallet_manager.lock()
+            .map_err(|e| format!("Failed to lock wallet manager: {}", e))?;
+
+        match wallet_manager.get_default_wallet() {
+            Some(wallet) => wallet.address.clone(),
+            None => return Err("No wallet available for migration".to_string()),
+        }
+    };
+
+    // Read JSON transactions file
+    let json_path = state.config.data_dir.join("wallet").join("wallet_transactions.json");
+    if !json_path.exists() {
+        return Ok(serde_json::json!({
+            "success": true,
+            "message": "No JSON transactions file found - nothing to migrate",
+            "migrated": 0
+        }));
+    }
+
+    let json_content = fs::read_to_string(&json_path)
+        .map_err(|e| format!("Failed to read JSON file: {}", e))?;
+
+    #[derive(serde::Deserialize)]
+    struct JsonTransaction {
+        txid: String,
+        version: u32,
+        inputs: Vec<utxo_manager::TxInput>,
+        outputs: Vec<JsonOutput>,
+        lock_time: u32,
+        fork_id: u8,
+        block_height: Option<u64>,
+        confirmed_at: Option<String>,
+        is_coinbase: bool,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct JsonOutput {
+        value: u64,
+        script_pubkey: Vec<u8>,
+    }
+
+    let json_txs: Vec<JsonTransaction> = serde_json::from_str(&json_content)
+        .map_err(|e| format!("Failed to parse JSON: {}", e))?;
+
+    let mut migrated_count = 0;
+    let mut skipped_count = 0;
+
+    // Migrate each transaction
+    for json_tx in json_txs {
+        // Convert to Transaction struct
+        let confirmed_at = json_tx.confirmed_at.as_ref().and_then(|s| {
+            DateTime::parse_from_rfc3339(s).ok().map(|dt| dt.with_timezone(&chrono::Utc))
+        });
+
+        let tx = utxo_manager::Transaction {
+            txid: json_tx.txid,
+            version: json_tx.version,
+            inputs: json_tx.inputs,
+            outputs: json_tx.outputs.into_iter().map(|o| utxo_manager::TxOutput {
+                value: o.value,
+                script_pubkey: o.script_pubkey,
+            }).collect(),
+            lock_time: json_tx.lock_time,
+            fork_id: json_tx.fork_id,
+            block_height: json_tx.block_height,
+            confirmed_at,
+            is_coinbase: json_tx.is_coinbase,
+        };
+
+        // Try to add to RocksDB
+        match state.tx_storage.add_transaction(&tx, &address) {
+            Ok(_) => {
+                migrated_count += 1;
+            }
+            Err(e) => {
+                // Skip if already exists
+                if e.to_string().contains("already exists") {
+                    skipped_count += 1;
+                } else {
+                    eprintln!("Failed to migrate transaction {}: {}", tx.txid, e);
+                }
+            }
+        }
+    }
+
+    Ok(serde_json::json!({
+        "success": true,
+        "message": format!("Migration complete: {} transactions migrated, {} skipped", migrated_count, skipped_count),
+        "migrated": migrated_count,
+        "skipped": skipped_count
+    }))
+}
+
 #[tauri::command]
 async fn create_transaction_preview(
     state: State<'_, AppState>,
@@ -2984,6 +3108,8 @@ fn main() {
             get_transaction_from_storage,
             get_wallet_balance_from_storage,
             get_transaction_count_from_storage,
+            get_mining_history_from_storage,
+            migrate_json_transactions_to_rocksdb,
             create_user,
             login_user,
             logout_user,

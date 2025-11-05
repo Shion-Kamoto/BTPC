@@ -626,11 +626,37 @@
             }
 
             try {
+                // Fetch persistent mining history from RocksDB (coinbase transactions)
+                const persistentHistory = await window.invoke('get_mining_history_from_storage');
+
+                // Convert coinbase transactions to log format for display
+                const coinbaseLogs = persistentHistory.map(tx => ({
+                    timestamp: tx.confirmed_at || new Date(tx.block_height * 1000).toISOString(),
+                    level: 'SUCCESS',
+                    message: `Block mined at height ${tx.block_height} · Reward: ${(tx.outputs[0].value / 100000000).toFixed(8)} BTPC · TxID: ${tx.txid}`
+                }));
+
+                // Also fetch recent in-memory logs for non-block events
                 const logs = await window.invoke('get_mining_logs');
-                allMiningLogs = logs;
+
+                // Combine persistent block history with recent logs
+                allMiningLogs = [...coinbaseLogs, ...logs];
+
+                // Update blocks found counter with persistent data
+                const blocksFound = persistentHistory.length;
+                document.getElementById('blocks-found').textContent = blocksFound;
+
                 renderHistory();
             } catch (e) {
                 console.error('Failed to fetch mining history:', e);
+                // Fallback to in-memory logs only
+                try {
+                    const logs = await window.invoke('get_mining_logs');
+                    allMiningLogs = logs;
+                    renderHistory();
+                } catch (fallbackError) {
+                    console.error('Fallback also failed:', fallbackError);
+                }
             }
         }
 

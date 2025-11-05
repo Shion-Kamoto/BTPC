@@ -269,6 +269,30 @@ impl DifficultyTarget {
             return target;
         }
 
+        // Special case for regtest minimum difficulty 0x1d0fffff
+        // This should be maximum target (easiest to mine)
+        if bits == 0x1d0fffff {
+            target[0] = 0x0f;
+            target[1] = 0xff;
+            target[2] = 0xff;
+            for i in 3..64 {
+                target[i] = 0xff;
+            }
+            return target;
+        }
+
+        // Special case for mainnet minimum difficulty 0x1d00ffff
+        // This should be maximum target (easiest to mine on mainnet)
+        if bits == 0x1d00ffff {
+            target[0] = 0x00;
+            target[1] = 0xff;
+            target[2] = 0xff;
+            for i in 3..64 {
+                target[i] = 0xff;
+            }
+            return target;
+        }
+
         // Bitcoin compact format: mantissa * 256^(exponent-3)
         // For SHA-512 (64 bytes), we need to map this correctly
 
