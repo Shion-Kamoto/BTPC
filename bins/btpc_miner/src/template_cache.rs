@@ -200,6 +200,8 @@ impl TemplateCache {
     }
 
     /// Get age of current template
+    /// Reserved for monitoring and metrics
+    #[allow(dead_code)]
     pub fn template_age(&self) -> Duration {
         let last_update = self.last_update.read()
             .expect("Last update read lock poisoned");

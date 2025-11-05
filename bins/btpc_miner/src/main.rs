@@ -87,6 +87,8 @@ impl Default for MiningStats {
 }
 
 /// Block template from RPC
+/// Reserved for future RPC-based mining mode
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 struct BlockTemplate {
     version: u32,
@@ -98,6 +100,8 @@ struct BlockTemplate {
 }
 
 /// Deserialize bits from hex string (e.g., "1d0fffff") to u32
+/// Used by BlockTemplate for future RPC-based mining
+#[allow(dead_code)]
 fn deserialize_bits_from_hex<'de, D>(deserializer: D) -> Result<u32, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -270,6 +274,8 @@ impl Miner {
     }
 
     /// Create a block template for mining
+    /// Reserved for future RPC getblocktemplate integration
+    #[allow(dead_code)]
     fn create_block_template(config: &MinerConfig) -> Result<Block, Box<dyn std::error::Error>> {
         use serde_json::json;
 
@@ -338,6 +344,8 @@ impl Miner {
     }
 
     /// Create coinbase transaction
+    /// Reserved for future RPC getblocktemplate integration
+    #[allow(dead_code)]
     fn create_coinbase_transaction(
         config: &MinerConfig,
         height: u32,
