@@ -1429,13 +1429,9 @@ async fn start_mining(app: tauri::AppHandle, state: State<'_, AppState>, address
         }
     });
 
-    // Add initial UTXO for demonstration (this would normally be handled by blockchain sync)
-    let reward_credits = 3237500000u64; // Constitutional reward per block
-    let initial_block_height = chrono::Utc::now().timestamp() as u64;
-
-    if let Err(e) = add_mining_reward_utxo(&state.utxo_manager, &address, reward_credits, initial_block_height) {
-        println!("Warning: Failed to add initial mining UTXO: {}", e);
-    }
+    // REMOVED: Automatic initial UTXO (was causing phantom block on startup)
+    // Mining rewards are now ONLY added when actual blocks are found by the miner
+    // and detected via stdout parsing in the monitoring thread above.
 
     Ok(format!("Mining started: {} blocks to {} (UTXO tracking enabled)", blocks, address))
 }

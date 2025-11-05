@@ -478,14 +478,20 @@ impl UTXOManager {
 
     /// Get transaction history for an address
     pub fn get_transaction_history(&self, address: &str) -> Vec<&Transaction> {
+        let clean_query_addr = clean_address(address);
+        let normalized_query_addr = normalize_address_for_comparison(&clean_query_addr);
+
         self.transactions
             .values()
             .filter(|tx| {
                 // Check if transaction involves this address
                 tx.outputs.iter().any(|_output| {
-                    // TODO: Decode script_pubkey to check if it matches address
-                    // For now, check if any UTXO belongs to this address
-                    self.utxos.values().any(|utxo| utxo.address == address && utxo.txid == tx.txid)
+                    // Check if any UTXO belongs to this address (with normalized comparison)
+                    self.utxos.values().any(|utxo| {
+                        let utxo_clean = clean_address(&utxo.address);
+                        let utxo_normalized = normalize_address_for_comparison(&utxo_clean);
+                        utxo_normalized == normalized_query_addr && utxo.txid == tx.txid
+                    })
                 })
             })
             .collect()
