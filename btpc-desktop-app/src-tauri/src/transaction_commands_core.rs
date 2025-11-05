@@ -786,6 +786,7 @@ mod tests {
                 script_pubkey: vec![0x76, 0xa9, 0x14], // P2PKH prefix
             }],
             lock_time: 0,
+            fork_id: 2, // regtest
             block_height: None,
             confirmed_at: None,
             is_coinbase: false,
