@@ -1,8 +1,8 @@
 # BTPC Project Status
 
-**Last Updated**: 2025-11-04 21:45:13
+**Last Updated**: 2025-11-05 01:47:00
 **Project Status**: ACTIVE DEVELOPMENT - Feature 007 FUNCTIONALLY COMPLETE
-**Latest**: ✅ **TD-001 Refactoring Complete + Feature 007 77% Done**
+**Latest**: ✅ **Critical Mining Bugs Fixed (3 issues resolved)**
 
 ## Implementation Status
 
@@ -44,7 +44,36 @@
 - ⏸️  TDD GREEN phase (deferred to future session, 4-6 hours)
 - ⏳ E2E desktop app tests (manual testing pending)
 
-## Recent Changes (Session 2025-10-31 - GREEN Phase)
+## Recent Changes (Session 2025-11-05 - Mining Bug Fixes)
+
+### Critical Mining Bugs Fixed ✅ COMPLETE (3 issues)
+**Date**: 2025-11-05
+**Branch**: 007-fix-inability-to
+**Commit**: 8a275fc
+
+**Bugs Fixed**:
+1. **Phantom Block Bug** - 32.375 BTPC appeared instantly on mining start
+   - Root Cause: Hardcoded demo UTXO in start_mining() (main.rs:1432-1438)
+   - Fix: Removed automatic initial UTXO code
+
+2. **Missing Mining History** - Rewards added but no Mining History entries
+   - Root Cause: Demo UTXO bypassed mining detection logging
+   - Fix: All rewards now go through stdout monitoring (lines 1364-1392)
+
+3. **Missing Transaction History** - 16 transactions in storage, 0 displayed
+   - Root Cause: Case-sensitive address comparison without normalization
+   - Fix: Added clean_address() + normalize_address_for_comparison()
+
+**Files Modified**:
+- btpc-desktop-app/src-tauri/src/main.rs (removed lines 1432-1438)
+- btpc-desktop-app/src-tauri/src/utxo_manager.rs (added normalization)
+- MD/MINING_INITIALIZATION_BUG_FIXED_2025-11-05.md (documentation)
+
+**Testing Status**: ✅ Ready for manual testing
+
+---
+
+## Previous Changes (Session 2025-10-31 - GREEN Phase)
 
 ### Technical Debt TD-001: Refactor Tauri Commands ✅ COMPLETE
 **Status**: Core refactoring complete (~95%)
