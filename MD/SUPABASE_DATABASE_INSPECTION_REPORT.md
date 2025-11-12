@@ -43,9 +43,9 @@ The Supabase database contains **10 tables** with **development seed data** repr
 ```
 
 **All Records**:
-1. **Development Wallet 1**: 1,000,000,000 satoshis (10 BTPC)
-2. **Development Wallet 2**: 500,000,000 satoshis (5 BTPC)
-3. **Test Wallet**: 250,000,000 satoshis (2.5 BTPC)
+1. **Development Wallet 1**: 1,000,000,000 credits (10 BTPC)
+2. **Development Wallet 2**: 500,000,000 credits (5 BTPC)
+3. **Test Wallet**: 250,000,000 credits (2.5 BTPC)
 
 **Indexes**:
 - `wallets_pkey` (primary key on id)

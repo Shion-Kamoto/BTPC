@@ -66,7 +66,7 @@ Open browser DevTools (F12) and watch for:
   Wallet: <wallet_id>
   From: n3UWGnEV1LQPJuFvnvnBpSLBipxoZavtHW
   To: <recipient_address>
-  Amount: 150000000 satoshis
+  Amount: 150000000 credits
 
 📝 Step 1: Creating transaction...
 ✅ Transaction created: <txid>

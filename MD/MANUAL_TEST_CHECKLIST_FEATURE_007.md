@@ -185,12 +185,12 @@
    - [ ] Suggested action: "Check address format"
 
 ### Sub-test 4c: Dust Output
-1. [ ] Try to send 0.00000500 BTPC (500 satoshis, below 1000 dust limit)
+1. [ ] Try to send 0.00000500 BTPC (500 credits, below 1000 dust limit)
 2. [ ] Click "Create Transaction"
 3. [ ] Verify error:
    - [ ] Error type: "Dust Output"
-   - [ ] Shows amount: 500 satoshis
-   - [ ] Shows dust limit: 1000 satoshis
+   - [ ] Shows amount: 500 credits
+   - [ ] Shows dust limit: 1000 credits
    - [ ] Suggested action: "Increase amount above dust limit"
 
 ### Sub-test 4d: Wallet Corruption Detection

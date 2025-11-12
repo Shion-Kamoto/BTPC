@@ -73,7 +73,7 @@ pub fn estimate_fee_core(
 
 **Features**:
 - Fee estimation via TransactionBuilder.summary()
-- Configurable fee rate (default 100 sat/byte)
+- Configurable fee rate (default 100 crd/byte)
 - Transaction size calculation
 - Input/output count tracking
 - No Tauri dependencies (fully testable)

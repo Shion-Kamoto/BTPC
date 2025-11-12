@@ -39,7 +39,7 @@ Feature 007 successfully addresses transaction sending failures by implementing:
 
 2. **Dynamic Fee Estimator** (fee_estimator.rs, NEW 240 lines)
    - Formula-based ML-DSA signature size calculation (1952/4000 bytes)
-   - RPC integration with conservative fallback (1000 sat/byte)
+   - RPC integration with conservative fallback (1000 crd/byte)
    - Replaces hardcoded 0.001 BTPC fee
    - Methods: `estimate_transaction_size()`, `get_current_fee_rate()`, `calculate_fee()`
 

@@ -40,7 +40,7 @@ Continued from Phase 3A. Completed core backend implementation for Feature 007: 
 - **Implementation**:
   - Formula-based size calculation (BASE + inputs*4100 + outputs*40)
   - RPC query for current network fee rate
-  - Conservative fallback (1000 sat/byte) when RPC unavailable
+  - Conservative fallback (1000 crd/byte) when RPC unavailable
   - Integrated into create_transaction() command
 - **Replaced**: Hardcoded `fee_rate = 100` with dynamic estimation
 
@@ -220,7 +220,7 @@ validate_wallet_integrity(&wallet_data, &wallet_path)
 let fee_estimator = FeeEstimator::new(rpc_port);
 let estimate = fee_estimator.estimate_fee_for_transaction(inputs, outputs).await?;
 
-// Fallback to 1000 sat/byte if RPC unavailable
+// Fallback to 1000 crd/byte if RPC unavailable
 ```
 
 ### 4. Send-Safe Async Pattern

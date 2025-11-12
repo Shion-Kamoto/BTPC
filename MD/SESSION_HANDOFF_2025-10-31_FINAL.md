@@ -26,7 +26,7 @@
 
 2. **Dynamic Fee Estimation** (fee_estimator.rs NEW 240 lines)
    - Formula-based ML-DSA signature size calculation
-   - RPC integration with conservative fallback (1000 sat/byte)
+   - RPC integration with conservative fallback (1000 crd/byte)
    - Replaces hardcoded fee values
 
 3. **Wallet Integrity Validation** (transaction_commands.rs +122 lines)

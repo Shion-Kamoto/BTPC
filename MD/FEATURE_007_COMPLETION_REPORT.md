@@ -45,7 +45,7 @@ Feature 007 "Fix Transaction Sending Between Wallets" is **production-ready**. A
 - Formula-based transaction size calculation
 - ML-DSA signature size accounting (1952/4000 bytes)
 - RPC integration for network fee rates
-- Conservative fallback (1000 sat/byte) when offline
+- Conservative fallback (1000 crd/byte) when offline
 
 **Status**: ✅ Implemented, compiles, production-ready
 

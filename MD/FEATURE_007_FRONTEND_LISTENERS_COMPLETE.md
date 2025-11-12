@@ -20,7 +20,7 @@ Successfully implemented real-time transaction status UI with comprehensive even
 - Added transaction status display panel with icon, title, message, details, progress bar
 - Implemented 13 event listeners for complete transaction lifecycle:
   1. `transaction:initiated` - Show sending amount and recipient
-  2. `fee:estimated` - Display calculated fee (sat/byte) and transaction size
+  2. `fee:estimated` - Display calculated fee (crd/byte) and transaction size
   3. `utxo:reserved` - Show UTXO lock count and total amount
   4. `transaction:validated` - Ready to sign with input/output counts
   5. `transaction:signing_started` - ML-DSA signature generation begins
