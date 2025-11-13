@@ -272,12 +272,22 @@
                             <span class="icon icon-refresh"></span> Refresh
                         </button>
                     </div>
-                    <div id="gpu-devices-container">
-                        <!-- GPU device cards will be dynamically inserted here -->
-                        <div style="text-align: center; padding: 40px 20px; color: var(--text-muted);">
-                            <div style="font-size: 2rem; margin-bottom: 12px;">⚙️</div>
-                            <div>Loading GPU devices...</div>
-                        </div>
+                    <!-- GPU Dashboard Loading State -->
+                    <div id="gpu-dashboard-loading" style="text-align: center; padding: 40px 20px; color: var(--text-muted);">
+                        <div style="font-size: 2rem; margin-bottom: 12px;">⚙️</div>
+                        <div>Loading GPU devices...</div>
+                    </div>
+
+                    <!-- GPU Dashboard No GPUs State -->
+                    <div id="gpu-dashboard-no-gpus" style="display: none; text-align: center; padding: 40px 20px; color: var(--text-muted);">
+                        <div style="font-size: 2rem; margin-bottom: 12px;">🚫</div>
+                        <div>No GPU devices detected</div>
+                        <div style="font-size: 0.875rem; margin-top: 8px;">OpenCL drivers may not be installed or no GPUs available</div>
+                    </div>
+
+                    <!-- GPU Cards Container (dynamically populated) -->
+                    <div id="gpu-cards-container" style="display: none;">
+                        <!-- GPU device cards will be dynamically inserted here by mining-gpu-dashboard.js -->
                     </div>
                 </div>
 
@@ -287,10 +297,11 @@
                     <div class="form-group">
                         <label class="form-label">Temperature Warning Threshold (°C)</label>
                         <div style="display: flex; gap: 12px; align-items: center;">
-                            <input type="number" class="form-input" id="temp-threshold" value="85" min="60" max="95" step="0.5" style="max-width: 150px;">
-                            <button class="btn btn-primary" onclick="updateTempThreshold()">Update Threshold</button>
+                            <input type="number" class="form-input" id="temp-threshold-input" value="85" min="60" max="95" step="0.5" style="max-width: 150px;">
+                            <button class="btn btn-primary" id="save-temp-threshold-btn">Update Threshold</button>
                             <span style="color: var(--text-muted); font-size: 0.875rem;">Range: 60-95°C</span>
                         </div>
+                        <div id="temp-threshold-feedback" style="margin-top: 8px; font-size: 0.875rem;"></div>
                     </div>
                     <div style="color: var(--text-secondary); font-size: 0.875rem; margin-top: 8px;">
                         GPUs exceeding this temperature will be thermally throttled to reduce heat. Default: 85°C.
@@ -461,15 +472,15 @@
                 return;
             }
 
-            showLoading('Starting miner...', 'Initializing GPU and CPU mining');
+            showLoading('Starting miner...', 'Initializing GPU mining');
 
             try {
-                // Use new MiningConfig structure (Feature 012)
+                // GPU-ONLY Mining (Feature 012)
                 await window.invoke('start_mining', {
                     config: {
-                        enable_cpu: true,
-                        enable_gpu: true,  // Enable GPU mining (Feature 012)
-                        cpu_threads: null,  // null = auto (num_cpus - 2)
+                        enable_cpu: false,  // CPU mining disabled
+                        enable_gpu: true,   // GPU-only mining
+                        cpu_threads: null,
                         mining_address: address
                     }
                 });
