@@ -5,7 +5,7 @@ members = [
     "bins/btpc_wallet",
     "bins/btpc_miner",
     "bins/genesis_tool"
-]
+, "test_opencl_diagnostic"]
 resolver = "2"
 
 # Workspace-wide configuration

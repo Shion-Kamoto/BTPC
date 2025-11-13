@@ -24,6 +24,12 @@ pub mod auth_commands;
 pub mod auth_crypto;
 pub mod auth_state;
 
+// GPU Mining Dashboard modules (Feature 012)
+pub mod gpu_health_monitor;       // GPU health monitoring and thermal management
+pub mod gpu_stats_persistence;    // GPU stats persistence and historical tracking
+pub mod mining_thread_pool;       // Unified CPU+GPU mining thread pool
+pub mod gpu_miner;                // OpenCL GPU mining implementation
+
 // Also re-export common items for convenience
 pub use error::{BtpcError, BtpcResult, ProcessError};
 pub use state_management::StateManager;

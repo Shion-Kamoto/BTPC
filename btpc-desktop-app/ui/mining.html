@@ -168,6 +168,7 @@
             <div class="tab-nav" role="tablist" aria-label="Mining Sections">
                 <button class="tab-btn active" role="tab" id="tab-btn-overview" data-tab="overview" aria-selected="true" aria-controls="tab-panel-overview" tabindex="0">Overview</button>
                 <button class="tab-btn" role="tab" id="tab-btn-configure" data-tab="configure" aria-selected="false" aria-controls="tab-panel-configure" tabindex="-1">Configure</button>
+                <button class="tab-btn" role="tab" id="tab-btn-gpu-mining" data-tab="gpu-mining" aria-selected="false" aria-controls="tab-panel-gpu-mining" tabindex="-1">GPU Mining</button>
                 <button class="tab-btn" role="tab" id="tab-btn-history" data-tab="history" aria-selected="false" aria-controls="tab-panel-history" tabindex="-1">History</button>
             </div>
 
@@ -261,6 +262,55 @@
                 </div>
             </div>
 
+            <!-- GPU Mining Tab -->
+            <div id="tab-panel-gpu-mining" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-gpu-mining" tabindex="0">
+                <!-- GPU Overview Card -->
+                <div class="card mb-4">
+                    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                        <span>GPU Mining Dashboard</span>
+                        <button class="btn btn-secondary" onclick="refreshGpuStats()" style="padding: 6px 16px;">
+                            <span class="icon icon-refresh"></span> Refresh
+                        </button>
+                    </div>
+                    <div id="gpu-devices-container">
+                        <!-- GPU device cards will be dynamically inserted here -->
+                        <div style="text-align: center; padding: 40px 20px; color: var(--text-muted);">
+                            <div style="font-size: 2rem; margin-bottom: 12px;">⚙️</div>
+                            <div>Loading GPU devices...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Temperature Threshold Configuration -->
+                <div class="card mb-4">
+                    <div class="card-header">Thermal Management</div>
+                    <div class="form-group">
+                        <label class="form-label">Temperature Warning Threshold (°C)</label>
+                        <div style="display: flex; gap: 12px; align-items: center;">
+                            <input type="number" class="form-input" id="temp-threshold" value="85" min="60" max="95" step="0.5" style="max-width: 150px;">
+                            <button class="btn btn-primary" onclick="updateTempThreshold()">Update Threshold</button>
+                            <span style="color: var(--text-muted); font-size: 0.875rem;">Range: 60-95°C</span>
+                        </div>
+                    </div>
+                    <div style="color: var(--text-secondary); font-size: 0.875rem; margin-top: 8px;">
+                        GPUs exceeding this temperature will be thermally throttled to reduce heat. Default: 85°C.
+                    </div>
+                </div>
+
+                <!-- GPU Mining Information -->
+                <div class="card">
+                    <div class="card-header">GPU Mining Information</div>
+                    <div style="color: var(--text-secondary); line-height: 1.6;">
+                        <p><strong>OpenCL Status:</strong> <span id="opencl-status">Checking...</span></p>
+                        <p><strong>Detected GPUs:</strong> <span id="gpu-count">0</span></p>
+                        <p style="margin-top: 16px; color: var(--text-muted); font-size: 0.875rem;">
+                            GPU mining uses OpenCL for cross-vendor compatibility (AMD, NVIDIA, Intel).
+                            Expected performance: 50-100x faster than CPU mining on modern GPUs.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
             <!-- History Tab -->
             <div id="tab-panel-history" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-history" tabindex="0">
                 <div class="card">
@@ -311,6 +361,7 @@
     <script src="btpc-update-manager.js"></script>
     <script src="password-modal.js"></script>
     <script src="btpc-tab-manager.js"></script>
+    <script src="mining-gpu-dashboard.js"></script>
     <script src="btpc-logout.js"></script>
     <script>
         let miningInterval = null;
@@ -410,12 +461,17 @@
                 return;
             }
 
-            showLoading('Starting miner...', 'Connecting to node and initializing');
+            showLoading('Starting miner...', 'Initializing GPU and CPU mining');
 
             try {
+                // Use new MiningConfig structure (Feature 012)
                 await window.invoke('start_mining', {
-                    address: address,
-                    blocks: blocks
+                    config: {
+                        enable_cpu: true,
+                        enable_gpu: true,  // Enable GPU mining (Feature 012)
+                        cpu_threads: null,  // null = auto (num_cpus - 2)
+                        mining_address: address
+                    }
                 });
 
                 hideLoading();
@@ -910,6 +966,23 @@
 
         // Check mining status on page load
         checkMiningOnLoad();
+
+        // GPU Dashboard helper functions
+        async function refreshGpuStats() {
+            if (window.gpuDashboard && window.gpuDashboard.loadDashboardData) {
+                await window.gpuDashboard.loadDashboardData();
+            } else {
+                console.warn('GPU Dashboard not initialized yet');
+            }
+        }
+
+        async function updateTempThreshold() {
+            if (window.gpuDashboard && window.gpuDashboard.saveTemperatureThreshold) {
+                await window.gpuDashboard.saveTemperatureThreshold();
+            } else {
+                console.warn('GPU Dashboard not initialized yet');
+            }
+        }
     </script>
 
     <!-- Password Modal for Wallet Encryption -->

@@ -49,6 +49,11 @@ btpc-core = { path = "../../btpc-core" }
 rocksdb = "0.21"  # Match workspace version to avoid native library conflicts
 bincode = "1.3"
 
+# GPU mining dependencies (Feature 012)
+rayon = "1.10"  # Parallel processing for CPU mining threads
+ocl = "0.19"    # OpenCL bindings for GPU mining
+futures = "0.3" # Async runtime for executor::block_on
+
 # Transaction management dependencies
 parking_lot = "0.12"  # Faster, deadlock-free mutexes for UTXO locking
 tracing = "0.1"  # Structured logging (Constitution Article V)
@@ -59,6 +64,12 @@ clap = { version = "4.0", features = ["derive"] }
 # Wallet manager dependencies
 uuid = { version = "1.6", features = ["v4", "serde"] }
 fastrand = "2.0"
+
+# GPU monitoring dependencies (Feature 012)
+opencl3 = "0.9"  # OpenCL GPU enumeration and control
+sysinfo = "0.31"  # Cross-platform system/GPU monitoring fallback
+# NVML is optional - enable with: --features nvml-wrapper
+# nvml-wrapper = { version = "0.10", optional = true }
 
 [dev-dependencies]
 # Testing framework

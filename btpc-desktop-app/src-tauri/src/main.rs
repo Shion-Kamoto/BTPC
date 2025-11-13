@@ -54,7 +54,7 @@ use tokio::sync::RwLock;
 
 mod btpc_integration;
 mod security;
-// mod utxo_manager; // Already in lib.rs (used by transaction_state)
+use btpc_desktop_app::utxo_manager; // Import from lib.rs
 mod wallet_manager;
 mod wallet_commands;
 pub mod error;  // Public for integration tests
@@ -67,6 +67,14 @@ mod orphaned_utxo_cleaner;
 mod tx_storage;  // RocksDB-based transaction storage (Constitution Article V)
 mod gpu_detection;  // GPU detection for mining optimization (TDD v1.1)
 pub mod state_management;  // StateManager<T> for Article XI compliance (auto event emission)
+
+// GPU Mining Dashboard modules (Feature 012)
+mod gpu_miner;                // OpenCL GPU mining implementation
+mod gpu_stats_commands;       // Tauri commands for GPU stats retrieval
+mod gpu_health_monitor;       // GPU health monitoring and thermal management
+mod gpu_stats_persistence;    // GPU stats persistence and historical tracking
+mod mining_thread_pool;       // Unified mining thread pool (CPU + GPU)
+mod mining_commands;          // Unified mining commands with GPU support
 
 // Transaction modules (Feature 007: Transaction Sending)
 // mod transaction_builder; // Moved to lib.rs for TD-001 refactoring
@@ -433,6 +441,10 @@ pub struct AppState {
     wallets_locked: Arc<RwLock<bool>>, // Whether wallets are currently locked
     // Feature 007: Transaction state manager for transaction lifecycle tracking (moved to lib.rs in TD-001)
     tx_state_manager: Arc<btpc_desktop_app::transaction_state::TransactionStateManager>,
+
+    // Feature 012: GPU Mining Dashboard state
+    mining_pool: Arc<RwLock<Option<mining_thread_pool::MiningThreadPool>>>, // Unified CPU+GPU mining pool
+    gpu_temperature_threshold: Arc<RwLock<f32>>, // GPU temperature alert threshold (°C)
 }
 
 impl AppState {
@@ -504,6 +516,10 @@ impl AppState {
             wallet_password: Arc::new(RwLock::new(None)), // No password on startup (locked)
             wallets_locked: Arc::new(RwLock::new(true)), // Start locked by default
             tx_state_manager: Arc::new(tx_state_manager), // Feature 007: Transaction state manager
+
+            // Feature 012: GPU Mining Dashboard state
+            mining_pool: Arc::new(RwLock::new(None)), // No mining pool on startup
+            gpu_temperature_threshold: Arc::new(RwLock::new(85.0)), // Default 85°C threshold
         };
 
         // REMOVED: Automatic wallet creation at startup (2025-11-01)
@@ -1208,6 +1224,10 @@ async fn reload_utxos(state: State<'_, AppState>) -> Result<String, String> {
     }
 }
 
+// OLD start_mining command replaced by mining_commands::start_mining (Feature 012)
+// This legacy command spawns btpc_miner binary externally (deprecated)
+// New command uses MiningThreadPool for unified CPU+GPU mining
+/*
 #[tauri::command]
 async fn start_mining(app: tauri::AppHandle, state: State<'_, AppState>, address: String, blocks: u32) -> Result<String, String> {
     // Check if mining is already running
@@ -1435,6 +1455,8 @@ async fn start_mining(app: tauri::AppHandle, state: State<'_, AppState>, address
 
     Ok(format!("Mining started: {} blocks to {} (UTXO tracking enabled)", blocks, address))
 }
+*/
+// END OF OLD start_mining command (commented out for Feature 012)
 
 // Parse mining output to determine log level and format CLI-style message
 fn parse_mining_output(line: &str) -> (String, String) {
@@ -1570,62 +1592,9 @@ fn extract_block_number(line: &str) -> Option<u64> {
     }
 }
 
-#[tauri::command]
-async fn stop_mining(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<String, String> {
-    // Atomic: lock, remove, kill within same lock scope
-    let kill_result = {
-        let mut processes = state.mining_processes.lock()
-            .map_err(|_| BtpcError::mutex_poison("mining_processes", "stop_mining").to_string())?;
-
-        match processes.remove("mining") {
-            Some(mut child) => {
-                // Kill while holding lock to prevent race with start_mining
-                match child.kill() {
-                    Ok(_) => {
-                        let _ = child.wait(); // Clean up zombie
-                        Ok(())
-                    }
-                    Err(e) if e.kind() == std::io::ErrorKind::InvalidInput => {
-                        // Process already dead, clean up anyway
-                        let _ = child.wait();
-                        Ok(())
-                    }
-                    Err(e) => Err(format!("Failed to kill mining process: {}", e))
-                }
-            }
-            None => Err("Mining is not running".to_string())
-        }
-    }; // Lock released here
-
-    // Handle result and update logs/status
-    match kill_result {
-        Ok(_) => {
-            // Add log entry
-            {
-                let mut mining_logs = state.mining_logs.lock()
-                    .map_err(|_| BtpcError::mutex_poison("mining_logs", "stop_mining").to_string())?;
-                mining_logs.add_entry("INFO".to_string(), "Mining stopped by user".to_string());
-            }
-
-            // Update status (old SystemStatus for backward compatibility)
-            {
-                let mut status = state.status.write().await;
-                status.mining_status = "Stopped".to_string();
-            }
-
-            // Update MiningStatus via StateManager (Article XI - auto-emits mining_status_changed event)
-            state.mining_status.update(|status| {
-                status.active = false;
-                status.hashrate = 0;
-            }, &app).map_err(|e| format!("Failed to update mining status: {}", e))?;
-
-            println!("📡 StateManager auto-emitted mining_status_changed event: stopped");
-
-            Ok("Mining stopped successfully".to_string())
-        }
-        Err(e) => Err(e)
-    }
-}
+// NOTE: stop_mining command moved to mining_commands.rs (Feature 012)
+// Old implementation stopped external btpc_miner binary
+// New implementation uses MiningThreadPool for unified CPU+GPU mining
 
 #[tauri::command]
 async fn setup_btpc(state: State<'_, AppState>) -> Result<String, String> {
@@ -2051,7 +2020,7 @@ async fn migrate_json_transactions_to_rocksdb(
     struct JsonTransaction {
         txid: String,
         version: u32,
-        inputs: Vec<utxo_manager::TxInput>,
+        inputs: Vec<btpc_desktop_app::utxo_manager::TxInput>,
         outputs: Vec<JsonOutput>,
         lock_time: u32,
         fork_id: u8,
@@ -2079,11 +2048,11 @@ async fn migrate_json_transactions_to_rocksdb(
             DateTime::parse_from_rfc3339(s).ok().map(|dt| dt.with_timezone(&chrono::Utc))
         });
 
-        let tx = utxo_manager::Transaction {
+        let tx = btpc_desktop_app::utxo_manager::Transaction {
             txid: json_tx.txid,
             version: json_tx.version,
             inputs: json_tx.inputs,
-            outputs: json_tx.outputs.into_iter().map(|o| utxo_manager::TxOutput {
+            outputs: json_tx.outputs.into_iter().map(|o| btpc_desktop_app::utxo_manager::TxOutput {
                 value: o.value,
                 script_pubkey: o.script_pubkey,
             }).collect(),
@@ -3090,8 +3059,8 @@ fn main() {
             reload_utxos,
             get_wallet_address,
             send_btpc,
-            start_mining,
-            stop_mining,
+            mining_commands::start_mining,  // New GPU-aware mining command (Feature 012)
+            mining_commands::stop_mining,   // New GPU-aware stop command (Feature 012)
             setup_btpc,
             get_logs,
             get_mining_logs,
@@ -3165,7 +3134,7 @@ fn main() {
             wallet_commands::update_wallet_balance,
             wallet_commands::get_wallet_balance_by_id,
             wallet_commands::send_btpc_from_wallet,
-            wallet_commands::start_mining_to_wallet,
+            // wallet_commands::start_mining_to_wallet,  // DEPRECATED - use mining_commands::start_mining
             wallet_commands::backup_wallet,
             wallet_commands::set_default_wallet,
             wallet_commands::toggle_wallet_favorite,
@@ -3189,7 +3158,16 @@ fn main() {
             auth_commands::create_master_password,
             auth_commands::login,
             auth_commands::logout,
-            auth_commands::check_session
+            auth_commands::check_session,
+            // GPU Mining Dashboard commands (Feature 012)
+            gpu_stats_commands::get_gpu_stats,
+            gpu_stats_commands::is_gpu_stats_available,
+            gpu_stats_commands::enumerate_gpus,
+            gpu_stats_commands::get_gpu_mining_stats,
+            gpu_stats_commands::get_gpu_health_metrics,
+            gpu_stats_commands::set_temperature_threshold,
+            gpu_stats_commands::get_temperature_threshold,
+            gpu_stats_commands::get_gpu_dashboard_data
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
