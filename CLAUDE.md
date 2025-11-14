@@ -195,3 +195,5 @@ BTPC/
 
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->
+- When making code changes never change the layout or style of the UI and or the Architechre
+- Before updating any status.md file or any related documents for this project, the app will need to be manually tested to verify and status update.

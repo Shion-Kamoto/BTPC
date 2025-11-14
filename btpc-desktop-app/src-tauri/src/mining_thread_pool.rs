@@ -19,6 +19,11 @@ use tokio::sync::{mpsc, broadcast};
 
 use crate::gpu_miner::{GpuMiner, enumerate_gpu_devices};
 
+/// Trait for types that can log mining events
+pub trait MiningLogger {
+    fn add_entry(&mut self, level: String, message: String);
+}
+
 /// Per-GPU mining statistics (Feature 012: T016)
 ///
 /// Tracks mining performance for individual GPU devices.
@@ -236,11 +241,21 @@ impl MiningThreadPool {
     ///
     /// # Arguments
     /// * `mining_address` - Coinbase output address
+    /// * `log_tx` - Optional channel for sending mining log events (level, message)
+    /// * `mining_logs` - Optional direct access to mining logs buffer (bypasses channel)
     ///
     /// # Returns
     /// * `Ok(u32)` - Number of GPU devices initialized
-    /// * `Err(anyhow::Error)` - Failed to start GPU mining
-    pub async fn start_gpu_mining(&mut self, mining_address: String) -> Result<u32> {
+    /// * `Err(antml:Error)` - Failed to start GPU mining
+    pub async fn start_gpu_mining<T>(
+        &mut self,
+        mining_address: String,
+        log_tx: Option<mpsc::UnboundedSender<(String, String)>>,
+        mining_logs: Option<Arc<std::sync::Mutex<T>>>,
+    ) -> Result<u32>
+    where
+        T: 'static + Send + MiningLogger,
+    {
         // Stop existing GPU mining if active
         if self.gpu_mining_active.load(Ordering::SeqCst) {
             self.stop_gpu_mining().await?;
@@ -286,10 +301,13 @@ impl MiningThreadPool {
         // Spawn GPU mining task for each device
         for (idx, device_info) in gpu_devices.into_iter().enumerate() {
             let device_index = device_info.device_index;
+            let device_name = device_info.model_name.clone();
             let mining_active = mining_active.clone();
             let per_gpu_stats = per_gpu_stats.clone();
             let start_time = start_time.clone();
             let mut shutdown_rx_clone = shutdown_rx.resubscribe();
+            let log_tx_clone = log_tx.clone();
+            let mining_logs_clone = mining_logs.clone();
 
             tokio::spawn(async move {
                 println!("🚀 Starting GPU {} mining thread", device_index);
@@ -338,6 +356,27 @@ impl MiningThreadPool {
                         Ok(Some(nonce)) => {
                             // Found valid nonce!
                             println!("🎉 GPU {} found valid block! Nonce: {}", device_index, nonce);
+
+                            // DIRECT LOGGING - write to mining_logs buffer directly
+                            let message = format!("GPU {} ({}) found valid block! Nonce: {}", device_index, device_name, nonce);
+                            if let Some(ref logs) = mining_logs_clone {
+                                if let Ok(mut logs_guard) = logs.lock() {
+                                    logs_guard.add_entry("SUCCESS".to_string(), message.clone());
+                                    eprintln!("[GPU MINING] DIRECT LOG: Added to mining_logs buffer");
+                                } else {
+                                    eprintln!("[GPU MINING] DIRECT LOG: Failed to lock mining_logs");
+                                }
+                            }
+
+                            // Also try channel logging (fallback, for debugging)
+                            if let Some(ref tx) = log_tx_clone {
+                                eprintln!("[GPU MINING] Sending log event: SUCCESS - {}", message);
+                                match tx.send(("SUCCESS".to_string(), message)) {
+                                    Ok(_) => eprintln!("[GPU MINING] Log event sent successfully"),
+                                    Err(e) => eprintln!("[GPU MINING] FAILED to send log event: {}", e),
+                                }
+                            }
+
                             // TODO: Submit block to node
                             // Update stats
                             let mut stats = per_gpu_stats.write().unwrap();
@@ -357,6 +396,10 @@ impl MiningThreadPool {
                     // Update per-GPU stats
                     let hashes = miner.get_hashes_computed();
                     let blocks = miner.get_blocks_found();
+
+                    // Update global GPU hash counter for get_stats() hashrate calculation
+                    gpu_total_hashes_clone.store(hashes, Ordering::SeqCst);
+
                     let mut stats = per_gpu_stats.write().unwrap();
                     if let Some(entry) = stats.get_mut(&device_index) {
                         entry.total_hashes = hashes;

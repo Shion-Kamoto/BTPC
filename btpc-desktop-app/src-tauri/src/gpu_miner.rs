@@ -15,7 +15,7 @@ use btpc_core::consensus::pow::MiningTarget;
 use btpc_core::crypto::Hash;
 use opencl3::command_queue::{CommandQueue, CL_QUEUE_PROFILING_ENABLE};
 use opencl3::context::Context;
-use opencl3::device::{get_all_devices, Device, CL_DEVICE_TYPE_GPU};
+use opencl3::device::{get_all_devices, Device, CL_DEVICE_TYPE_GPU, CL_DEVICE_TYPE_ALL};
 use opencl3::kernel::{Kernel, ExecuteKernel};
 use opencl3::memory::{Buffer, CL_MEM_READ_ONLY, CL_MEM_WRITE_ONLY};
 use opencl3::platform::get_platforms;
@@ -68,29 +68,34 @@ pub struct GpuMiner {
 impl GpuMiner {
     /// Create a new GPU miner for the specified device
     pub fn new(device_index: u32) -> Result<Self> {
-        // Get all GPU devices from preferred platform (avoid duplicates)
+        // Get all GPU devices from ALL platforms (Clover has the GPU, not rusticl)
         let platforms = get_platforms().map_err(|e| anyhow!("Failed to get OpenCL platforms: {}", e))?;
 
-        // Prefer Rusticl platform over Clover (newer Mesa OpenCL)
-        let preferred_platform = platforms.iter()
-            .find(|p| p.name().unwrap_or_default().to_lowercase().contains("rusticl"))
-            .or_else(|| platforms.first())
-            .ok_or_else(|| anyhow!("No OpenCL platforms available"))?;
+        // Collect devices from ALL platforms
+        let mut all_devices = Vec::new();
+        for platform in platforms.iter() {
+            let device_ids = match platform.get_devices(CL_DEVICE_TYPE_GPU) {
+                Ok(ids) if !ids.is_empty() => ids,
+                _ => match platform.get_devices(CL_DEVICE_TYPE_ALL) {
+                    Ok(ids) if !ids.is_empty() => ids,
+                    _ => continue,
+                }
+            };
+            for device_id in device_ids {
+                all_devices.push(device_id);
+            }
+        }
 
-        // Get GPU devices from preferred platform only
-        let device_ids = preferred_platform.get_devices(CL_DEVICE_TYPE_GPU)
-            .map_err(|e| anyhow!("No GPUs found: {}", e))?;
-
-        if device_ids.is_empty() {
+        if all_devices.is_empty() {
             return Err(anyhow!("No GPU devices found"));
         }
 
-        if device_index as usize >= device_ids.len() {
+        if device_index as usize >= all_devices.len() {
             return Err(anyhow!("Device index {} out of range (found {} devices)",
-                device_index, device_ids.len()));
+                device_index, all_devices.len()));
         }
 
-        let device = Device::new(device_ids[device_index as usize]);
+        let device = Device::new(all_devices[device_index as usize]);
 
         // Create OpenCL context
         let context = Context::from_device(&device)
@@ -233,9 +238,15 @@ impl GpuMiner {
                 .map_err(|e| anyhow!("Failed to write result buffer: {}", e))?;
         }
 
-        // Calculate work sizes
-        let global_work_size = NONCES_PER_BATCH as usize;
-        let local_work_size = WORK_GROUP_SIZE;
+        // Calculate work sizes - query device for max work group size
+        let max_work_group_size = self.kernel.get_work_group_size(self.device.id())
+            .unwrap_or(64); // Fallback to 64 if query fails
+
+        // Use smaller of: device max, our preferred (256), or kernel's max
+        let local_work_size = std::cmp::min(max_work_group_size, WORK_GROUP_SIZE);
+
+        // Ensure global work size is multiple of local work size
+        let global_work_size = ((NONCES_PER_BATCH as usize + local_work_size - 1) / local_work_size) * local_work_size;
 
         // Set kernel arguments and execute
         let kernel_event = unsafe {
@@ -334,25 +345,59 @@ pub fn enumerate_gpu_devices() -> Result<Vec<GpuDevice>> {
     let platforms = get_platforms()
         .map_err(|e| anyhow!("Failed to get OpenCL platforms: {}", e))?;
 
-    // Prefer Rusticl platform over Clover (newer Mesa OpenCL, avoids duplicates)
-    let preferred_platform = platforms.iter()
-        .find(|p| p.name().unwrap_or_default().to_lowercase().contains("rusticl"))
-        .or_else(|| platforms.first())
-        .ok_or_else(|| anyhow!("No OpenCL platforms available"))?;
+    eprintln!("🔍 Found {} OpenCL platform(s)", platforms.len());
 
-    // Get GPU devices from preferred platform only
-    let device_ids = preferred_platform.get_devices(CL_DEVICE_TYPE_GPU)
-        .map_err(|e| anyhow!("No GPUs found on platform: {}", e))?;
+    // Try ALL platforms to find GPUs (don't assume rusticl has them)
+    let mut all_devices = Vec::new();
+
+    for (idx, platform) in platforms.iter().enumerate() {
+        let platform_name = platform.name().unwrap_or_default();
+        eprintln!("  Platform {}: {}", idx, platform_name);
+
+        // Try GPU type first
+        let device_ids = match platform.get_devices(CL_DEVICE_TYPE_GPU) {
+            Ok(ids) if !ids.is_empty() => {
+                eprintln!("    ✅ Found {} GPU device(s)", ids.len());
+                ids
+            }
+            _ => {
+                // Try ALL devices as fallback
+                match platform.get_devices(CL_DEVICE_TYPE_ALL) {
+                    Ok(ids) if !ids.is_empty() => {
+                        eprintln!("    ⚠️ GPU query empty, CL_DEVICE_TYPE_ALL found {} device(s)", ids.len());
+                        ids
+                    }
+                    _ => {
+                        eprintln!("    ❌ No devices found on this platform");
+                        continue;
+                    }
+                }
+            }
+        };
+
+        // Collect devices from this platform
+        for device_id in device_ids {
+            all_devices.push(device_id);
+        }
+    }
+
+    if all_devices.is_empty() {
+        return Err(anyhow!("No GPU devices found on any platform"));
+    }
+
+    eprintln!("🎮 Found {} total GPU device(s) across all platforms", all_devices.len());
 
     let mut devices = Vec::new();
 
-    for (device_index, device_id) in device_ids.iter().enumerate() {
+    for (device_index, device_id) in all_devices.iter().enumerate() {
         let device = Device::new(*device_id);
         let model_name = device.name().unwrap_or_else(|_| "Unknown".to_string());
         let vendor = device.vendor().unwrap_or_else(|_| "Unknown".to_string());
         let compute_units = device.max_compute_units().unwrap_or(0);
         let max_clock_frequency = device.max_clock_frequency().unwrap_or(0);
         let global_mem_size = device.global_mem_size().unwrap_or(0);
+
+        eprintln!("  Device {}: {} ({} CUs, {}MHz, {} MB)", device_index, model_name, compute_units, max_clock_frequency, global_mem_size / 1024 / 1024);
 
         devices.push(GpuDevice {
             device_index: device_index as u32,

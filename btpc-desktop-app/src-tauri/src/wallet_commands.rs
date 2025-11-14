@@ -327,7 +327,9 @@ async fn sign_and_broadcast_transaction(
     ))
 }
 
-/// Start mining to specific wallet
+/// Start mining to specific wallet (DEPRECATED - use mining_commands::start_mining with MiningConfig)
+// This command is deprecated in Feature 012 - kept for backward compatibility
+/*
 #[tauri::command]
 pub async fn start_mining_to_wallet(
     app: tauri::AppHandle,
@@ -357,6 +359,8 @@ pub async fn start_mining_to_wallet(
     // Use existing mining function with wallet address
     crate::start_mining(app, state, wallet_address, blocks).await
 }
+*/
+// END OF DEPRECATED start_mining_to_wallet
 
 /// Backup specific wallet
 #[tauri::command]

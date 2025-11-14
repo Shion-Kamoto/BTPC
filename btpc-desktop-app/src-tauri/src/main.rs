@@ -414,6 +414,14 @@ impl MiningLogBuffer {
     }
 }
 
+// Implement MiningLogger trait for MiningLogBuffer
+impl mining_thread_pool::MiningLogger for MiningLogBuffer {
+    fn add_entry(&mut self, level: String, message: String) {
+        // Delegate to existing implementation
+        MiningLogBuffer::add_entry(self, level, message)
+    }
+}
+
 pub struct AppState {
     config: LauncherConfig,
     active_network: Arc<RwLock<NetworkType>>,  // Mutable network configuration
@@ -918,20 +926,32 @@ async fn get_node_status(state: State<'_, AppState>) -> Result<serde_json::Value
 
 #[tauri::command]
 async fn get_mining_status(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    let is_mining = {
-        let mining_processes = state.mining_processes.lock()
-            .map_err(|_| BtpcError::mutex_poison("mining_processes", "get_mining_status").to_string())?;
-        mining_processes.contains_key("mining")
-    };
+    // Feature 012: Use new MiningThreadPool instead of mining_processes
+    let mining_pool_guard = state.mining_pool.read().await;
 
-    let stats = state.mining_stats.lock()
-        .map_err(|_| BtpcError::mutex_poison("mining_stats", "get_mining_status").to_string())?;
+    if mining_pool_guard.is_none() {
+        // Mining pool not initialized, return stopped state
+        return Ok(serde_json::json!({
+            "is_mining": false,
+            "hashrate": 0,
+            "blocks_found": 0
+        }));
+    }
 
-    Ok(serde_json::json!({
-        "is_mining": is_mining,
-        "hashrate": stats.hashrate,
-        "blocks_found": stats.blocks_found
-    }))
+    if let Some(ref pool) = *mining_pool_guard {
+        let stats = pool.get_stats();
+        Ok(serde_json::json!({
+            "is_mining": stats.is_mining,
+            "hashrate": stats.total_hashrate,
+            "blocks_found": stats.blocks_found
+        }))
+    } else {
+        Ok(serde_json::json!({
+            "is_mining": false,
+            "hashrate": 0,
+            "blocks_found": 0
+        }))
+    }
 }
 
 #[tauri::command]

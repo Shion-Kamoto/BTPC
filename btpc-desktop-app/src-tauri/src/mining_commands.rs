@@ -61,99 +61,38 @@ pub async fn start_mining(
         }
     }
 
-    // Start CPU mining if enabled
-    if enable_cpu {
-        let cpu_address = mining_address.clone(); // Clone for CPU closure
-
-        // Access mining pool and start CPU mining
-        {
-            let mut mining_pool_guard = state.mining_pool.write().await;
-            if let Some(ref mut pool) = *mining_pool_guard {
-                pool.start_cpu_mining(cpu_threads, cpu_address)
-                    .await
-                    .map_err(|e| format!("Failed to start CPU mining: {}", e))?;
-            } else {
-                return Err("Mining pool not initialized".to_string());
-            }
-        }
-
-        // Log mining start to activity buffer
-        {
-            let mut mining_logs = state.mining_logs.lock()
-                .map_err(|_| "Failed to lock mining_logs".to_string())?;
-            let threads_str = cpu_threads.map(|t| format!("{} threads", t)).unwrap_or_else(|| "auto threads".to_string());
-            mining_logs.add_entry("INFO".to_string(), format!("CPU mining started with {}", threads_str));
-        }
-
-        // Start periodic hashrate logging task
-        let mining_pool_arc = state.mining_pool.clone();
-        let logs_for_logging = state.mining_logs.clone();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
-            let mut last_blocks_found = 0u64;
-            loop {
-                interval.tick().await;
-
-                // Check if mining is still active
-                let stats = {
-                    let pool_guard = mining_pool_arc.read().await;
-                    if let Some(ref pool) = *pool_guard {
-                        pool.get_stats()
-                    } else {
-                        break; // Pool was destroyed, stop logging
-                    }
-                };
-
-                if !stats.is_mining {
-                    break; // Stop logging when mining stops
-                }
-
-                // Check if new blocks were found since last check
-                if stats.blocks_found > last_blocks_found {
-                    let new_blocks = stats.blocks_found - last_blocks_found;
-                    if let Ok(mut logs) = logs_for_logging.lock() {
-                        for _ in 0..new_blocks {
-                            logs.add_entry(
-                                "SUCCESS".to_string(),
-                                format!(
-                                    "Block found! Total blocks mined: {}",
-                                    stats.blocks_found
-                                )
-                            );
-                        }
-                    }
-                    last_blocks_found = stats.blocks_found;
-                }
-
-                // Log hashrate update
-                if let Ok(mut logs) = logs_for_logging.lock() {
-                    let hashrate_display = if stats.total_hashrate >= 1_000_000.0 {
-                        format!("{:.2} MH/s", stats.total_hashrate / 1_000_000.0)
-                    } else if stats.total_hashrate >= 1_000.0 {
-                        format!("{:.2} KH/s", stats.total_hashrate / 1_000.0)
-                    } else {
-                        format!("{:.2} H/s", stats.total_hashrate)
-                    };
-
-                    logs.add_entry(
-                        "INFO".to_string(),
-                        format!(
-                            "Mining active - {} ({} threads) - {} blocks found",
-                            hashrate_display,
-                            stats.cpu_threads,
-                            stats.blocks_found
-                        )
-                    );
-                }
-            }
-        });
-    }
-
+    // GPU-ONLY Mining (CPU mining removed - Feature 012)
     // Start GPU mining if enabled (non-blocking, fails gracefully)
     if enable_gpu {
         let mining_pool_arc = state.mining_pool.clone();
         let gpu_address = mining_address.clone(); // Clone for GPU closure
         let logs_clone = state.mining_logs.clone();
+
+        // Create channel for GPU mining logs
+        let (log_tx, mut log_rx) = tokio::sync::mpsc::unbounded_channel::<(String, String)>();
+
+        // Spawn task to forward GPU log events to mining_logs
+        let logs_for_receiver = logs_clone.clone();
+        let test_tx = log_tx.clone();
+        tokio::spawn(async move {
+            eprintln!("[GPU LOG RECEIVER] Started waiting for GPU mining log events");
+            while let Some((level, message)) = log_rx.recv().await {
+                eprintln!("[GPU LOG RECEIVER] Received log: {} - {}", level, message);
+                if let Ok(mut logs) = logs_for_receiver.lock() {
+                    logs.add_entry(level.clone(), message.clone());
+                    eprintln!("[GPU LOG RECEIVER] Added to mining_logs buffer");
+                } else {
+                    eprintln!("[GPU LOG RECEIVER] FAILED to lock mining_logs");
+                }
+            }
+            eprintln!("[GPU LOG RECEIVER] Channel closed");
+        });
+
+        // TEST: Send a test message AFTER spawning receiver
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        eprintln!("[TEST] Sending test message...");
+        test_tx.send(("INFO".to_string(), "TEST MESSAGE - Channel created".to_string())).ok();
+        eprintln!("[TEST] Test message sent");
 
         // Spawn GPU initialization asynchronously (don't block UI thread)
         tokio::spawn(async move {
@@ -161,7 +100,7 @@ pub async fn start_mining(
             let gpu_result = {
                 let mut pool_guard = mining_pool_arc.write().await;
                 if let Some(ref mut pool) = *pool_guard {
-                    pool.start_gpu_mining(gpu_address).await
+                    pool.start_gpu_mining(gpu_address, Some(log_tx), Some(logs_clone.clone())).await
                 } else {
                     Err(anyhow::anyhow!("Mining pool not initialized"))
                 }
