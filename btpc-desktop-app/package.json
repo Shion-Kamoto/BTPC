@@ -1,0 +1,38 @@
+{
+  "name": "btpc-desktop-app",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "cleanup": "bash scripts/cleanup-dev-servers.sh",
+    "dev:clean": "npm run cleanup && npm run tauri:dev",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:e2e": "cypress run",
+    "test:e2e:open": "cypress open",
+    "lint": "eslint ui/ --ext .js,.html",
+    "lint:fix": "eslint ui/ --ext .js,.html --fix"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@tauri-apps/api": "^2.9.0",
+    "@tauri-apps/cli": "^2.9.0",
+    "update": "^0.4.2"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^9.3.3",
+    "@testing-library/jest-dom": "^6.1.4",
+    "cypress": "^13.6.0",
+    "eslint": "^8.55.0",
+    "eslint-plugin-cypress": "^2.15.1",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0"
+  }
+}

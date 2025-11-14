@@ -1,0 +1,36 @@
+[alias]
+# Constitutional compliance commands
+check-all = "check --workspace --all-features"
+test-all = "test --workspace --all-features"
+clippy-all = "clippy --workspace --all-features -- -D warnings"
+fmt-all = "fmt --all"
+# audit - use 'cargo audit' directly (cargo-audit binary)
+
+[build]
+# Ensure we use consistent linker settings
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+
+[clippy]
+# Strict linting per BTPC constitution
+max_complexity = 20
+too_many_arguments_threshold = 5
+
+[profile.dev]
+# Development profile for faster compilation
+opt-level = 0
+debug = true
+overflow-checks = true
+
+[profile.release]
+# Release profile optimized for performance (1000 TPS requirement)
+opt-level = 3
+debug = false
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.bench]
+# Benchmark profile for performance validation
+opt-level = 3
+debug = false
+lto = true

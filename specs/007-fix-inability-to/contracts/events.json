@@ -1,0 +1,304 @@
+{
+  "events": {
+    "transaction:initiated": {
+      "description": "Emitted when user starts creating a transaction",
+      "payload": {
+        "wallet_id": "string",
+        "recipient": "string",
+        "amount": "number",
+        "timestamp": "string (ISO 8601)"
+      },
+      "example": {
+        "wallet_id": "a3f4d5e6-1234-5678-90ab-cdef12345678",
+        "recipient": "btpc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
+        "amount": 50000000,
+        "timestamp": "2025-10-30T15:30:00Z"
+      }
+    },
+
+    "transaction:validated": {
+      "description": "Emitted after transaction parameters are validated",
+      "payload": {
+        "transaction_id": "string",
+        "inputs_count": "number",
+        "outputs_count": "number",
+        "fee": "number",
+        "change_amount": "number",
+        "total_input": "number",
+        "total_output": "number"
+      },
+      "example": {
+        "transaction_id": "tx_1234567890abcdef",
+        "inputs_count": 2,
+        "outputs_count": 2,
+        "fee": 10000,
+        "change_amount": 39990000,
+        "total_input": 100000000,
+        "total_output": 99990000
+      }
+    },
+
+    "transaction:signing_started": {
+      "description": "Emitted when ML-DSA signature generation begins",
+      "payload": {
+        "transaction_id": "string",
+        "inputs_to_sign": "number"
+      },
+      "example": {
+        "transaction_id": "tx_1234567890abcdef",
+        "inputs_to_sign": 2
+      }
+    },
+
+    "transaction:input_signed": {
+      "description": "Emitted for each input successfully signed",
+      "payload": {
+        "transaction_id": "string",
+        "input_index": "number",
+        "signature_algorithm": "string"
+      },
+      "example": {
+        "transaction_id": "tx_1234567890abcdef",
+        "input_index": 0,
+        "signature_algorithm": "ML-DSA-87"
+      }
+    },
+
+    "transaction:signed": {
+      "description": "Emitted when all inputs are signed",
+      "payload": {
+        "transaction_id": "string",
+        "signatures_count": "number",
+        "ready_to_broadcast": "boolean"
+      },
+      "example": {
+        "transaction_id": "tx_1234567890abcdef",
+        "signatures_count": 2,
+        "ready_to_broadcast": true
+      }
+    },
+
+    "transaction:broadcast": {
+      "description": "Emitted when transaction is sent to network",
+      "payload": {
+        "transaction_id": "string",
+        "broadcast_to_peers": "number",
+        "network_response": "string"
+      },
+      "example": {
+        "transaction_id": "tx_1234567890abcdef",
+        "broadcast_to_peers": 8,
+        "network_response": "accepted"
+      }
+    },
+
+    "transaction:mempool_accepted": {
+      "description": "Emitted when transaction enters mempool",
+      "payload": {
+        "transaction_id": "string",
+        "mempool_size": "number",
+        "position": "number"
+      },
+      "example": {
+        "transaction_id": "tx_1234567890abcdef",
+        "mempool_size": 150,
+        "position": 42
+      }
+    },
+
+    "transaction:confirmed": {
+      "description": "Emitted when transaction is included in a block",
+      "payload": {
+        "transaction_id": "string",
+        "block_height": "number",
+        "block_hash": "string",
+        "confirmations": "number"
+      },
+      "example": {
+        "transaction_id": "tx_1234567890abcdef",
+        "block_height": 123456,
+        "block_hash": "00000000abcdef1234567890",
+        "confirmations": 1
+      }
+    },
+
+    "transaction:confirmation_update": {
+      "description": "Emitted as confirmation count increases",
+      "payload": {
+        "transaction_id": "string",
+        "confirmations": "number",
+        "is_final": "boolean"
+      },
+      "example": {
+        "transaction_id": "tx_1234567890abcdef",
+        "confirmations": 6,
+        "is_final": true
+      }
+    },
+
+    "transaction:failed": {
+      "description": "Emitted when transaction fails at any stage",
+      "payload": {
+        "transaction_id": "string | null",
+        "stage": "string",
+        "error_type": "string",
+        "error_message": "string",
+        "recoverable": "boolean",
+        "suggested_action": "string | null"
+      },
+      "example": {
+        "transaction_id": "tx_1234567890abcdef",
+        "stage": "signing",
+        "error_type": "SIGNATURE_FAILED",
+        "error_message": "Failed to sign input 0: Seed not found for key regeneration",
+        "recoverable": false,
+        "suggested_action": "Restore wallet from backup with seed phrase"
+      }
+    },
+
+    "transaction:cancelled": {
+      "description": "Emitted when user cancels a pending transaction",
+      "payload": {
+        "transaction_id": "string",
+        "utxos_released": "number"
+      },
+      "example": {
+        "transaction_id": "tx_1234567890abcdef",
+        "utxos_released": 2
+      }
+    },
+
+    "utxo:reserved": {
+      "description": "Emitted when UTXOs are locked for transaction",
+      "payload": {
+        "reservation_token": "string",
+        "transaction_id": "string | null",
+        "utxo_count": "number",
+        "total_amount": "number",
+        "expires_at": "string (ISO 8601)"
+      },
+      "example": {
+        "reservation_token": "res_abc123def456",
+        "transaction_id": "tx_1234567890abcdef",
+        "utxo_count": 2,
+        "total_amount": 100000000,
+        "expires_at": "2025-10-30T15:35:00Z"
+      }
+    },
+
+    "utxo:released": {
+      "description": "Emitted when UTXOs are unlocked",
+      "payload": {
+        "reservation_token": "string",
+        "reason": "string",
+        "utxo_count": "number"
+      },
+      "example": {
+        "reservation_token": "res_abc123def456",
+        "reason": "transaction_cancelled",
+        "utxo_count": 2
+      }
+    },
+
+    "wallet:balance_updated": {
+      "description": "Emitted when wallet balance changes",
+      "payload": {
+        "wallet_id": "string",
+        "balance": {
+          "confirmed": "number",
+          "pending": "number",
+          "reserved": "number",
+          "total": "number"
+        },
+        "change_type": "string"
+      },
+      "example": {
+        "wallet_id": "a3f4d5e6-1234-5678-90ab-cdef12345678",
+        "balance": {
+          "confirmed": 90000000,
+          "pending": 0,
+          "reserved": 0,
+          "total": 90000000
+        },
+        "change_type": "transaction_confirmed"
+      }
+    },
+
+    "fee:estimated": {
+      "description": "Emitted when fee calculation completes",
+      "payload": {
+        "transaction_size": "number",
+        "fee_rate": "number",
+        "total_fee": "number",
+        "priority": "string"
+      },
+      "example": {
+        "transaction_size": 250,
+        "fee_rate": 100,
+        "total_fee": 25000,
+        "priority": "normal"
+      }
+    }
+  },
+
+  "event_flow": {
+    "successful_transaction": [
+      "transaction:initiated",
+      "fee:estimated",
+      "utxo:reserved",
+      "transaction:validated",
+      "transaction:signing_started",
+      "transaction:input_signed (multiple)",
+      "transaction:signed",
+      "transaction:broadcast",
+      "transaction:mempool_accepted",
+      "wallet:balance_updated",
+      "transaction:confirmed",
+      "transaction:confirmation_update (multiple)",
+      "utxo:released"
+    ],
+
+    "failed_transaction_insufficient_funds": [
+      "transaction:initiated",
+      "fee:estimated",
+      "transaction:failed (INSUFFICIENT_FUNDS)"
+    ],
+
+    "failed_transaction_signing": [
+      "transaction:initiated",
+      "fee:estimated",
+      "utxo:reserved",
+      "transaction:validated",
+      "transaction:signing_started",
+      "transaction:failed (SIGNATURE_FAILED)",
+      "utxo:released"
+    ],
+
+    "cancelled_transaction": [
+      "transaction:initiated",
+      "fee:estimated",
+      "utxo:reserved",
+      "transaction:validated",
+      "transaction:cancelled",
+      "utxo:released"
+    ]
+  },
+
+  "subscription_examples": {
+    "javascript": {
+      "listen": "await window.__TAURI__.event.listen('transaction:confirmed', (event) => { console.log('Transaction confirmed:', event.payload); });",
+      "unlisten": "const unlisten = await window.__TAURI__.event.listen('transaction:failed', handler); unlisten();"
+    },
+
+    "rust": {
+      "emit": "app_handle.emit_all(\"transaction:confirmed\", TransactionConfirmedPayload { transaction_id, block_height, block_hash, confirmations })?;"
+    }
+  },
+
+  "article_xi_compliance": {
+    "backend_authority": "All events originate from Rust backend, never from frontend",
+    "no_polling": "Frontend receives push events, never polls for status",
+    "cleanup_required": "All event listeners must be unregistered on page unload",
+    "no_duplicates": "Each event emitted exactly once per state change"
+  }
+}

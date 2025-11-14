@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Error State Schema",
+  "description": "JSON schema for ErrorState type used in progressive disclosure error UI",
+  "type": "object",
+  "definitions": {
+    "ErrorState": {
+      "type": "object",
+      "properties": {
+        "error_type": {
+          "type": "string",
+          "enum": [
+            "ProcessCrash",
+            "ValidationFailure",
+            "DatabaseLock",
+            "RPCTimeout",
+            "InsufficientFunds",
+            "MutexPoison",
+            "NetworkError",
+            "FileSystemError"
+          ],
+          "description": "Category of error for programmatic handling"
+        },
+        "user_message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "Plain language message for end users, actionable guidance"
+        },
+        "technical_details": {
+          "type": ["string", "null"],
+          "description": "Stack trace, system state, debug information (shown after clicking 'Show Details')"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when error occurred"
+        },
+        "affected_component": {
+          "type": "string",
+          "enum": ["node", "miner", "wallet", "balance_calc", "rpc_client", "process_manager"],
+          "description": "Which system component generated the error"
+        },
+        "crash_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Number of crashes for this component (for auto-restart logic)"
+        }
+      },
+      "required": ["error_type", "user_message", "timestamp", "affected_component", "crash_count"],
+      "additionalProperties": false
+    }
+  },
+  "$ref": "#/definitions/ErrorState"
+}

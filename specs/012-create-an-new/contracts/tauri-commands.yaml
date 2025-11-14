@@ -1,0 +1,377 @@
+# Tauri Command Contracts: GPU Mining Dashboard
+# Feature: 012-create-an-new
+# Date: 2025-11-11
+# Protocol: Tauri IPC (JSON-RPC style)
+
+commands:
+  # ============================================================================
+  # GPU Enumeration & Detection
+  # ============================================================================
+
+  - name: enumerate_gpus
+    description: |
+      Enumerate all available GPUs on the system.
+      Returns GPU device information for display in dashboard.
+
+    request:
+      parameters: []
+
+    response:
+      success:
+        type: array
+        items:
+          type: object
+          properties:
+            device_index:
+              type: integer
+              minimum: 0
+            model_name:
+              type: string
+              maxLength: 100
+            vendor:
+              type: string
+              enum: [NVIDIA, AMD, Intel, Other]
+            opencl_capable:
+              type: boolean
+            compute_capability:
+              type: string
+              nullable: true
+
+      error:
+        type: string
+        examples:
+          - "No GPUs detected on system"
+          - "OpenCL initialization failed"
+          - "GPU enumeration timed out after 500ms"
+
+    performance:
+      target_latency: "<500ms"
+      functional_requirements: [FR-001, FR-002, FR-004]
+      non_functional_requirements: [NFR-001]
+
+  # ============================================================================
+  # GPU Mining Stats
+  # ============================================================================
+
+  - name: get_gpu_mining_stats
+    description: |
+      Get current mining statistics for all GPUs or a specific GPU.
+      Returns hashrate, blocks found, uptime, efficiency metrics.
+
+    request:
+      parameters:
+        - name: gpu_device_index
+          type: integer
+          required: false
+          description: "If provided, return stats for specific GPU only. Otherwise, return all."
+
+    response:
+      success:
+        type: object
+        properties:
+          stats:
+            type: object
+            additionalProperties:
+              type: object
+              properties:
+                gpu_device_index:
+                  type: integer
+                current_hashrate:
+                  type: number
+                  minimum: 0.0
+                lifetime_blocks_found:
+                  type: integer
+                  minimum: 0
+                mining_uptime:
+                  type: integer
+                  description: "Duration in seconds"
+                mining_status:
+                  type: string
+                  enum: [Active, Idle, Error, Throttled]
+                energy_efficiency:
+                  type: number
+                  nullable: true
+                  description: "Hashrate/watt (H/W)"
+                thermal_efficiency:
+                  type: number
+                  nullable: true
+                  description: "Hashrate/temperature (H/°C)"
+                throttle_percentage:
+                  type: integer
+                  minimum: 0
+                  maximum: 100
+
+      error:
+        type: string
+        examples:
+          - "Mining pool not initialized"
+          - "GPU device index 5 not found"
+
+    performance:
+      target_latency: "<50ms"
+      functional_requirements: [FR-005, FR-006, FR-007, FR-008, FR-008a, FR-008b]
+      non_functional_requirements: [NFR-002]
+
+  # ============================================================================
+  # GPU Health Metrics
+  # ============================================================================
+
+  - name: get_gpu_health_metrics
+    description: |
+      Get current health metrics for all GPUs or a specific GPU.
+      Returns temperature, fan speed, power, memory usage, clock speed.
+
+    request:
+      parameters:
+        - name: gpu_device_index
+          type: integer
+          required: false
+          description: "If provided, return metrics for specific GPU only. Otherwise, return all."
+
+    response:
+      success:
+        type: object
+        properties:
+          metrics:
+            type: object
+            additionalProperties:
+              type: object
+              properties:
+                gpu_device_index:
+                  type: integer
+                temperature:
+                  type: number
+                  nullable: true
+                  description: "Temperature in °C"
+                fan_speed:
+                  type: integer
+                  nullable: true
+                  description: "Fan speed in RPM"
+                power_consumption:
+                  type: number
+                  nullable: true
+                  description: "Power consumption in Watts"
+                memory_used:
+                  type: integer
+                  nullable: true
+                  description: "GPU memory used in MB"
+                memory_total:
+                  type: integer
+                  nullable: true
+                  description: "Total GPU memory in MB"
+                core_clock_speed:
+                  type: integer
+                  nullable: true
+                  description: "Core clock speed in MHz"
+                last_updated:
+                  type: string
+                  format: "ISO 8601 timestamp"
+
+      error:
+        type: string
+        examples:
+          - "GPU monitoring service not available"
+          - "NVML/ADL library not found"
+          - "GPU device index 2 not found"
+
+    performance:
+      target_latency: "<50ms"
+      functional_requirements: [FR-009, FR-010, FR-012, FR-013]
+      non_functional_requirements: [NFR-004]
+
+  # ============================================================================
+  # Temperature Threshold Configuration
+  # ============================================================================
+
+  - name: set_temperature_threshold
+    description: |
+      Configure GPU temperature warning threshold.
+      Validates range (60°C - 95°C) and saves to backend state.
+
+    request:
+      parameters:
+        - name: threshold
+          type: number
+          required: true
+          minimum: 60
+          maximum: 95
+          description: "Temperature threshold in °C"
+
+    response:
+      success:
+        type: object
+        properties:
+          threshold:
+            type: number
+            description: "Confirmed threshold value"
+
+      error:
+        type: string
+        examples:
+          - "Invalid threshold: must be between 60°C and 95°C"
+          - "Mining must be stopped before changing temperature threshold"
+
+    performance:
+      target_latency: "<100ms"
+      functional_requirements: [FR-011, FR-011a, FR-011b]
+      article_xi: "Backend validates FIRST, then emits event, frontend saves to localStorage"
+
+  - name: get_temperature_threshold
+    description: |
+      Get current GPU temperature warning threshold.
+
+    request:
+      parameters: []
+
+    response:
+      success:
+        type: object
+        properties:
+          threshold:
+            type: number
+            description: "Current threshold in °C (default: 80)"
+
+      error:
+        type: string
+
+    performance:
+      target_latency: "<10ms"
+      functional_requirements: [FR-011]
+
+  # ============================================================================
+  # Combined Dashboard Data (for Event Emission)
+  # ============================================================================
+
+  - name: get_gpu_dashboard_data
+    description: |
+      Get complete dashboard data (devices + stats + health + config).
+      Used for initial page load and backend-emitted events.
+
+    request:
+      parameters: []
+
+    response:
+      success:
+        type: object
+        properties:
+          devices:
+            type: array
+            items:
+              $ref: "#/definitions/GpuDevice"
+          stats:
+            type: object
+            description: "Map of device_index to GpuMiningStats"
+          health:
+            type: object
+            description: "Map of device_index to GpuHealthMetrics"
+          temperature_threshold:
+            type: number
+            description: "Current temperature threshold in °C"
+
+      error:
+        type: string
+
+    performance:
+      target_latency: "<100ms"
+      functional_requirements: [FR-001, FR-005, FR-009, FR-017, FR-020]
+
+# ============================================================================
+# Tauri Events (Backend → Frontend)
+# ============================================================================
+
+events:
+  - name: gpu-stats-updated
+    description: |
+      Emitted every 5 seconds by backend with complete GPU dashboard data.
+      Frontend listens and updates UI reactively.
+
+    payload:
+      type: object
+      properties:
+        devices:
+          type: array
+        stats:
+          type: object
+        health:
+          type: object
+        temperature_threshold:
+          type: number
+
+    frequency: "Every 5 seconds"
+    article_xi_compliance: "Section 11.3 - Event-Driven Architecture"
+    functional_requirements: [FR-010, FR-017, FR-023]
+
+  - name: gpu-thermal-throttle
+    description: |
+      Emitted when GPU thermal throttling is triggered or released.
+      Provides user-visible log message.
+
+    payload:
+      type: object
+      properties:
+        gpu_device_index:
+          type: integer
+        action:
+          type: string
+          enum: [throttled, restored]
+        temperature:
+          type: number
+        throttle_percentage:
+          type: integer
+        message:
+          type: string
+          example: "GPU 0 throttled to 80% due to 82°C temperature"
+
+    functional_requirements: [FR-013a, FR-013b, FR-013c, FR-013d]
+
+# ============================================================================
+# Definitions
+# ============================================================================
+
+definitions:
+  GpuDevice:
+    type: object
+    properties:
+      device_index:
+        type: integer
+      model_name:
+        type: string
+      vendor:
+        type: string
+        enum: [NVIDIA, AMD, Intel, Other]
+      opencl_capable:
+        type: boolean
+      compute_capability:
+        type: string
+        nullable: true
+
+# ============================================================================
+# Article XI Compliance Summary
+# ============================================================================
+
+article_xi_compliance:
+  section_11_1:
+    single_source_of_truth: "Backend MiningThreadPool for stats, sensor polling for health"
+  section_11_2:
+    backend_first_validation: "set_temperature_threshold validates before saving"
+  section_11_3:
+    event_driven: "gpu-stats-updated emitted every 5 seconds"
+  section_11_6:
+    event_cleanup: "Frontend must unlisten on page unload"
+  section_11_7:
+    prohibited_patterns:
+      - "NO frontend polling (events used)"
+      - "NO authoritative state in JavaScript"
+      - "NO localStorage before backend validation"
+
+# ============================================================================
+# Performance Requirements
+# ============================================================================
+
+performance_targets:
+  enumerate_gpus: "<500ms (NFR-001)"
+  get_gpu_mining_stats: "<50ms"
+  get_gpu_health_metrics: "<50ms"
+  set_temperature_threshold: "<100ms"
+  event_emission_overhead: "<1% mining impact (NFR-002)"
+  ui_render_time: "<200ms for 10+ GPUs (NFR-003)"

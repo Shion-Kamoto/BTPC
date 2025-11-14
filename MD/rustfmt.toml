@@ -1,0 +1,26 @@
+# BTPC Rust formatting configuration
+# Enforces consistent code style across the project
+
+edition = "2021"
+max_width = 100
+hard_tabs = false
+tab_spaces = 4
+
+# Import organization
+imports_granularity = "Crate"
+reorder_imports = true
+group_imports = "StdExternalCrate"
+
+# Function and type formatting
+fn_single_line = false
+where_single_line = true
+force_explicit_abi = true
+
+# Comments and documentation
+normalize_comments = true
+wrap_comments = true
+comment_width = 100
+
+# Constitutional compliance - readable code
+use_small_heuristics = "Default"
+condense_wildcard_suffixes = true

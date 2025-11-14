@@ -1,0 +1,557 @@
+openapi: 3.0.3
+info:
+  title: BTPC Blockchain API
+  description: |
+    JSON-RPC API for BTPC (Bitcoin-Time Protocol Chain) - A quantum-resistant blockchain
+    with ML-DSA signatures, SHA-512 proof-of-work, and linear decay economics.
+  version: 1.0.0
+  contact:
+    name: BTPC Development Team
+    url: https://github.com/btpc/btpc-core
+
+servers:
+  - url: http://localhost:8332
+    description: Local BTPC node (default port)
+  - url: https://mainnet.btpc.network:8332
+    description: BTPC Mainnet
+  - url: https://testnet.btpc.network:18332
+    description: BTPC Testnet
+
+paths:
+  /api/v1/blockchain/info:
+    post:
+      summary: Get blockchain information
+      description: Returns current blockchain state and network information
+      operationId: getBlockchainInfo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JSONRPCRequest'
+            example:
+              jsonrpc: "2.0"
+              method: "getblockchaininfo"
+              params: []
+              id: 1
+      responses:
+        '200':
+          description: Blockchain information
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/JSONRPCResponse'
+                  - properties:
+                      result:
+                        $ref: '#/components/schemas/BlockchainInfo'
+
+  /api/v1/blockchain/block:
+    post:
+      summary: Get block by hash or height
+      description: Retrieves a block by its hash or height
+      operationId: getBlock
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JSONRPCRequest'
+            example:
+              jsonrpc: "2.0"
+              method: "getblock"
+              params: ["00000000839a8e6886ab5951d76f411475428afc90947ee320161bbf18eb6048f"]
+              id: 1
+      responses:
+        '200':
+          description: Block data
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/JSONRPCResponse'
+                  - properties:
+                      result:
+                        $ref: '#/components/schemas/Block'
+
+  /api/v1/transaction/send:
+    post:
+      summary: Send transaction
+      description: Broadcasts a signed transaction to the network
+      operationId: sendTransaction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JSONRPCRequest'
+            example:
+              jsonrpc: "2.0"
+              method: "sendrawtransaction"
+              params: ["0100000001..."] # Hex-encoded transaction
+              id: 1
+      responses:
+        '200':
+          description: Transaction hash
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/JSONRPCResponse'
+                  - properties:
+                      result:
+                        type: string
+                        description: Transaction hash
+
+  /api/v1/wallet/balance:
+    post:
+      summary: Get wallet balance
+      description: Returns the current balance for a wallet address
+      operationId: getBalance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JSONRPCRequest'
+            example:
+              jsonrpc: "2.0"
+              method: "getbalance"
+              params: ["btpc_1234567890abcdef..."]
+              id: 1
+      responses:
+        '200':
+          description: Wallet balance
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/JSONRPCResponse'
+                  - properties:
+                      result:
+                        $ref: '#/components/schemas/Balance'
+
+  /api/v1/mining/template:
+    post:
+      summary: Get block template
+      description: Returns a block template for mining
+      operationId: getBlockTemplate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JSONRPCRequest'
+            example:
+              jsonrpc: "2.0"
+              method: "getblocktemplate"
+              params: [{"rules": ["segwit"]}]
+              id: 1
+      responses:
+        '200':
+          description: Block template
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/JSONRPCResponse'
+                  - properties:
+                      result:
+                        $ref: '#/components/schemas/BlockTemplate'
+
+  /api/v1/mining/submit:
+    post:
+      summary: Submit mined block
+      description: Submits a mined block to the network
+      operationId: submitBlock
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JSONRPCRequest'
+            example:
+              jsonrpc: "2.0"
+              method: "submitblock"
+              params: ["0000002000000000..."] # Hex-encoded block
+              id: 1
+      responses:
+        '200':
+          description: Submission result
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/JSONRPCResponse'
+                  - properties:
+                      result:
+                        type: string
+                        nullable: true
+                        description: null on success, error string on failure
+
+components:
+  schemas:
+    JSONRPCRequest:
+      type: object
+      required:
+        - jsonrpc
+        - method
+        - id
+      properties:
+        jsonrpc:
+          type: string
+          enum: ["2.0"]
+        method:
+          type: string
+          description: RPC method name
+        params:
+          type: array
+          description: Method parameters
+        id:
+          oneOf:
+            - type: string
+            - type: number
+          description: Request identifier
+
+    JSONRPCResponse:
+      type: object
+      required:
+        - jsonrpc
+        - id
+      properties:
+        jsonrpc:
+          type: string
+          enum: ["2.0"]
+        id:
+          oneOf:
+            - type: string
+            - type: number
+          description: Request identifier
+        result:
+          description: Method result (present on success)
+        error:
+          $ref: '#/components/schemas/JSONRPCError'
+
+    JSONRPCError:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: integer
+          description: Error code
+        message:
+          type: string
+          description: Error message
+        data:
+          description: Additional error data
+
+    BlockchainInfo:
+      type: object
+      required:
+        - chain
+        - blocks
+        - headers
+        - bestblockhash
+        - difficulty
+        - mediantime
+        - verificationprogress
+        - chainwork
+        - size_on_disk
+        - pruned
+      properties:
+        chain:
+          type: string
+          enum: ["main", "test", "regtest"]
+          description: Network name
+        blocks:
+          type: integer
+          description: Current block height
+        headers:
+          type: integer
+          description: Current header height
+        bestblockhash:
+          type: string
+          description: SHA-512 hash of best block (128 hex chars)
+        difficulty:
+          type: number
+          description: Current difficulty target
+        mediantime:
+          type: integer
+          description: Median time of last 11 blocks
+        verificationprogress:
+          type: number
+          description: Blockchain verification progress (0-1)
+        chainwork:
+          type: string
+          description: Total proof-of-work in chain (hex)
+        size_on_disk:
+          type: integer
+          description: Blockchain size in bytes
+        pruned:
+          type: boolean
+          description: Whether blockchain is pruned
+        total_supply:
+          type: number
+          description: Current total BTPC in circulation
+        reward_epoch:
+          type: integer
+          description: Current linear decay epoch
+        next_reward:
+          type: number
+          description: Next block reward amount
+
+    Block:
+      type: object
+      required:
+        - hash
+        - confirmations
+        - height
+        - version
+        - merkleroot
+        - time
+        - mediantime
+        - nonce
+        - bits
+        - difficulty
+        - chainwork
+        - previousblockhash
+        - tx
+      properties:
+        hash:
+          type: string
+          description: SHA-512 block hash (128 hex chars)
+        confirmations:
+          type: integer
+          description: Number of confirmations
+        height:
+          type: integer
+          description: Block height
+        version:
+          type: integer
+          description: Block version
+        merkleroot:
+          type: string
+          description: SHA-512 merkle root (128 hex chars)
+        time:
+          type: integer
+          description: Block timestamp
+        mediantime:
+          type: integer
+          description: Median time of previous blocks
+        nonce:
+          type: integer
+          description: Proof-of-work nonce
+        bits:
+          type: string
+          description: Difficulty target (compact format)
+        difficulty:
+          type: number
+          description: Difficulty target (decimal)
+        chainwork:
+          type: string
+          description: Cumulative work (hex)
+        size:
+          type: integer
+          description: Block size in bytes
+        weight:
+          type: integer
+          description: Block weight
+        tx:
+          type: array
+          items:
+            $ref: '#/components/schemas/Transaction'
+          description: Array of transactions
+        previousblockhash:
+          type: string
+          description: SHA-512 hash of previous block
+        nextblockhash:
+          type: string
+          description: SHA-512 hash of next block (if available)
+        reward:
+          type: number
+          description: Block reward amount (linear decay)
+
+    Transaction:
+      type: object
+      required:
+        - txid
+        - hash
+        - version
+        - size
+        - locktime
+        - vin
+        - vout
+      properties:
+        txid:
+          type: string
+          description: Transaction ID (SHA-512 hash)
+        hash:
+          type: string
+          description: Transaction hash
+        version:
+          type: integer
+          description: Transaction version
+        size:
+          type: integer
+          description: Transaction size in bytes
+        locktime:
+          type: integer
+          description: Transaction lock time
+        vin:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionInput'
+          description: Transaction inputs
+        vout:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionOutput'
+          description: Transaction outputs
+        blockhash:
+          type: string
+          description: Block hash containing transaction
+        confirmations:
+          type: integer
+          description: Number of confirmations
+        blocktime:
+          type: integer
+          description: Block timestamp
+        time:
+          type: integer
+          description: Transaction timestamp
+
+    TransactionInput:
+      type: object
+      required:
+        - txid
+        - vout
+        - scriptSig
+        - sequence
+      properties:
+        txid:
+          type: string
+          description: Referenced transaction hash
+        vout:
+          type: integer
+          description: Referenced output index
+        scriptSig:
+          type: object
+          properties:
+            asm:
+              type: string
+              description: ML-DSA signature (assembly format)
+            hex:
+              type: string
+              description: ML-DSA signature (hex format)
+        sequence:
+          type: integer
+          description: Transaction sequence number
+
+    TransactionOutput:
+      type: object
+      required:
+        - value
+        - n
+        - scriptPubKey
+      properties:
+        value:
+          type: number
+          description: Output value in BTPC
+        n:
+          type: integer
+          description: Output index
+        scriptPubKey:
+          type: object
+          properties:
+            asm:
+              type: string
+              description: ML-DSA public key (assembly format)
+            hex:
+              type: string
+              description: ML-DSA public key (hex format)
+            address:
+              type: string
+              description: BTPC address
+            type:
+              type: string
+              enum: ["mldsa"]
+              description: Script type
+
+    Balance:
+      type: object
+      required:
+        - confirmed
+        - unconfirmed
+        - total
+      properties:
+        confirmed:
+          type: number
+          description: Confirmed balance in BTPC
+        unconfirmed:
+          type: number
+          description: Unconfirmed balance in BTPC
+        total:
+          type: number
+          description: Total balance in BTPC
+        address:
+          type: string
+          description: BTPC address
+        utxo_count:
+          type: integer
+          description: Number of UTXOs
+
+    BlockTemplate:
+      type: object
+      required:
+        - version
+        - previousblockhash
+        - transactions
+        - coinbasevalue
+        - target
+        - mintime
+        - curtime
+        - height
+      properties:
+        version:
+          type: integer
+          description: Block version
+        previousblockhash:
+          type: string
+          description: SHA-512 hash of previous block
+        transactions:
+          type: array
+          items:
+            type: object
+            properties:
+              data:
+                type: string
+                description: Transaction data (hex)
+              hash:
+                type: string
+                description: Transaction hash
+              fee:
+                type: number
+                description: Transaction fee
+        coinbasevalue:
+          type: number
+          description: Block reward + fees
+        target:
+          type: string
+          description: SHA-512 difficulty target (hex)
+        mintime:
+          type: integer
+          description: Minimum block time
+        curtime:
+          type: integer
+          description: Current time
+        height:
+          type: integer
+          description: Block height
+        bits:
+          type: string
+          description: Difficulty target (compact)
+        reward_amount:
+          type: number
+          description: Base reward (linear decay)

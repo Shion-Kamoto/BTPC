@@ -1,0 +1,36 @@
+# BTPC Testnet Node 3 Configuration
+
+[network]
+type = "testnet"
+magic_bytes = [0x42, 0x54, 0xFF, 0x01]
+listen_addr = "0.0.0.0:18335"
+max_peers = 32
+enable_upnp = false
+
+[rpc]
+enabled = true
+bind_address = "127.0.0.1"
+port = 18352
+max_request_size = 1048576  # 1MB
+enable_auth = false
+
+[storage]
+data_dir = "testnet-deployment/data/node3"
+cache_size = 104857600  # 100MB
+write_buffer_size = 16777216  # 16MB
+max_open_files = 1000
+enable_compression = true
+
+[mining]
+enabled = true
+threads = 2
+mining_address = "btpc_testnet_miner_node3_000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+
+[peers]
+bootstrap_nodes = ["127.0.0.1:18333", "127.0.0.1:18334"]
+connect_to = ["127.0.0.1:18333"]
+dns_seeds = []
+
+[logging]
+level = "info"
+log_file = "testnet-deployment/logs/node3.log"

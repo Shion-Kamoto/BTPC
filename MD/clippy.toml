@@ -1,0 +1,20 @@
+# BTPC Clippy configuration
+# Enforces code quality and security best practices
+
+# Cognitive complexity threshold
+cognitive-complexity-threshold = 30
+
+# Documentation
+missing-docs-in-crate-items = true
+
+# Security and correctness
+disallowed-methods = [
+    { path = "std::env::set_var", reason = "use thread-safe alternatives" },
+]
+
+# Performance
+vec-box-size-threshold = 4096
+too-many-arguments-threshold = 8
+
+# Style - enforce consistency
+enum-variant-name-threshold = 3

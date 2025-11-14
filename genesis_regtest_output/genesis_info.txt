@@ -1,0 +1,18 @@
+BTPC Genesis Block Information
+=============================
+
+Network: Regtest
+Hash: 4691e9fe9de2c8c21028482edececb5b97ed9eb5d3d9dcb87188f9a129b53b89861cc09d777cd7869086a9edd7aacfe8d3e123436249f9ea7ade04f4a66b1e60
+Merkle Root: 7681a8382612a2734142b1a1472b6ff6a1b5bdaa22869d6e6ce216339bcaaaa5be1c744ef4a732660a11c2d792638b3655e47caf6159b8731aae5961f68280f4
+Timestamp: 1760842137 (2025-10-19 02:48:57 UTC)
+Difficulty Target: 0x207fffff
+Nonce: 0
+
+Coinbase Transaction:
+- TXID: 7681a8382612a2734142b1a1472b6ff6a1b5bdaa22869d6e6ce216339bcaaaa5be1c744ef4a732660a11c2d792638b3655e47caf6159b8731aae5961f68280f4
+- Message: BTPC Regtest Genesis - Testing Quantum-Resistant Blockchain
+- Outputs: 1
+- Total Value: 1000000 BTPC
+
+Reward Allocations:
+- 1000000 BTPC -> genesis_dev_fund (Development Fund)

@@ -1,0 +1,383 @@
+openapi: 3.0.0
+info:
+  title: BTPC Transaction API (Tauri Commands)
+  version: 1.0.0
+  description: Desktop application commands for transaction creation, signing, and broadcasting
+
+paths:
+  /create_transaction:
+    post:
+      summary: Create a new transaction
+      description: Builds transaction with UTXO selection and fee calculation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - wallet_id
+                - recipient
+                - amount
+              properties:
+                wallet_id:
+                  type: string
+                  format: uuid
+                  description: Source wallet identifier
+                recipient:
+                  type: string
+                  pattern: "^btpc[0-9a-z]{58}$"
+                  description: Recipient BTPC address
+                amount:
+                  type: integer
+                  minimum: 1000
+                  description: Amount in satoshis (min 1000 for dust prevention)
+                fee_rate:
+                  type: integer
+                  default: 100
+                  description: Fee rate in satoshis per byte
+      responses:
+        '200':
+          description: Transaction created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionCreated'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '402':
+          $ref: '#/components/responses/InsufficientFunds'
+        '423':
+          $ref: '#/components/responses/UTXOLocked'
+
+  /sign_transaction:
+    post:
+      summary: Sign a transaction with ML-DSA
+      description: Signs all inputs using wallet private keys
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - transaction_id
+                - wallet_password
+              properties:
+                transaction_id:
+                  type: string
+                  description: Transaction ID from create_transaction
+                wallet_password:
+                  type: string
+                  format: password
+                  description: Password to decrypt wallet keys
+      responses:
+        '200':
+          description: Transaction signed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionSigned'
+        '401':
+          $ref: '#/components/responses/InvalidPassword'
+        '404':
+          $ref: '#/components/responses/TransactionNotFound'
+        '500':
+          $ref: '#/components/responses/SignatureFailure'
+
+  /broadcast_transaction:
+    post:
+      summary: Broadcast signed transaction to network
+      description: Sends transaction to connected nodes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - transaction_id
+              properties:
+                transaction_id:
+                  type: string
+                  description: Signed transaction ID
+      responses:
+        '200':
+          description: Transaction broadcast successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionBroadcast'
+        '400':
+          $ref: '#/components/responses/InvalidTransaction'
+        '503':
+          $ref: '#/components/responses/NetworkUnavailable'
+
+  /get_transaction_status:
+    get:
+      summary: Get transaction status
+      description: Query current state of a transaction
+      parameters:
+        - name: transaction_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Transaction status retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionStatus'
+        '404':
+          $ref: '#/components/responses/TransactionNotFound'
+
+  /cancel_transaction:
+    post:
+      summary: Cancel a pending transaction
+      description: Cancels transaction and releases locked UTXOs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - transaction_id
+              properties:
+                transaction_id:
+                  type: string
+      responses:
+        '200':
+          description: Transaction cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  utxos_released:
+                    type: integer
+        '400':
+          description: Cannot cancel (already broadcast/confirmed)
+        '404':
+          $ref: '#/components/responses/TransactionNotFound'
+
+  /estimate_fee:
+    post:
+      summary: Estimate transaction fee
+      description: Calculate fee before creating transaction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - wallet_id
+                - recipient
+                - amount
+              properties:
+                wallet_id:
+                  type: string
+                recipient:
+                  type: string
+                amount:
+                  type: integer
+      responses:
+        '200':
+          description: Fee estimate calculated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  estimated_fee:
+                    type: integer
+                    description: Fee in satoshis
+                  transaction_size:
+                    type: integer
+                    description: Estimated size in bytes
+                  fee_rate:
+                    type: integer
+                    description: Current network fee rate
+
+components:
+  schemas:
+    TransactionCreated:
+      type: object
+      properties:
+        transaction_id:
+          type: string
+        inputs_count:
+          type: integer
+        outputs_count:
+          type: integer
+        fee:
+          type: integer
+        change_amount:
+          type: integer
+        status:
+          type: string
+          enum: [Creating]
+
+    TransactionSigned:
+      type: object
+      properties:
+        transaction_id:
+          type: string
+        signatures_count:
+          type: integer
+        ready_to_broadcast:
+          type: boolean
+        status:
+          type: string
+          enum: [Signing, Signed]
+
+    TransactionBroadcast:
+      type: object
+      properties:
+        transaction_id:
+          type: string
+        broadcast_to_peers:
+          type: integer
+        mempool_accepted:
+          type: boolean
+        status:
+          type: string
+          enum: [Broadcasting, Pending]
+
+    TransactionStatus:
+      type: object
+      properties:
+        transaction_id:
+          type: string
+        status:
+          type: string
+          enum: [Creating, Signing, Broadcasting, Pending, Confirmed, Failed]
+        confirmations:
+          type: integer
+          nullable: true
+        block_height:
+          type: integer
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+
+  responses:
+    ValidationError:
+      description: Invalid transaction parameters
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                enum: [INVALID_ADDRESS, INVALID_AMOUNT, DUST_OUTPUT]
+              message:
+                type: string
+
+    InsufficientFunds:
+      description: Not enough balance
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                enum: [INSUFFICIENT_FUNDS]
+              available:
+                type: integer
+              required:
+                type: integer
+
+    UTXOLocked:
+      description: Required UTXOs are locked
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                enum: [UTXO_LOCKED]
+              message:
+                type: string
+              locked_by:
+                type: string
+
+    InvalidPassword:
+      description: Wallet password incorrect
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                enum: [INVALID_PASSWORD]
+              message:
+                type: string
+
+    TransactionNotFound:
+      description: Transaction ID not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                enum: [TRANSACTION_NOT_FOUND]
+              transaction_id:
+                type: string
+
+    SignatureFailure:
+      description: ML-DSA signature generation failed
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                enum: [SIGNATURE_FAILED]
+              message:
+                type: string
+              missing_seed:
+                type: boolean
+
+    InvalidTransaction:
+      description: Transaction validation failed
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                enum: [INVALID_TRANSACTION]
+              validation_errors:
+                type: array
+                items:
+                  type: string
+
+    NetworkUnavailable:
+      description: Cannot connect to network
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                enum: [NETWORK_UNAVAILABLE]
+              message:
+                type: string
+              retry_after:
+                type: integer

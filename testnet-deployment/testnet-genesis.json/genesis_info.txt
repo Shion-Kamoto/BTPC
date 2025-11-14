@@ -1,0 +1,18 @@
+BTPC Genesis Block Information
+=============================
+
+Network: Testnet
+Hash: 66f93816446e9aae8eebd6a26c4bc9b74f161c54871a59d4722d39baf194df3ec91605384f048c76c6524089ce7f2029e89557a0c482db56aa44aaf58028ad6c
+Merkle Root: a21552cf353981c1418145531ce7f1ca380350788f34851df14c17e8ba60788a0201eb71f642ffea67998cfe525085c641675186a912309ea8d2db86d4d0e623
+Timestamp: 1759614480 (2025-10-04 21:48:00 UTC)
+Difficulty Target: 0x207fffff
+Nonce: 1
+
+Coinbase Transaction:
+- TXID: a21552cf353981c1418145531ce7f1ca380350788f34851df14c17e8ba60788a0201eb71f642ffea67998cfe525085c641675186a912309ea8d2db86d4d0e623
+- Message: BTPC Genesis Block - Quantum-resistant Bitcoin
+- Outputs: 1
+- Total Value: 1000000 BTPC
+
+Reward Allocations:
+- 1000000 BTPC -> genesis_dev_fund (Development Fund)

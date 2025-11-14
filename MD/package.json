@@ -1,0 +1,29 @@
+{
+  "name": "btpc",
+  "version": "1.0.0",
+  "description": "BTPC - Quantum-Resistant Blockchain",
+  "main": "index.js",
+  "scripts": {
+    "dev": "cd btpc-desktop-app && npm run tauri:dev",
+    "tauri": "tauri",
+    "tauri:dev": "cd btpc-desktop-app && npm run tauri:dev",
+    "tauri:build": "cd btpc-desktop-app && npm run tauri:build",
+    "frontend:dev": "cd btpc-desktop-app/ui && python3 -m http.server 8080",
+    "frontend:build": "echo 'Frontend build not needed - static HTML/JS'",
+    "backend:check": "cargo check --manifest-path btpc-desktop-app/src-tauri/Cargo.toml"
+  },
+  "keywords": [
+    "blockchain",
+    "quantum-resistant",
+    "bitcoin",
+    "tauri"
+  ],
+  "author": "BTPC Development Team",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@playwright/test": "^1.55.1",
+    "@tauri-apps/cli": "^2.8.4",
+    "@types/node": "^24.5.2"
+  }
+}

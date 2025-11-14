@@ -1,0 +1,1948 @@
+/* BTPC Modern Quantum-Resistant Design System */
+/* Clean, professional cryptocurrency wallet aesthetic */
+
+:root {
+    /* Brand Colors - Quantum theme */
+    --btpc-primary: #6366F1;      /* Indigo - quantum computing theme */
+    --btpc-secondary: #8B5CF6;    /* Purple - quantum entanglement */
+    --btpc-accent: #10B981;       /* Green - success/active */
+    --btpc-gold: #F59E0B;         /* Amber - value/balance */
+    --btpc-orange: #F7931A;       /* Bitcoin orange/yellow */
+
+    /* Background Colors */
+    --bg-primary: #0F172A;        /* Dark slate */
+    --bg-secondary: #1E293B;      /* Lighter slate */
+    --bg-sidebar: #1E293B;        /* Unified sidebar */
+    --bg-card: #1E293B;
+    --bg-hover: #334155;
+
+    /* Status Colors */
+    --status-success: #10B981;
+    --status-warning: #F59E0B;
+    --status-error: #EF4444;
+    --status-info: #3B82F6;
+
+    /* Borders & Text */
+    --border-color: #334155;
+    --border-subtle: #1E293B;
+    --text-primary: #F1F5F9;
+    --text-secondary: #CBD5E1;
+    --text-muted: #64748B;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    color-scheme: dark;
+}
+
+/* Page Layout - Monero Pattern */
+.page-container {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* Sidebar - Modern & Clean */
+.sidebar {
+    background: var(--bg-sidebar);
+    border-right: 1px solid var(--border-color);
+    height: 100vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Logo Section - Simplified */
+.logo-section {
+    padding: 20px 20px 16px 20px;
+    margin: 20px;
+    background: linear-gradient(135deg, rgba(99,102,241,0.1) 0%, rgba(139,92,246,0.1) 100%);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+}
+
+.logo-image {
+    margin-bottom: 12px;
+    position: relative;
+    width: 100%;
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Animated BTPC Logo */
+.btpc-animated-logo {
+    display: flex;
+    gap: 4px;
+    position: relative;
+}
+
+.btpc-letter {
+    font-size: 2.5rem;
+    font-weight: 400;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+    color: #FFFFFF;
+    display: inline-block;
+    animation: letterRotateFade 0.6s ease-in-out forwards;
+    letter-spacing: -0.05em;
+}
+
+.btpc-letter:nth-child(1) { animation-delay: 0s; }
+.btpc-letter:nth-child(2) { animation-delay: 0.6s; }
+.btpc-letter:nth-child(3) { animation-delay: 1.2s; }
+.btpc-letter:nth-child(4) { animation-delay: 1.8s; }
+
+@keyframes letterRotateFade {
+    0% { transform: rotateY(0deg); opacity: 1; }
+    50% { transform: rotateY(180deg); opacity: 1; }
+    100% { transform: rotateY(360deg); opacity: 1; }
+}
+
+/* Fade out letters when symbols appear */
+.logo-image {
+    animation: fadeOutLetters 0.5s ease-out forwards;
+    animation-delay: 2.4s;
+}
+
+@keyframes fadeOutLetters {
+    0% { }
+    100% { }
+}
+
+.btpc-animated-logo {
+    animation: logoFadeOut 0.6s ease-out forwards;
+    animation-delay: 2.4s;
+}
+
+@keyframes logoFadeOut {
+    0% { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+.quantum-symbol {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    font-size: 2.5rem;
+    opacity: 0;
+    animation: quantumReveal 0.8s ease-out forwards;
+    animation-delay: 2.4s;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.quantum-symbol .btc-symbol {
+    color: var(--btpc-orange);
+    font-size: 4.8rem;
+}
+
+.quantum-symbol .q-symbol {
+    color: var(--btpc-orange);
+    font-size: 4.5rem;
+    font-weight: 400;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+    position: relative;
+}
+
+@keyframes quantumReveal {
+    0% { opacity: 0; transform: translate(-50%, -50%) scale(0) rotate(0deg); }
+    50% { opacity: 1; transform: translate(-50%, -50%) scale(1.3) rotate(180deg); }
+    100% { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(360deg); }
+}
+
+/* Quantum orbital rings */
+.quantum-orbital {
+    display: none;
+}
+
+.logo-header {
+    display: none;
+}
+
+.logo-subtitle {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-align: center;
+    margin-top: 0px;
+    font-weight: 500;
+    opacity: 0;
+    animation: subtitleFadeIn 0.5s ease-out forwards;
+    animation-delay: 3.2s;
+}
+
+@keyframes subtitleFadeIn {
+    0% { opacity: 0; transform: translateY(-10px); }
+    100% { opacity: 1; transform: translateY(0); }
+}
+
+/* Account Balance Card - Clean Design */
+.account-info {
+    margin: 0;
+    padding: 16px 0 0 0;
+    background: none;
+    border: none;
+    border-top: 1px solid rgba(99,102,241,0.2);
+}
+
+.account-name {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+
+.balance-label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 6px;
+}
+
+.balance-amount {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
+    letter-spacing: -0.025em;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    overflow: hidden;
+    max-width: 100%;
+}
+
+.balance-amount #wallet-balance {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.balance-amount .balance-unit {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.balance-unit {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+/* Navigation - Simplified */
+nav {
+    flex: 1;
+    padding: 12px 0;
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    padding: 12px 20px;
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
+    position: relative;
+}
+
+.nav-item:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.nav-item.active {
+    background: var(--bg-hover);
+    color: var(--btpc-primary);
+    font-weight: 600;
+}
+
+.nav-item.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 24px;
+    background: var(--btpc-primary);
+    border-radius: 0 4px 4px 0;
+}
+
+.nav-icon {
+    width: 20px;
+    margin-right: 12px;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.nav-text {
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+/* Network Status Footer - Clean */
+.network-status-footer {
+    margin-top: auto;
+    padding: 16px 20px;
+    background: var(--bg-primary);
+    border-top: 1px solid var(--border-color);
+}
+
+.network-status-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.network-status-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.network-status-value {
+    font-size: 0.75rem;
+    color: var(--text-primary);
+    font-weight: 600;
+    font-family: 'SF Mono', monospace;
+}
+
+/* Network name in Bitcoin yellow */
+#network-name {
+    color: var(--btpc-orange) !important;
+}
+
+.network-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--status-success);
+    box-shadow: 0 0 8px var(--status-success);
+    animation: pulse-dot 2s ease-in-out infinite;
+}
+
+.network-status-dot.disconnected {
+    background: var(--status-error);
+    box-shadow: 0 0 8px var(--status-error);
+    animation: none;
+}
+
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+.sync-progress-bar {
+    height: 3px;
+    background: var(--border-color);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 8px;
+}
+
+.sync-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--btpc-primary), var(--btpc-secondary));
+    transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Main Content Area - Clean Layout */
+.main-content {
+    background: var(--bg-primary);
+    padding: 32px 40px;
+    overflow-y: auto;
+    height: 100vh;
+    position: relative;
+}
+
+/* Date/Time Display - Above Logout Button */
+.datetime-display {
+    position: fixed;
+    top: 0;
+    right: 20px;
+    padding: 8px 12px;
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 0.75rem;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    z-index: 1000;
+    font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+}
+
+.datetime-date {
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.datetime-time {
+    color: var(--text-primary);
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+
+/* Logout Button - Top Right Corner */
+.logout-button {
+    position: fixed;
+    top: 36px;
+    right: 20px;
+    padding: 10px 20px;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    z-index: 1000;
+}
+
+.logout-button:hover {
+    background: var(--status-error);
+    border-color: var(--status-error);
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(239,68,68,0.25);
+}
+
+/* Professional SVG Icons */
+.icon {
+    width: 16px;
+    height: 16px;
+    display: inline-block;
+    vertical-align: middle;
+}
+
+/* Navigation Icons - BTPC Brand Icons */
+.icon-home {
+    background-image: url("src/assets/icons-svg/home.svg");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+.icon-wallet {
+    background-image: url("src/assets/icons-svg/wallet.svg");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+.icon-transactions {
+    background-image: url("src/assets/icons-svg/transactions.svg");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+.icon-pickaxe {
+    background-image: url("src/assets/icons-svg/mining.svg");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+.icon-link {
+    background-image: url("src/assets/icons-svg/node.svg");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+.icon-settings {
+    background-image: url("src/assets/icons-svg/settings.svg");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+/* Action Icons - Professional Bold Design */
+.icon-logout {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4' stroke-width='3'/%3E%3Cpolyline points='16 17 21 12 16 7' stroke-width='3'/%3E%3Cline x1='21' y1='12' x2='9' y2='12' stroke-width='3'/%3E%3C/svg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+.icon-save {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z' fill='currentColor' opacity='0.15'/%3E%3Cpath d='M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z'/%3E%3Crect x='7' y='13' width='10' height='8' fill='currentColor' opacity='0.9'/%3E%3C/svg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+.icon-refresh {
+    background-image: url("src/assets/icons-svg/refresh.svg");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+.icon-export {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' stroke-width='3'/%3E%3Cpolyline points='7 10 12 15 17 10' stroke-width='3'/%3E%3Cline x1='12' y1='15' x2='12' y2='3' stroke-width='3'/%3E%3C/svg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+.icon-send {
+    background-image: url("src/assets/icons-svg/send.svg");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+.icon-receive {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='7 13 12 18 17 13' stroke-width='3'/%3E%3Cline x1='12' y1='18' x2='12' y2='3' stroke-width='3'/%3E%3Cpath d='M3 21h18' stroke-width='3'/%3E%3Ccircle cx='12' cy='18' r='2' fill='currentColor' opacity='0.9'/%3E%3C/svg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+.icon-play {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='5 3 19 12 5 21 5 3' opacity='0.9'/%3E%3C/svg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+.icon-stop {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='6' y='6' width='12' height='12' rx='2' opacity='0.9'/%3E%3C/svg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+.icon-plus {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10' fill='currentColor' opacity='0.15'/%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cline x1='12' y1='8' x2='12' y2='16' stroke-width='3'/%3E%3Cline x1='8' y1='12' x2='16' y2='12' stroke-width='3'/%3E%3C/svg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+.icon-add {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10' fill='currentColor' opacity='0.15'/%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M12 7v10m-5-5h10' stroke-width='3'/%3E%3C/svg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+/* Status Icons (colored) */
+.icon-circle-check {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2310B981' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpolyline points='9 12 11 14 15 10'/%3E%3C/svg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+.icon-circle-x {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23EF4444' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cline x1='15' y1='9' x2='9' y2='15'/%3E%3Cline x1='9' y1='9' x2='15' y2='15'/%3E%3C/svg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+.icon-alert-triangle {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23F59E0B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z'/%3E%3Cline x1='12' y1='9' x2='12' y2='13'/%3E%3Cline x1='12' y1='17' x2='12.01' y2='17'/%3E%3C/svg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+.icon-info {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%233B82F6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cline x1='12' y1='16' x2='12' y2='12'/%3E%3Cline x1='12' y1='8' x2='12.01' y2='8'/%3E%3C/svg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+/* Utility Icons */
+.icon-view {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+.icon-chart {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='18' y1='20' x2='18' y2='10'/%3E%3Cline x1='12' y1='20' x2='12' y2='4'/%3E%3Cline x1='6' y1='20' x2='6' y2='14'/%3E%3C/svg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+.icon-arrow-down {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='12' y1='5' x2='12' y2='19'/%3E%3Cpolyline points='19 12 12 19 5 12'/%3E%3C/svg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+.icon-bookmark {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z'/%3E%3C/svg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+/* Special Icon */
+.icon-mining-reward {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='15' cy='15' r='7'/%3E%3Cpath d='M13 15h4m-2-2v4'/%3E%3Cpath d='M4 4l7 7-4 4'/%3E%3Cpath d='M2 2l2.5 2.5a2 2 0 0 1 0 2.83L2 9.83'/%3E%3C/svg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+/* Blockchain-Specific Custom Icons */
+
+/* 1. Mining Pick-axe + Blockchain Block */
+.icon-mining-enhanced {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3C!-- 3D Cube/Block --%3E%3Cpath d='M12 2l6 3.5v7L12 16l-6-3.5v-7z'/%3E%3Cpath d='M12 16v-3.5'/%3E%3Cpath d='M6 5.5l6 3.5 6-3.5'/%3E%3C!-- Pick-axe breaking the block --%3E%3Cpath d='M16 14l5 5'/%3E%3Cpath d='M19.5 16.5l2 2'/%3E%3Cpath d='M18 13l-1 1 3 3 1-1a1.5 1.5 0 0 0-3-3z'/%3E%3C/svg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+/* 2. BTPC Branded Cryptocurrency Icon */
+.icon-btpc-logo {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3C!-- Hexagonal frame --%3E%3Cpath d='M12 2l5.5 3.5v7l-5.5 3.5-5.5-3.5v-7z'/%3E%3C!-- Bitcoin symbol in center --%3E%3Cpath d='M9 8.5h4a1.5 1.5 0 0 1 0 3h-4m0-3h4a1.5 1.5 0 0 1 0 3h-4m0 0v-6m4 6v-6'/%3E%3Cline x1='11' y1='7' x2='11' y2='6'/%3E%3Cline x1='11' y1='15' x2='11' y2='14'/%3E%3C!-- Quantum particles around frame --%3E%3Ccircle cx='18' cy='6' r='1' fill='currentColor'/%3E%3Ccircle cx='6' cy='6' r='1' fill='currentColor'/%3E%3Ccircle cx='18' cy='18' r='1' fill='currentColor'/%3E%3Ccircle cx='6' cy='18' r='1' fill='currentColor'/%3E%3C/svg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+/* 3. Blockchain Network Visualization */
+.icon-blockchain-network {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3C!-- Central node (emphasized) --%3E%3Cpath d='M12 10l3.5 2v4l-3.5 2-3.5-2v-4z'/%3E%3C!-- Top left node --%3E%3Cpath d='M5 3l2 1.2v2.4L5 8 3 6.8V4.4z'/%3E%3C!-- Top right node --%3E%3Cpath d='M19 3l2 1.2v2.4L19 8l-2-1.2V4.4z'/%3E%3C!-- Bottom left node --%3E%3Cpath d='M5 16l2 1.2v2.4L5 21l-2-1.2v-2.4z'/%3E%3C!-- Bottom right node --%3E%3Cpath d='M19 16l2 1.2v2.4l-2 1.4-2-1.2v-2.4z'/%3E%3C!-- Connecting lines --%3E%3Cline x1='7' y1='5.5' x2='8.5' y2='10'/%3E%3Cline x1='17' y1='5.5' x2='15.5' y2='10'/%3E%3Cline x1='7' y1='17.5' x2='8.5' y2='14'/%3E%3Cline x1='17' y1='17.5' x2='15.5' y2='14'/%3E%3C/svg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+/* 4. Blockchain Block/Cube (3D Isometric) */
+.icon-block-cube {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3C!-- 3D Isometric cube with three visible faces --%3E%3Cpath d='M12 2l8 4.5v9l-8 4.5-8-4.5v-9z'/%3E%3Cpath d='M12 20v-9'/%3E%3Cpath d='M4 6.5l8 4.5 8-4.5'/%3E%3C!-- Data lines on visible faces --%3E%3Cline x1='8' y1='8.5' x2='12' y2='10.5' opacity='0.5'/%3E%3Cline x1='8' y1='10' x2='11' y2='11.5' opacity='0.5'/%3E%3Cline x1='16' y1='8.5' x2='12' y2='10.5' opacity='0.5'/%3E%3Cline x1='16' y1='10' x2='13' y2='11.5' opacity='0.5'/%3E%3C/svg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+/* 5. Enhanced Transaction Icon with Blockchain */
+.icon-transaction-enhanced {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3C!-- Circular arrows for transaction flow --%3E%3Cpath d='M4 12a8 8 0 0 1 14.5-4.5'/%3E%3Cpolyline points='22 8 18.5 7.5 19 4'/%3E%3Cpath d='M20 12a8 8 0 0 1-14.5 4.5'/%3E%3Cpolyline points='2 16 5.5 16.5 5 20'/%3E%3C!-- Blockchain nodes along the path --%3E%3Ccircle cx='12' cy='6' r='1.5' fill='currentColor'/%3E%3Ccircle cx='18' cy='12' r='1.5' fill='currentColor'/%3E%3Ccircle cx='12' cy='18' r='1.5' fill='currentColor'/%3E%3Ccircle cx='6' cy='12' r='1.5' fill='currentColor'/%3E%3C!-- Dollar sign in center --%3E%3Cpath d='M12 10v4m-1-4.5a1 1 0 0 1 2 0 1 1 0 0 1-2 0m2 3a1 1 0 0 1-2 0 1 1 0 0 1 2 0'/%3E%3C/svg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+
+.page-header {
+    margin-bottom: 32px;
+}
+
+.page-header h1 {
+    font-size: 1.875rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+    letter-spacing: -0.025em;
+}
+
+.page-header p {
+    font-size: 0.9375rem;
+    color: var(--text-muted);
+    opacity: 0;
+    animation: pageSubtitleFadeIn 0.5s ease-out forwards;
+    animation-delay: 0.3s;
+}
+
+@keyframes pageSubtitleFadeIn {
+    0% { opacity: 0; transform: translateY(-10px); }
+    100% { opacity: 1; transform: translateY(0); }
+}
+
+/* Cards - Modern Design */
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 24px;
+    transition: all 200ms ease;
+}
+
+.card:hover {
+    border-color: var(--border-subtle);
+}
+
+.card-header {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* Stats - Clean Typography */
+.stat-label {
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+.stat-value {
+    font-size: 1.875rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    font-family: 'SF Mono', monospace;
+    letter-spacing: -0.025em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+    word-break: break-all;
+}
+
+.stat-subtext {
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    margin-top: 6px;
+}
+
+/* Buttons - Modern & Clean */
+.btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 10px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn-primary {
+    background: var(--btpc-primary);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #4F46E5;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(99,102,241,0.25);
+}
+
+.btn-secondary {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+}
+
+.btn-secondary:hover {
+    background: var(--bg-hover);
+    border-color: var(--btpc-primary);
+}
+
+.btn-success {
+    background: var(--status-success);
+    color: white;
+}
+
+.btn-success:hover {
+    background: #4F46E5;
+    transform: translateY(-1px);
+}
+
+.btn-danger {
+    background: var(--status-error);
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #4F46E5;
+    transform: translateY(-1px);
+}
+
+/* Forms - Clean Inputs */
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-label {
+    display: block;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+.form-input {
+    width: 100%;
+    padding: 12px 16px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    color: var(--text-primary);
+    font-size: 0.9375rem;
+    font-family: inherit;
+    transition: all 200ms ease;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: var(--btpc-primary);
+    box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+}
+
+.form-input::placeholder {
+    color: var(--text-muted);
+}
+
+/* Select/Dropdown Specific Styling */
+select.form-input {
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236366F1' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 36px;
+    accent-color: var(--btpc-primary);
+}
+
+select.form-input:focus {
+    border-color: var(--btpc-primary);
+    box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+    accent-color: var(--btpc-primary);
+}
+
+/* Dropdown options - dark theme with !important to override browser defaults */
+select.form-input option {
+    background-color: var(--bg-card) !important;
+    background: var(--bg-card) !important;
+    color: var(--text-primary) !important;
+    padding: 12px;
+}
+
+select.form-input option:hover {
+    background-color: var(--btpc-primary) !important;
+    background: var(--btpc-primary) !important;
+    color: white !important;
+}
+
+select.form-input option:checked,
+select.form-input option:focus,
+select.form-input option[selected] {
+    background-color: var(--btpc-primary) !important;
+    background: var(--btpc-primary) !important;
+    color: white !important;
+}
+
+/* Additional select styling to ensure consistent appearance */
+select.form-input::-ms-expand {
+    display: none;
+}
+
+select.form-input:-moz-focusring {
+    color: transparent;
+    text-shadow: 0 0 0 var(--text-primary);
+}
+
+/* Tables - Clean Design */
+.table-container {
+    overflow-x: auto;
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+thead {
+    background: var(--bg-primary);
+}
+
+th {
+    padding: 14px 16px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: 0.8125rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--border-color);
+}
+
+td {
+    padding: 14px 16px;
+    color: var(--text-primary);
+    font-size: 0.9375rem;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+tr:last-child td {
+    border-bottom: none;
+}
+
+tr:hover {
+    background: var(--bg-hover);
+}
+
+/* Badges - Modern Pills */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+}
+
+.badge-success {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--status-success);
+}
+
+.badge-warning {
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--status-warning);
+}
+
+.badge-error {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--status-error);
+}
+
+.badge-info {
+    background: rgba(59, 130, 246, 0.15);
+    color: var(--status-info);
+}
+
+/* Utility Classes */
+.text-center { text-align: center; }
+.text-right { text-align: right; }
+.mb-4 { margin-bottom: 32px; }
+.mt-4 { margin-top: 32px; }
+.flex { display: flex; }
+.flex-between { display: flex; align-items: center; justify-content: space-between; }
+.w-full { width: 100%; }
+
+/* Monospace - Technical Data Only */
+.mono {
+    font-family: 'SF Mono', 'Monaco', 'Menlo', 'Courier New', monospace;
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}
+
+/* Focus Indicators - WCAG Compliant */
+*:focus-visible {
+    outline: 2px solid var(--btpc-primary);
+    outline-offset: 2px;
+}
+
+button:focus-visible, .btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.5);
+}
+
+/* Custom Dropdown Styling - Full Control */
+.custom-select-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+.custom-select-wrapper select {
+    /* Hide native select but keep it functional for accessibility */
+    position: absolute;
+    opacity: 0;
+    width: 100%;
+    height: 100%;
+    cursor: pointer;
+    z-index: 2;
+}
+
+.custom-select-trigger {
+    width: 100%;
+    padding: 12px 16px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    color: var(--text-primary);
+    font-size: 0.9375rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    pointer-events: none;
+    position: relative;
+}
+
+.custom-select-trigger::after {
+    content: '';
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid var(--btpc-primary);
+    margin-left: 8px;
+}
+
+/* Skeleton Loading States */
+.skeleton {
+    background: linear-gradient(
+        90deg,
+        var(--bg-secondary) 25%,
+        var(--bg-hover) 50%,
+        var(--bg-secondary) 75%
+    );
+    background-size: 200% 100%;
+    animation: skeletonLoading 1.5s ease-in-out infinite;
+    border-radius: 8px;
+    margin-bottom: 12px;
+}
+
+.skeleton-text {
+    height: 16px;
+}
+
+.skeleton-heading {
+    height: 24px;
+    width: 60%;
+}
+
+.skeleton-card {
+    height: 120px;
+    border-radius: 16px;
+}
+
+.skeleton-button {
+    height: 40px;
+    width: 120px;
+    border-radius: 10px;
+}
+
+@keyframes skeletonLoading {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+/* Toast Notification System */
+.toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    pointer-events: none;
+}
+
+.toast {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 20px;
+    border-radius: 12px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    min-width: 300px;
+    max-width: 500px;
+    opacity: 0;
+    transform: translateX(400px);
+    transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: auto;
+}
+
+.toast.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.toast-icon {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    font-weight: 700;
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.toast-message {
+    flex: 1;
+    color: var(--text-primary);
+    font-size: 0.9375rem;
+    line-height: 1.4;
+}
+
+.toast-success {
+    border-left: 4px solid var(--status-success);
+}
+
+.toast-success .toast-icon {
+    background: rgba(16, 185, 129, 0.2);
+    color: var(--status-success);
+}
+
+.toast-error {
+    border-left: 4px solid var(--status-error);
+}
+
+.toast-error .toast-icon {
+    background: rgba(239, 68, 68, 0.2);
+    color: var(--status-error);
+}
+
+.toast-warning {
+    border-left: 4px solid var(--status-warning);
+}
+
+.toast-warning .toast-icon {
+    background: rgba(245, 158, 11, 0.2);
+    color: var(--status-warning);
+}
+
+.toast-info {
+    border-left: 4px solid var(--status-info);
+}
+
+.toast-info .toast-icon {
+    background: rgba(59, 130, 246, 0.2);
+    color: var(--status-info);
+}
+
+/* Empty State Illustrations */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    text-align: center;
+}
+
+.empty-state-icon {
+    width: 120px;
+    height: 120px;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: rgba(99, 102, 241, 0.1);
+    color: var(--btpc-primary);
+    font-size: 48px;
+}
+
+.empty-state-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+}
+
+.empty-state-description {
+    font-size: 0.9375rem;
+    color: var(--text-muted);
+    max-width: 400px;
+    margin-bottom: 24px;
+    line-height: 1.6;
+}
+
+.empty-state-action {
+    margin-top: 8px;
+}
+
+/* Enhanced Form Validation */
+.input-group {
+    margin-bottom: 20px;
+}
+
+.input-wrapper {
+    position: relative;
+}
+
+.input-error {
+    border-color: var(--status-error) !important;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1) !important;
+}
+
+.input-success {
+    border-color: var(--status-success) !important;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1) !important;
+}
+
+.input-helper {
+    display: block;
+    margin-top: 6px;
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+}
+
+.input-error-message {
+    display: block;
+    margin-top: 6px;
+    font-size: 0.8125rem;
+    color: var(--status-error);
+}
+
+.input-success-message {
+    display: block;
+    margin-top: 6px;
+    font-size: 0.8125rem;
+    color: var(--status-success);
+}
+
+/* Loading Button State */
+.btn-loading {
+    position: relative;
+    color: transparent !important;
+    pointer-events: none;
+}
+
+.btn-loading::after {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    top: 50%;
+    left: 50%;
+    margin-left: -8px;
+    margin-top: -8px;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    border-top-color: transparent;
+    animation: btnSpinner 0.6s linear infinite;
+}
+
+@keyframes btnSpinner {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Page Transition Effects */
+.page-transition-enter {
+    opacity: 0;
+    transform: translateY(20px);
+}
+
+.page-transition-enter-active {
+    opacity: 1;
+    transform: translateY(0);
+    transition: opacity 300ms ease-out, transform 300ms ease-out;
+}
+
+.page-transition-exit {
+    opacity: 1;
+}
+
+.page-transition-exit-active {
+    opacity: 0;
+    transition: opacity 200ms ease-in;
+}
+
+/* Modal System */
+.modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.75);
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    backdrop-filter: blur(2px);
+}
+
+.modal-content {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
+    max-width: 600px;
+    width: 90%;
+    max-height: 90vh;
+    overflow: hidden;
+    animation: modalSlideIn 200ms ease-out;
+}
+
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: scale(0.95) translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.modal-header {
+    padding: 24px 24px 16px 24px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.modal-header h2 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.75rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    transition: all 150ms ease;
+}
+
+.modal-close:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.modal-body {
+    padding: 24px;
+    overflow-y: auto;
+    max-height: calc(90vh - 120px);
+}
+/* ============================================ */
+/* Password Modal for Wallet Encryption        */
+/* ============================================ */
+
+/* Password Modal Overlay */
+#password-modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.85);
+    z-index: 9999;
+    justify-content: center;
+    align-items: center;
+}
+
+#password-modal-overlay.show {
+    display: flex;
+}
+
+/* Modal Container */
+.password-modal {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0;
+    width: 90%;
+    max-width: 450px;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
+    animation: modalSlideIn 200ms ease-out;
+    overflow: hidden;
+}
+
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-50px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Modal Header */
+.password-modal h2 {
+    color: var(--btpc-primary);
+    font-size: 24px;
+    margin: 0 0 10px 0;
+    text-align: center;
+    font-weight: 600;
+}
+
+.password-modal p {
+    color: var(--text-secondary);
+    font-size: 14px;
+    text-align: center;
+    margin: 0 0 30px 0;
+    line-height: 1.5;
+}
+
+/* Password Input Group */
+.password-input-group {
+    position: relative;
+    margin-bottom: 20px;
+}
+
+.password-input-group label {
+    display: block;
+    color: var(--btpc-primary);
+    font-size: 14px;
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+.password-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.password-input-group input[type="password"],
+.password-input-group input[type="text"] {
+    width: 100%;
+    padding: 12px 45px 12px 15px;
+    background-color: var(--bg-primary);
+    border: 2px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 15px;
+    transition: border-color 0.2s;
+}
+
+.password-input-group input:focus {
+    outline: none;
+    border-color: var(--btpc-primary);
+}
+
+/* Show/Hide Password Toggle */
+.toggle-password {
+    position: absolute;
+    right: 12px;
+    background: none;
+    border: none;
+    color: var(--btpc-primary);
+    cursor: pointer;
+    font-size: 18px;
+    padding: 5px;
+    transition: opacity 0.2s;
+}
+
+.toggle-password:hover {
+    opacity: 0.7;
+}
+
+/* Error Message */
+.password-error {
+    display: none;
+    color: var(--status-error);
+    font-size: 13px;
+    margin-top: 15px;
+    padding: 10px;
+    background-color: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 4px;
+    text-align: center;
+}
+
+.password-error.show {
+    display: block;
+}
+
+/* Loading Spinner */
+.password-loading {
+    display: none;
+    text-align: center;
+    margin-top: 15px;
+}
+
+.password-loading.show {
+    display: block;
+}
+
+.spinner {
+    border: 3px solid var(--border-color);
+    border-top: 3px solid var(--btpc-primary);
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.password-loading p {
+    color: var(--btpc-primary);
+    margin-top: 10px;
+    font-size: 13px;
+}
+
+/* Button Container */
+.password-modal-buttons {
+    display: flex;
+    gap: 15px;
+    margin-top: 25px;
+}
+
+.password-modal-buttons button {
+    flex: 1;
+    padding: 12px 20px;
+    font-size: 15px;
+    font-weight: 600;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+/* Primary Button (Unlock) */
+.btn-unlock {
+    background: linear-gradient(135deg, var(--btpc-primary) 0%, var(--btpc-secondary) 100%);
+    color: var(--text-primary);
+}
+
+.btn-unlock:hover {
+    background: linear-gradient(135deg, var(--btpc-secondary) 0%, var(--btpc-primary) 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+}
+
+.btn-unlock:active {
+    transform: translateY(0);
+}
+
+.btn-unlock:disabled {
+    background: var(--bg-hover);
+    color: var(--text-muted);
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Secondary Button (Cancel - only for migration) */
+.btn-cancel {
+    background-color: var(--bg-secondary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+}
+
+.btn-cancel:hover {
+    background-color: var(--bg-hover);
+    border-color: var(--border-subtle);
+}
+
+/* Migration Notice */
+.migration-notice {
+    display: none;
+    background-color: rgba(99, 102, 241, 0.1);
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    border-radius: 6px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.migration-notice.show {
+    display: block;
+}
+
+.migration-notice h3 {
+    color: var(--btpc-primary);
+    font-size: 16px;
+    margin: 0 0 10px 0;
+}
+
+.migration-notice p {
+    color: var(--text-secondary);
+    font-size: 13px;
+    margin: 0;
+    text-align: left;
+}
+
+.migration-notice ul {
+    color: var(--text-secondary);
+    font-size: 13px;
+    margin: 10px 0 0 20px;
+    padding: 0;
+}
+
+.migration-notice li {
+    margin-bottom: 5px;
+}
+
+/* ===== UI Polish: Loading & Toast Components ===== */
+/* Added: 2025-10-22 - UI Polish improvements */
+
+/* Additional Animations */
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes slideOutRight {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+}
+
+/* Loading Overlay Component */
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(15, 23, 42, 0.85);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    animation: fadeIn 200ms ease;
+}
+
+.loading-container {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 32px 48px;
+    text-align: center;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.loading-spinner {
+    width: 48px;
+    height: 48px;
+    border: 4px solid var(--border-color);
+    border-top-color: var(--btpc-primary);
+    border-radius: 50%;
+    animation: spin 800ms linear infinite;
+    margin: 0 auto 16px;
+}
+
+.loading-text {
+    font-size: 0.9375rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+    margin: 0;
+}
+
+.loading-subtext {
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    margin-top: 8px;
+}
+
+/* Toast Notification System */
+.toast-container {
+    position: fixed;
+    top: 80px;
+    right: 24px;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-width: 400px;
+    pointer-events: none;
+}
+
+.toast {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 16px 20px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    opacity: 0;
+    transform: translateX(100%);
+    animation: slideInRight 300ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    pointer-events: auto;
+}
+
+.toast.removing {
+    animation: slideOutRight 200ms cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+.toast-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.toast-content {
+    flex: 1;
+}
+
+.toast-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 4px 0;
+}
+
+.toast-message {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+    margin: 0;
+}
+
+.toast-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0;
+    font-size: 20px;
+    line-height: 1;
+    transition: color 200ms ease;
+    flex-shrink: 0;
+}
+
+.toast-close:hover {
+    color: var(--text-primary);
+}
+
+/* Toast Variants */
+.toast.success {
+    border-left: 4px solid var(--status-success);
+}
+
+.toast.success .toast-icon {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--status-success);
+}
+
+.toast.error {
+    border-left: 4px solid var(--status-error);
+}
+
+.toast.error .toast-icon {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--status-error);
+}
+
+.toast.warning {
+    border-left: 4px solid var(--status-warning);
+}
+
+.toast.warning .toast-icon {
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--status-warning);
+}
+
+.toast.info {
+    border-left: 4px solid var(--status-info);
+}
+
+.toast.info .toast-icon {
+    background: rgba(59, 130, 246, 0.15);
+    color: var(--status-info);
+}
+
+/* ========================================================================
+   Progressive Disclosure Error Display
+   ======================================================================== */
+
+.error-message {
+    background: #fee;
+    border: 1px solid #c33;
+    border-radius: 4px;
+    padding: 16px;
+    margin: 16px 0;
+}
+
+.error-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.error-icon {
+    font-size: 20px;
+}
+
+.error-title {
+    font-weight: 600;
+    color: #c33;
+}
+
+.error-user-message {
+    font-size: 14px;
+    color: #333;
+    margin: 8px 0;
+}
+
+.error-details {
+    margin-top: 12px;
+}
+
+.error-details summary {
+    cursor: pointer;
+    color: #0066cc;
+    user-select: none;
+}
+
+.error-details summary:hover {
+    text-decoration: underline;
+}
+
+.error-technical-pre {
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    background: #f5f5f5;
+    border: 1px solid #ddd;
+    padding: 12px;
+    overflow-x: auto;
+    margin: 8px 0;
+}
+
+#copyErrorButton {
+    margin-top: 8px;
+}
+
+/* ========================================================================
+   Authentication - Logout Button (Feature 006)
+   ======================================================================== */
+
+/* Page header with logout button */
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 32px;
+    padding-right: 16px;
+}
+
+.page-header-left {
+    flex: 1;
+}
+
+.logout-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+/* Logout button */
+.btn-logout {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+}
+
+.btn-logout:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.5);
+    color: var(--status-error);
+    transform: translateY(-1px);
+}
+
+.btn-logout:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.btn-logout:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.logout-icon {
+    width: 16px;
+    height: 16px;
+    filter: brightness(0) invert(1);
+    opacity: 0.7;
+}
+
+.btn-logout:hover:not(:disabled) .logout-icon {
+    opacity: 1;
+    filter: brightness(0) saturate(100%) invert(44%) sepia(97%) saturate(2476%) hue-rotate(334deg) brightness(96%) contrast(93%);
+}
+
+/* Small loading spinner for logout button */
+.loading-spinner-small {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: var(--text-primary);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}

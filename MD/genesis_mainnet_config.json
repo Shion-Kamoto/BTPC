@@ -1,0 +1,14 @@
+{
+  "network": "Mainnet",
+  "timestamp": 1735689600,
+  "message": "The Times 2025/01/01 Bitcoin Testnet Post-Quantum Chain Launch",
+  "rewards": [
+    {
+      "address": "0000000000000000000000000000000000000000",
+      "amount": 5000000000,
+      "label": "Genesis Coinbase (Burn Address)"
+    }
+  ],
+  "difficulty_target": 536936447,
+  "max_nonce": 4294967295
+}
