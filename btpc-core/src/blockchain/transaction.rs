@@ -40,6 +40,14 @@ impl Transaction {
     }
 
     /// Create a coinbase transaction for mining
+    ///
+    /// # Arguments
+    /// * `reward` - Block reward in satoshis
+    /// * `recipient_hash` - Hash of recipient public key
+    ///
+    /// # Note
+    /// Creates transaction with fork_id=0 (mainnet). Caller must update fork_id
+    /// for testnet (1) or regtest (2) networks.
     pub fn coinbase(reward: u64, recipient_hash: Hash) -> Self {
         let coinbase_input = TransactionInput {
             previous_output: OutPoint {
@@ -60,7 +68,7 @@ impl Transaction {
             inputs: vec![coinbase_input],
             outputs: vec![coinbase_output],
             lock_time: 0,
-            fork_id: 0, // Coinbase uses mainnet fork_id by default
+            fork_id: 0, // Default to mainnet (caller should update for testnet=1 or regtest=2)
         }
     }
 

@@ -562,9 +562,31 @@ impl UTXOManager {
     pub fn process_block(&mut self, block_height: u64, transactions: Vec<Transaction>) -> Result<()> {
         for transaction in transactions {
             // Add new UTXOs from outputs
-            for _output in transaction.outputs.iter() {
-                // TODO: Decode script_pubkey to get address
-                // For now, skip if we can't determine the address
+            for (vout, output) in transaction.outputs.iter().enumerate() {
+                // Extract address from script_pubkey (P2PKH only for now)
+                // Note: btpc_core::crypto::Script does not have extract_pubkey_hash() yet
+                // This is a placeholder until we add that method to btpc-core
+                // For now, we'll store a placeholder address or decode from script_pubkey bytes
+                let address_str = String::from_utf8(output.script_pubkey.clone())
+                    .unwrap_or_else(|_| "unknown".to_string());
+
+                // Add UTXO to set
+                let utxo = UTXO {
+                    txid: transaction.txid.clone(),
+                    vout: vout as u32,
+                    value_credits: output.value,
+                    value_btp: output.value as f64 / 100_000_000.0,
+                    address: address_str,
+                    block_height,
+                    is_coinbase: transaction.is_coinbase,
+                    created_at: Utc::now(),
+                    spent: false,
+                    spent_in_tx: None,
+                    spent_at_height: None,
+                    script_pubkey: output.script_pubkey.clone(),
+                };
+
+                self.add_utxo(utxo)?;
             }
 
             // Mark spent UTXOs from inputs

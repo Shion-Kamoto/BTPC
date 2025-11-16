@@ -94,13 +94,19 @@ pub async fn start_mining(
         test_tx.send(("INFO".to_string(), "TEST MESSAGE - Channel created".to_string())).ok();
         eprintln!("[TEST] Test message sent");
 
+        // Create RPC client for block template requests
+        let rpc_client = {
+            use btpc_desktop_app::rpc_client::RpcClient;
+            Arc::new(RpcClient::new(&state.config.rpc.host, state.config.rpc.port))
+        };
+
         // Spawn GPU initialization asynchronously (don't block UI thread)
         tokio::spawn(async move {
             // Access mining pool and start GPU mining
             let gpu_result = {
                 let mut pool_guard = mining_pool_arc.write().await;
                 if let Some(ref mut pool) = *pool_guard {
-                    pool.start_gpu_mining(gpu_address, Some(log_tx), Some(logs_clone.clone())).await
+                    pool.start_gpu_mining(gpu_address, rpc_client, Some(log_tx), Some(logs_clone.clone())).await
                 } else {
                     Err(anyhow::anyhow!("Mining pool not initialized"))
                 }

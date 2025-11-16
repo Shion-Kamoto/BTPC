@@ -144,6 +144,40 @@ impl Script {
         false
     }
 
+    /// Extract public key hash from a P2PKH script
+    ///
+    /// Returns the 20-byte RIPEMD-160 hash if this is a valid P2PKH script,
+    /// None otherwise.
+    ///
+    /// P2PKH script format: OP_DUP OP_HASH160 <pubkey_hash> OP_EQUALVERIFY OP_CHECKMLDSA SIG
+    pub fn extract_pubkey_hash(&self) -> Option<[u8; 20]> {
+        // P2PKH scripts have exactly 5 operations
+        if self.operations.len() != 5 {
+            return None;
+        }
+
+        // Check the expected operation sequence
+        match &self.operations[..] {
+            [
+                ScriptOp::OpDup,
+                ScriptOp::OpHash160,
+                ScriptOp::PushData(hash_data),
+                ScriptOp::OpEqualVerify,
+                ScriptOp::OpCheckMLDSASig,
+            ] => {
+                // Verify the hash is exactly 20 bytes (RIPEMD-160 size)
+                if hash_data.len() == 20 {
+                    let mut hash = [0u8; 20];
+                    hash.copy_from_slice(hash_data);
+                    Some(hash)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
     /// Get the script size in bytes
     pub fn size(&self) -> usize {
         self.serialize().len()

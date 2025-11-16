@@ -1,9 +1,16 @@
 # BTPC Quantum-Resistant Cryptocurrency Constitution
 # BTPC (Bitcoin-Time Protocol Chain) Constitution
 
+**Foreword**
+
+
+
 **Version 1.0**
 **Effective Date: September 24, 2025**
 **Status: IMMUTABLE WITHOUT EXPLICIT AMENDMENT**
+
+
+
 ## Core Principles
 
 ### I. Security-First

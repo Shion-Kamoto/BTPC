@@ -1,0 +1,195 @@
+openapi: 3.0.0
+info:
+  title: BTPC Miner GPU Stats API
+  version: 1.0.0
+  description: |
+    Local HTTP API for querying GPU mining statistics from btpc_miner.
+    Runs on localhost:18360 (stats server port).
+
+    **Security**: No authentication required (local-only access).
+    **Transport**: HTTP/1.1
+    **Encoding**: JSON (UTF-8)
+
+servers:
+  - url: http://127.0.0.1:18360
+    description: Local stats server
+
+paths:
+  /stats:
+    get:
+      summary: Get current GPU mining statistics
+      description: |
+        Returns comprehensive GPU device info and real-time mining performance.
+        Stats are queried from OpenCL DeviceInfo API and mining runtime counters.
+      operationId: getGpuStats
+      responses:
+        '200':
+          description: GPU stats successfully retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GpuStats'
+              example:
+                device_name: "AMD Radeon RX 6800"
+                vendor: "Advanced Micro Devices"
+                compute_units: 64
+                max_work_group_size: 256
+                global_mem_size: 17179869184
+                local_mem_size: 65536
+                max_clock_frequency: 2105
+                hashrate: 342.5
+                total_hashes: 20550000000
+                uptime_seconds: 60
+                temperature: null
+                power_usage: null
+        '500':
+          description: GPU not available or stats error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                gpu_not_enabled:
+                  value:
+                    error: "GPU mining not enabled"
+                stats_query_failed:
+                  value:
+                    error: "Failed to get stats: OpenCL error CL_DEVICE_NOT_FOUND"
+                lock_failed:
+                  value:
+                    error: "Failed to lock miner: PoisonError"
+
+  /health:
+    get:
+      summary: Health check endpoint
+      description: |
+        Simple health check to verify stats server is running.
+        Always returns 200 OK if server is reachable.
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: "ok"
+                service: "btpc_miner_stats"
+
+components:
+  schemas:
+    GpuStats:
+      type: object
+      required:
+        - device_name
+        - vendor
+        - compute_units
+        - max_work_group_size
+        - global_mem_size
+        - local_mem_size
+        - max_clock_frequency
+        - hashrate
+        - total_hashes
+        - uptime_seconds
+      properties:
+        device_name:
+          type: string
+          description: OpenCL device name (CL_DEVICE_NAME)
+          example: "AMD Radeon RX 6800"
+        vendor:
+          type: string
+          description: GPU manufacturer (CL_DEVICE_VENDOR)
+          example: "Advanced Micro Devices"
+        compute_units:
+          type: integer
+          format: uint32
+          minimum: 1
+          description: Number of compute units (NVIDIA SMs / AMD CUs)
+          example: 64
+        max_work_group_size:
+          type: integer
+          format: usize
+          minimum: 1
+          description: Maximum workgroup size for kernel execution
+          example: 256
+        global_mem_size:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Total VRAM in bytes (CL_DEVICE_GLOBAL_MEM_SIZE)
+          example: 17179869184
+        local_mem_size:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Local/shared memory per workgroup in bytes
+          example: 65536
+        max_clock_frequency:
+          type: integer
+          format: uint32
+          minimum: 0
+          description: GPU core clock frequency in MHz
+          example: 2105
+        hashrate:
+          type: number
+          format: double
+          minimum: 0.0
+          description: Real-time hashrate in MH/s (million hashes per second)
+          example: 342.5
+        total_hashes:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Cumulative hash count since mining started
+          example: 20550000000
+        uptime_seconds:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Time elapsed since mining started in seconds
+          example: 60
+        temperature:
+          type: number
+          format: float
+          nullable: true
+          description: GPU temperature in Celsius (optional, requires vendor extensions)
+          example: null
+        power_usage:
+          type: number
+          format: float
+          nullable: true
+          description: GPU power consumption in Watts (optional, requires vendor extensions)
+          example: null
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - service
+      properties:
+        status:
+          type: string
+          enum: ["ok"]
+          description: Health status (always "ok" if reachable)
+          example: "ok"
+        service:
+          type: string
+          description: Service identifier
+          example: "btpc_miner_stats"
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+          example: "GPU mining not enabled"
+
+tags:
+  - name: Stats
+    description: GPU mining statistics
+  - name: Health
+    description: Service health check

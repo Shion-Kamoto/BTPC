@@ -1,8 +1,8 @@
 # BTPC Project Status
 
-**Last Updated**: 2025-11-13
-**Project Status**: FEATURE 012 GPU MINING DASHBOARD COMPLETE - READY FOR TESTING
-**Latest**: ✅ **GPU Mining Integration** | ✅ **OpenCL Mesa Fix** | ✅ **8 GPU Commands Registered** | ✅ **Frontend Dashboard UI**
+**Last Updated**: 2025-11-15 13:45
+**Project Status**: FORK ID BUG FIXED - TESTING REQUIRED
+**Latest**: ✅ **Fork ID Fix Applied** | ✅ **Debug Logger Added** | ✅ **TDD Tests (9/9 passing)** | ⏳ **Manual Testing Pending**
 
 ## Implementation Status
 
@@ -48,7 +48,33 @@
 - ✅ TDD RED phase (10 test stubs created for Feature 007)
 - ✅ Test infrastructure documented (MD/TESTING_INFRASTRUCTURE_REQUIREMENTS.md)
 - ⏸️  TDD GREEN phase (deferred to future session, 4-6 hours)
-- ⏳ E2E desktop app tests (manual testing pending)
+
+## Recent Changes (2025-11-15 Session 2)
+
+### Fork ID Bug Fix ✅ FIXED - TESTING REQUIRED
+- ✅ **CRITICAL**: Fixed fork_id mismatch (mainnet→regtest)
+  - Coinbase transactions had fork_id=0 (mainnet) instead of 2 (regtest)
+  - Added `coinbase_tx.fork_id = 2;` in mining_thread_pool.rs:395
+  - Updated Transaction::coinbase() documentation
+  - Build successful (1m 19s)
+- ✅ **Debug Logger**: Comprehensive event logging (333 lines)
+  - Block header, merkle root, hash comparison, submission tracking
+  - Location: debug_logger.rs (new file)
+  - Log file: /home/bob/.btpc/logs/debug_events.log
+- ✅ **Frontend Fix**: Global blocks_found counter now increments
+  - mining_thread_pool.rs:536
+- ✅ **TDD Tests**: 9 block construction tests (all passing)
+  - test_block_construction_bug_fixes.rs (401 lines)
+- ⏳ **Manual Testing Required**: Restart app, verify blocks accepted
+
+### Block Submission Bug Fixes (COMPLETED)
+- ✅ Fixed empty transactions bug (mining_thread_pool.rs:384-409)
+- ✅ Fixed merkle root calculation (was Hash::zero())
+- ✅ Fixed blocks_found counter (only increments on success)
+- ✅ Added verbose logging to handlers.rs:445-460
+
+### Known Issues
+- ⏳ Fork ID fix needs manual verification (restart app required)
 
 ## Recent Changes (Session 2025-11-13 - GPU Mining Dashboard)
 

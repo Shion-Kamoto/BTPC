@@ -1,0 +1,463 @@
+openapi: 3.0.3
+info:
+  title: Mining API
+  description: |
+    Tauri command API for embedded mining operations.
+    Replaces external btpc_miner process with background thread pool.
+
+    **Thread Safety**:
+    - Mining runs in Rayon thread pool (CPU) and OpenCL queue (GPU)
+    - UI thread never blocked by mining operations
+    - Mining threads use below-normal priority (prevent UI starvation)
+
+    **Article XI Compliance**:
+    - Mining state stored in backend (Arc<RwLock<MiningState>>)
+    - Frontend receives updates via `mining:*` events
+    - Backend validates mining address before start
+
+  version: 1.0.0
+
+servers:
+  - url: tauri://localhost
+    description: Tauri IPC (in-process)
+
+tags:
+  - name: mining
+    description: Mining control operations
+  - name: stats
+    description: Mining statistics and monitoring
+
+paths:
+  /start_mining:
+    post:
+      tags:
+        - mining
+      summary: Start mining operations
+      description: |
+        Starts CPU and/or GPU mining in background threads.
+
+        **State Transition**: Stopped → Mining
+
+        **Validation**:
+        - Mining address must be valid BTPC address
+        - Thread count must be in range [1, num_cpus]
+        - GPU must be available if gpu_enabled=true (graceful fallback)
+
+        **Events Emitted**:
+        - `mining:started` - { threads: usize, gpu_enabled: bool, address: String }
+        - `mining:hashrate_updated` - Every 5 seconds during mining
+
+        **Performance**:
+        - CPU threads: Use Rayon pool with below-normal priority
+        - GPU threads: OpenCL queue, non-blocking
+        - Template refresh: Every 30s or on new block event
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - mining_address
+              properties:
+                mining_address:
+                  type: string
+                  description: BTPC address to receive block rewards
+                  example: "btpc1qxyz..."
+                cpu_threads:
+                  type: integer
+                  description: Number of CPU mining threads (default num_cpus - 2)
+                  minimum: 1
+                  default: null
+                gpu_enabled:
+                  type: boolean
+                  description: Enable GPU mining (requires OpenCL)
+                  default: false
+                gpu_device_index:
+                  type: integer
+                  description: GPU device index (0 = first GPU)
+                  minimum: 0
+                  default: 0
+      responses:
+        '200':
+          description: Mining started successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  cpu_threads:
+                    type: integer
+                    description: Number of CPU threads started
+                    example: 6
+                  gpu_enabled:
+                    type: boolean
+                    description: GPU mining active
+                    example: true
+                  gpu_device:
+                    type: string
+                    description: GPU device name
+                    example: "NVIDIA GeForce RTX 3080"
+                  mining_address:
+                    type: string
+                    example: "btpc1qxyz..."
+        '400':
+          description: Invalid mining configuration
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Invalid mining address format"
+                  error_code:
+                    type: string
+                    enum: [invalid_address, invalid_thread_count, gpu_not_available]
+                    example: "invalid_address"
+        '409':
+          description: Mining already running
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Mining already running, call stop_mining first"
+                  error_code:
+                    type: string
+                    example: "already_mining"
+
+  /stop_mining:
+    post:
+      tags:
+        - mining
+      summary: Stop mining operations
+      description: |
+        Gracefully stops all mining threads.
+
+        **State Transition**: Mining → Stopped
+
+        **Shutdown Process**:
+        1. Set running flag to false
+        2. Wait for current hash batch to complete (max 5s)
+        3. If GPU active: Flush OpenCL queue, abort kernels
+        4. Join thread pool (Rayon handles cleanup)
+        5. Emit final statistics event
+
+        **Events Emitted**:
+        - `mining:stopped` - { blocks_found: u64, total_hashes: u64, uptime_secs: u64 }
+
+        **Performance**: Completes within 5 seconds (target: 1 second)
+
+      responses:
+        '200':
+          description: Mining stopped successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  blocks_found:
+                    type: integer
+                    format: uint64
+                    description: Total blocks found this session
+                    example: 3
+                  total_hashes:
+                    type: integer
+                    format: uint64
+                    description: Total hashes computed
+                    example: 1000000000
+                  uptime_seconds:
+                    type: integer
+                    description: Mining uptime in seconds
+                    example: 3600
+        '409':
+          description: Mining not running
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Mining not currently running"
+                  error_code:
+                    type: string
+                    example: "not_mining"
+
+  /get_mining_stats:
+    get:
+      tags:
+        - stats
+      summary: Get current mining statistics
+      description: |
+        Returns real-time mining statistics.
+
+        **Performance Target**: <5ms (read from atomic counters)
+
+        **Update Frequency**: Backend emits `mining:hashrate_updated` event every 5s
+
+        **Article XI**: Frontend subscribes to events, only queries on-demand
+
+      responses:
+        '200':
+          description: Current mining statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MiningStats'
+        '409':
+          description: Mining not running
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Mining not running, no stats available"
+
+  /update_mining_address:
+    post:
+      tags:
+        - mining
+      summary: Update mining reward address
+      description: |
+        Changes mining address while mining is running.
+
+        **Validation**: Address must be valid BTPC address
+
+        **Effect**: Next block template uses new address
+
+        **Events Emitted**:
+        - `mining:address_updated` - { new_address: String }
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - mining_address
+              properties:
+                mining_address:
+                  type: string
+                  description: New mining address
+                  example: "btpc1qabc..."
+      responses:
+        '200':
+          description: Mining address updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  mining_address:
+                    type: string
+                    example: "btpc1qabc..."
+        '400':
+          description: Invalid address
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Invalid BTPC address format"
+                  error_code:
+                    type: string
+                    example: "invalid_address"
+
+  /get_available_gpus:
+    get:
+      tags:
+        - mining
+      summary: List available GPU devices
+      description: |
+        Returns list of OpenCL-compatible GPUs.
+
+        **Use Case**: Populate GPU selection dropdown in UI
+
+        **Detection**: Queries OpenCL platform for devices
+
+        **Performance**: <100ms (OpenCL device enumeration)
+
+      responses:
+        '200':
+          description: List of available GPUs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  gpus:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        index:
+                          type: integer
+                          description: Device index (for gpu_device_index parameter)
+                          example: 0
+                        name:
+                          type: string
+                          description: GPU device name
+                          example: "NVIDIA GeForce RTX 3080"
+                        vendor:
+                          type: string
+                          description: GPU vendor
+                          example: "NVIDIA Corporation"
+                        memory_mb:
+                          type: integer
+                          description: GPU memory in MB
+                          example: 10240
+                        compute_units:
+                          type: integer
+                          description: Number of compute units
+                          example: 68
+                        opencl_version:
+                          type: string
+                          description: OpenCL version supported
+                          example: "OpenCL 3.0"
+        '500':
+          description: OpenCL not available
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "OpenCL not available on this system"
+                  details:
+                    type: string
+                    example: "Install GPU drivers with OpenCL support"
+
+  /get_mining_history:
+    get:
+      tags:
+        - stats
+      summary: Get mining session history
+      description: |
+        Returns historical mining statistics (last 100 sessions).
+
+        **Persistence**: Stored in RocksDB CF_METADATA
+
+        **Use Case**: Display mining history chart in UI
+
+      responses:
+        '200':
+          description: Mining session history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        session_id:
+                          type: string
+                          description: Unique session ID (UUID)
+                        started_at:
+                          type: integer
+                          format: uint64
+                          description: Unix timestamp
+                          example: 1699999999
+                        stopped_at:
+                          type: integer
+                          format: uint64
+                          description: Unix timestamp
+                          example: 1700003599
+                        blocks_found:
+                          type: integer
+                          example: 2
+                        total_hashes:
+                          type: integer
+                          format: uint64
+                          example: 500000000
+                        avg_hashrate:
+                          type: number
+                          format: float
+                          description: Average hashrate (hashes/sec)
+                          example: 138888.89
+
+components:
+  schemas:
+    MiningStats:
+      type: object
+      properties:
+        is_mining:
+          type: boolean
+          description: Mining currently active
+          example: true
+        cpu_hashrate:
+          type: number
+          format: float
+          description: CPU hashrate (hashes per second)
+          example: 50000.0
+        gpu_hashrate:
+          type: number
+          format: float
+          description: GPU hashrate (hashes per second)
+          example: 500000.0
+        total_hashrate:
+          type: number
+          format: float
+          description: Combined hashrate
+          example: 550000.0
+        cpu_threads:
+          type: integer
+          description: Number of active CPU threads
+          example: 6
+        gpu_enabled:
+          type: boolean
+          description: GPU mining active
+          example: true
+        blocks_found:
+          type: integer
+          format: uint64
+          description: Blocks found this session
+          example: 2
+        total_hashes:
+          type: integer
+          format: uint64
+          description: Total hashes computed this session
+          example: 1000000000
+        uptime_seconds:
+          type: integer
+          description: Mining uptime in seconds
+          example: 3600
+        mining_address:
+          type: string
+          description: Current mining reward address
+          example: "btpc1qxyz..."
+        difficulty_target:
+          type: string
+          description: Current difficulty target (hex)
+          example: "00000000ffff0000000000000000000000000000000000000000000000000000"
+        estimated_time_to_block_secs:
+          type: integer
+          description: Estimated seconds until next block (based on current hashrate and difficulty)
+          example: 600
+        last_hashrate_update:
+          type: integer
+          format: uint64
+          description: Unix timestamp of last hashrate calculation
+          example: 1699999999

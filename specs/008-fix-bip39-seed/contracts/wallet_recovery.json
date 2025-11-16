@@ -1,0 +1,460 @@
+{
+  "contract_name": "Wallet Recovery API",
+  "version": "1.0.0",
+  "description": "Tauri commands for BIP39 deterministic wallet creation and recovery",
+  "commands": [
+    {
+      "name": "create_wallet_from_mnemonic",
+      "description": "Create a new v2 wallet from BIP39 24-word mnemonic",
+      "request": {
+        "mnemonic": {
+          "type": "string",
+          "description": "24-word BIP39 mnemonic phrase",
+          "validation": "Must be exactly 24 words separated by spaces, valid BIP39 checksum",
+          "example": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art"
+        },
+        "wallet_name": {
+          "type": "string",
+          "description": "User-friendly wallet name",
+          "validation": "Length 1-50 characters",
+          "example": "My Main Wallet"
+        },
+        "password": {
+          "type": "string",
+          "description": "Encryption password for wallet file",
+          "validation": "Minimum 8 characters",
+          "example": "SecurePassword123!"
+        },
+        "network": {
+          "type": "string",
+          "enum": ["mainnet", "testnet", "regtest"],
+          "description": "Network type for wallet",
+          "default": "mainnet"
+        }
+      },
+      "response": {
+        "success": {
+          "wallet_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique wallet identifier",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "wallet_version": {
+            "type": "string",
+            "enum": ["V2BIP39Deterministic"],
+            "description": "Always V2 for this command"
+          },
+          "address": {
+            "type": "string",
+            "description": "Primary BTPC address",
+            "example": "btpc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh"
+          },
+          "recovery_capable": {
+            "type": "boolean",
+            "description": "Always true for v2 wallets",
+            "value": true
+          },
+          "file_path": {
+            "type": "string",
+            "description": "Path to encrypted wallet file",
+            "example": "/home/user/.btpc/wallets/550e8400-e29b-41d4-a716-446655440000.dat"
+          }
+        },
+        "error": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "INVALID_MNEMONIC_LENGTH",
+              "INVALID_MNEMONIC_WORD",
+              "INVALID_MNEMONIC_CHECKSUM",
+              "INVALID_PASSWORD",
+              "WALLET_ALREADY_EXISTS",
+              "KEY_GENERATION_FAILED",
+              "FILE_WRITE_ERROR"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable error message",
+            "examples": {
+              "INVALID_MNEMONIC_LENGTH": "Mnemonic must have exactly 24 words (found: 12)",
+              "INVALID_MNEMONIC_WORD": "Invalid word at position 5: 'xyz'",
+              "INVALID_MNEMONIC_CHECKSUM": "Invalid BIP39 checksum - please check your seed phrase",
+              "INVALID_PASSWORD": "Password must be at least 8 characters",
+              "KEY_GENERATION_FAILED": "ML-DSA key generation failed: {details}"
+            }
+          }
+        }
+      },
+      "behavior": {
+        "validation_order": [
+          "1. Validate mnemonic word count (24)",
+          "2. Validate each word exists in BIP39 wordlist",
+          "3. Validate BIP39 checksum",
+          "4. Validate password strength",
+          "5. Check wallet_id uniqueness"
+        ],
+        "early_exit": "If any validation fails, return error immediately (backend-first validation, Article XI Section 11.2)",
+        "side_effects": [
+          "Creates encrypted .dat file at ~/.btpc/wallets/{wallet_id}.dat",
+          "Emits Tauri event: wallet:created with WalletMetadata",
+          "NO localStorage write until backend succeeds"
+        ]
+      },
+      "performance": {
+        "target_latency": "< 2 seconds (FR-019)",
+        "breakdown": {
+          "BIP39_validation": "< 100ms",
+          "key_generation": "< 500ms",
+          "encryption": "< 100ms",
+          "file_write": "< 50ms"
+        }
+      },
+      "security": {
+        "constant_time": "BIP39 checksum validation uses constant-time comparison",
+        "memory_safety": "Seed bytes zeroized after key generation",
+        "no_logging": "Mnemonic and seed never logged or exposed in errors"
+      }
+    },
+    {
+      "name": "recover_wallet_from_mnemonic",
+      "description": "Recover existing v2 wallet from BIP39 24-word mnemonic",
+      "request": {
+        "mnemonic": {
+          "type": "string",
+          "description": "24-word BIP39 mnemonic phrase (same as original wallet)",
+          "validation": "Must be exactly 24 words, valid BIP39 checksum"
+        },
+        "wallet_name": {
+          "type": "string",
+          "description": "Name for recovered wallet (can differ from original)",
+          "validation": "Length 1-50 characters"
+        },
+        "password": {
+          "type": "string",
+          "description": "New encryption password for recovered wallet",
+          "validation": "Minimum 8 characters"
+        },
+        "network": {
+          "type": "string",
+          "enum": ["mainnet", "testnet", "regtest"],
+          "description": "Network type (should match original wallet)"
+        },
+        "expected_address": {
+          "type": "string",
+          "optional": true,
+          "description": "Known address to verify recovery correctness",
+          "example": "btpc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh"
+        }
+      },
+      "response": {
+        "success": {
+          "wallet_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "New wallet_id (different from original)"
+          },
+          "wallet_version": {
+            "type": "string",
+            "enum": ["V2BIP39Deterministic"]
+          },
+          "address": {
+            "type": "string",
+            "description": "Recovered address (MUST match original wallet)"
+          },
+          "recovery_verified": {
+            "type": "boolean",
+            "description": "True if expected_address provided and matches"
+          },
+          "keys_match": {
+            "type": "boolean",
+            "description": "True if keys are byte-identical to expected (deterministic verification)",
+            "value": true
+          },
+          "file_path": {
+            "type": "string",
+            "description": "Path to new encrypted wallet file"
+          }
+        },
+        "error": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "INVALID_MNEMONIC_LENGTH",
+              "INVALID_MNEMONIC_WORD",
+              "INVALID_MNEMONIC_CHECKSUM",
+              "RECOVERY_ADDRESS_MISMATCH",
+              "WALLET_ALREADY_EXISTS",
+              "KEY_GENERATION_FAILED"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "examples": {
+              "RECOVERY_ADDRESS_MISMATCH": "Recovered address 'btpc1q...' does not match expected 'btpc1q...' - wrong mnemonic?"
+            }
+          }
+        }
+      },
+      "behavior": {
+        "determinism_guarantee": "Same mnemonic MUST produce byte-identical keys (FR-001)",
+        "validation_order": [
+          "1. Validate mnemonic (same as create)",
+          "2. Derive keys deterministically",
+          "3. If expected_address provided: verify match",
+          "4. Check if wallet_id collision (offer to restore existing)"
+        ],
+        "side_effects": [
+          "Creates new encrypted .dat file (new wallet_id)",
+          "Emits Tauri event: wallet:recovered",
+          "Does NOT overwrite existing wallet files"
+        ]
+      },
+      "acceptance_criteria": [
+        "FR-005: User can recover wallet with byte-identical keys",
+        "FR-006: Cross-device recovery produces same wallet",
+        "Test: Recover same mnemonic 100 times → 100 identical key sets"
+      ]
+    },
+    {
+      "name": "validate_mnemonic",
+      "description": "Validate BIP39 mnemonic without creating wallet (frontend pre-check)",
+      "request": {
+        "mnemonic": {
+          "type": "string",
+          "description": "24-word BIP39 mnemonic to validate"
+        }
+      },
+      "response": {
+        "success": {
+          "valid": {
+            "type": "boolean",
+            "description": "True if mnemonic is valid"
+          },
+          "word_count": {
+            "type": "integer",
+            "description": "Number of words found"
+          },
+          "entropy_bits": {
+            "type": "integer",
+            "description": "Entropy bits (should be 256 for 24 words)"
+          }
+        },
+        "error": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "INVALID_MNEMONIC_LENGTH",
+              "INVALID_MNEMONIC_WORD",
+              "INVALID_MNEMONIC_CHECKSUM"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "invalid_word_index": {
+            "type": "integer",
+            "optional": true,
+            "description": "Position of first invalid word (if applicable)"
+          }
+        }
+      },
+      "behavior": {
+        "purpose": "Allow frontend to show validation errors as user types",
+        "side_effects": "None (read-only validation)",
+        "performance": "< 100ms (FR-017)"
+      }
+    },
+    {
+      "name": "get_wallet_version",
+      "description": "Get wallet version and recovery capability for existing wallet",
+      "request": {
+        "wallet_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Wallet identifier"
+        }
+      },
+      "response": {
+        "success": {
+          "wallet_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "wallet_version": {
+            "type": "string",
+            "enum": ["V1NonDeterministic", "V2BIP39Deterministic"]
+          },
+          "recovery_capable": {
+            "type": "boolean",
+            "description": "True if v2 (BIP39 recovery supported)"
+          },
+          "migration_recommended": {
+            "type": "boolean",
+            "description": "True if v1 (should migrate to v2)"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "ISO 8601",
+            "description": "Wallet creation timestamp"
+          }
+        },
+        "error": {
+          "code": {
+            "type": "string",
+            "enum": ["WALLET_NOT_FOUND", "WALLET_FILE_CORRUPT"]
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "behavior": {
+        "purpose": "Determine if wallet supports BIP39 recovery",
+        "side_effects": "None (read-only query)",
+        "ui_usage": "Display wallet version badge in wallet list"
+      }
+    },
+    {
+      "name": "export_mnemonic",
+      "description": "Export BIP39 mnemonic for v2 wallet (requires password)",
+      "request": {
+        "wallet_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "password": {
+          "type": "string",
+          "description": "Wallet password for decryption"
+        }
+      },
+      "response": {
+        "success": {
+          "mnemonic": {
+            "type": "string",
+            "description": "24-word BIP39 mnemonic"
+          },
+          "word_count": {
+            "type": "integer",
+            "value": 24
+          },
+          "language": {
+            "type": "string",
+            "value": "english"
+          }
+        },
+        "error": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "WALLET_NOT_FOUND",
+              "INVALID_PASSWORD",
+              "WALLET_V1_NO_MNEMONIC",
+              "WALLET_FILE_CORRUPT"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "examples": {
+              "WALLET_V1_NO_MNEMONIC": "This is a v1 wallet without BIP39 recovery - please create a v2 wallet and transfer funds"
+            }
+          }
+        }
+      },
+      "behavior": {
+        "security": [
+          "Decrypt wallet file with password",
+          "Reconstruct mnemonic from seed (FR-008)",
+          "Return mnemonic to frontend (user must secure it)",
+          "Mnemonic NOT logged or persisted"
+        ],
+        "side_effects": "None (read-only)",
+        "ui_usage": "Show mnemonic modal for user to backup"
+      }
+    }
+  ],
+  "events": {
+    "wallet:created": {
+      "description": "Emitted when new wallet is created",
+      "payload": {
+        "wallet_id": "string (uuid)",
+        "name": "string",
+        "version": "V1NonDeterministic | V2BIP39Deterministic",
+        "recovery_capable": "boolean",
+        "address": "string",
+        "network": "mainnet | testnet | regtest"
+      }
+    },
+    "wallet:recovered": {
+      "description": "Emitted when wallet is recovered from mnemonic",
+      "payload": {
+        "wallet_id": "string (uuid)",
+        "address": "string",
+        "recovery_verified": "boolean",
+        "expected_address_matched": "boolean"
+      }
+    },
+    "wallet:recovery:progress": {
+      "description": "Emitted during key derivation (optional, for UX feedback)",
+      "payload": {
+        "stage": "validating_mnemonic | deriving_seed | generating_keys | encrypting",
+        "progress_percent": "integer (0-100)"
+      }
+    }
+  },
+  "constitutional_compliance": {
+    "article_xi_section_11_1": "Backend (Rust Arc<RwLock>) is single source of truth for wallet state",
+    "article_xi_section_11_2": "All commands validate in backend FIRST before any state changes",
+    "article_xi_section_11_3": "Events emitted for all state changes (wallet:created, wallet:recovered)",
+    "article_xi_section_11_7": "Prohibited: Saving to localStorage before backend validation succeeds"
+  },
+  "test_scenarios": [
+    {
+      "name": "Deterministic Key Generation",
+      "steps": [
+        "1. create_wallet_from_mnemonic(mnemonic_A, 'Wallet 1')",
+        "2. Get address_1 from response",
+        "3. Delete wallet",
+        "4. recover_wallet_from_mnemonic(mnemonic_A, 'Wallet 2')",
+        "5. Get address_2 from response",
+        "6. Assert: address_1 == address_2 (byte-identical)"
+      ],
+      "expected": "Same mnemonic produces identical wallet"
+    },
+    {
+      "name": "Cross-Device Recovery",
+      "steps": [
+        "1. Device A: create_wallet_from_mnemonic(mnemonic, 'Device A Wallet')",
+        "2. Device A: Get address_A",
+        "3. Device B: recover_wallet_from_mnemonic(mnemonic, 'Device B Wallet', expected_address=address_A)",
+        "4. Device B: Get address_B",
+        "5. Assert: address_A == address_B",
+        "6. Assert: recovery_verified == true"
+      ],
+      "expected": "Same mnemonic on different devices produces same keys"
+    },
+    {
+      "name": "Invalid Mnemonic Rejection",
+      "steps": [
+        "1. create_wallet_from_mnemonic('invalid word list', ...)",
+        "2. Assert: Error code = INVALID_MNEMONIC_WORD",
+        "3. Assert: No wallet file created",
+        "4. Assert: No wallet:created event emitted"
+      ],
+      "expected": "Backend validation prevents invalid wallet creation"
+    },
+    {
+      "name": "V1 Wallet Migration Warning",
+      "steps": [
+        "1. Load existing v1 wallet",
+        "2. get_wallet_version(wallet_id)",
+        "3. Assert: version == V1NonDeterministic",
+        "4. Assert: recovery_capable == false",
+        "5. Assert: migration_recommended == true",
+        "6. UI displays: 'Limited recovery - create v2 wallet'"
+      ],
+      "expected": "V1 wallets show migration warning"
+    }
+  ]
+}

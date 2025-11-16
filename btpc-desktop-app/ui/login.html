@@ -309,25 +309,27 @@
         }
 
         // Check if master password exists (first launch vs subsequent launch)
+        // T011-001: Updated to use check_wallet_lock_status (existing command)
         async function checkFirstLaunch() {
             try {
-                const response = await invoke('has_master_password');
+                // check_wallet_lock_status returns boolean: true if locked, false if unlocked/no wallets
+                const isLocked = await invoke('check_wallet_lock_status');
 
-                if (response.exists) {
-                    // Subsequent launch - show login form
+                if (isLocked) {
+                    // Wallets exist and are locked - show login form
                     loginTitle.textContent = 'Welcome Back';
                     loginSubtitle.textContent = 'Enter your master password to continue';
                     loginForm.style.display = 'flex';
                     createPasswordForm.style.display = 'none';
                 } else {
-                    // First launch - show create password form
+                    // First launch or no wallets - show create password form
                     loginTitle.textContent = 'Create Master Password';
                     loginSubtitle.textContent = 'Secure your wallet with a master password';
                     createPasswordForm.style.display = 'flex';
                     loginForm.style.display = 'none';
                 }
             } catch (error) {
-                console.error('Failed to check first launch:', error);
+                console.error('Failed to check wallet lock status:', error);
                 showError('Failed to initialize authentication system');
             }
         }
@@ -357,23 +359,17 @@
             createBtn.innerHTML = '<span class="loading-spinner"></span>Creating...';
 
             try {
-                const response = await invoke('create_master_password', {
-                    password: password,
-                    password_confirm: confirmPassword
-                });
+                // T011-001: Use migrate_to_encrypted (existing command) instead of create_master_password
+                const result = await invoke('migrate_to_encrypted', { password });
 
-                if (response.success) {
-                    showSuccess('Master password created successfully! Redirecting...');
-                    setTimeout(() => {
-                        window.location.href = 'index.html';
-                    }, 1500);
-                } else {
-                    showError(response.error || 'Failed to create master password');
-                    createBtn.disabled = false;
-                    createBtn.textContent = 'Create Master Password';
-                }
+                // migrate_to_encrypted returns string "Migration successful" on success
+                showSuccess('Master password created successfully! Redirecting...');
+                setTimeout(() => {
+                    window.location.href = 'index.html';
+                }, 1500);
             } catch (error) {
                 console.error('Create password error:', error);
+                // Error is thrown as string by backend
                 showError(error.toString() || 'An unexpected error occurred');
                 createBtn.disabled = false;
                 createBtn.textContent = 'Create Master Password';
@@ -398,24 +394,17 @@
             loginBtn.innerHTML = '<span class="loading-spinner"></span>Logging in...';
 
             try {
-                const response = await invoke('login', {
-                    password: password
-                });
+                // T011-001: Use unlock_wallets (existing command) instead of login
+                const result = await invoke('unlock_wallets', { password });
 
-                if (response.success) {
-                    showSuccess('Login successful! Redirecting...');
-                    setTimeout(() => {
-                        window.location.href = 'index.html';
-                    }, 1000);
-                } else {
-                    showError(response.error || 'Authentication failed');
-                    loginBtn.disabled = false;
-                    loginBtn.textContent = 'Login';
-                    // Clear password field on failed login
-                    document.getElementById('password').value = '';
-                }
+                // unlock_wallets returns string "Wallets unlocked successfully" on success
+                showSuccess('Login successful! Redirecting...');
+                setTimeout(() => {
+                    window.location.href = 'index.html';
+                }, 1000);
             } catch (error) {
                 console.error('Login error:', error);
+                // Error is thrown as string by backend (e.g., "Incorrect password")
                 showError('Authentication failed. Please check your password.');
                 loginBtn.disabled = false;
                 loginBtn.textContent = 'Login';

@@ -1,0 +1,718 @@
+openapi: 3.0.3
+info:
+  title: Tauri Events API
+  description: |
+    Event specifications for embedded blockchain architecture.
+    Replaces RPC polling with event-driven updates (Article XI compliance).
+
+    **Event Pattern**:
+    - Backend is single source of truth
+    - Events emitted on ALL state changes
+    - Frontend listens and updates UI
+    - No localStorage for authoritative data
+
+    **Naming Convention**: `namespace:action`
+
+    **Event Cleanup**: Frontend MUST unlisten on page unload (Article XI, Section 11.6)
+
+  version: 1.0.0
+
+tags:
+  - name: blockchain
+    description: Blockchain state change events
+  - name: mining
+    description: Mining operation events
+  - name: wallet
+    description: Wallet state change events
+  - name: node
+    description: Node lifecycle events
+
+x-event-schemas:
+  blockchain:block_added:
+    summary: Emitted when new block added to blockchain
+    description: |
+      **Frequency**: Every ~10 minutes (block time)
+
+      **Use Case**: Update blockchain height display, trigger balance refresh
+
+      **Article XI**: Frontend updates UI immediately on receipt
+
+    payload:
+      type: object
+      required:
+        - height
+        - hash
+        - timestamp
+        - transaction_count
+      properties:
+        height:
+          type: integer
+          format: uint64
+          description: New blockchain height
+          example: 1001
+        hash:
+          type: string
+          description: Block hash (SHA-512, hex)
+          example: "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000abcd"
+        timestamp:
+          type: integer
+          format: uint64
+          description: Block timestamp (Unix)
+          example: 1699999999
+        transaction_count:
+          type: integer
+          description: Number of transactions in block
+          example: 5
+        miner_address:
+          type: string
+          description: Address that mined the block
+          example: "btpc1qxyz..."
+        reward:
+          type: integer
+          format: uint64
+          description: Block reward in creds
+          example: 5000000000
+
+  blockchain:state_updated:
+    summary: Emitted when blockchain state changes
+    description: |
+      **Frequency**: On every block add, sync progress update, peer connect/disconnect
+
+      **Use Case**: Update blockchain info panel in UI
+
+      **Article XI**: Replaces polling get_blockchain_state() every second
+
+    payload:
+      type: object
+      required:
+        - height
+        - best_block_hash
+        - sync_status
+        - peer_count
+      properties:
+        height:
+          type: integer
+          format: uint64
+          example: 1001
+        best_block_hash:
+          type: string
+          example: "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000abcd"
+        sync_status:
+          type: string
+          enum: [initializing, syncing, synced, disconnected]
+          example: "synced"
+        peer_count:
+          type: integer
+          example: 8
+        last_updated:
+          type: integer
+          format: uint64
+          description: Unix timestamp
+          example: 1699999999
+
+  blockchain:sync_progress:
+    summary: Emitted during blockchain synchronization
+    description: |
+      **Frequency**: Every 5 seconds during sync
+
+      **Use Case**: Update sync progress bar
+
+      **Performance**: Stop emitting when sync_status = "synced"
+
+    payload:
+      type: object
+      required:
+        - local_height
+        - network_height
+        - percentage
+        - download_speed
+      properties:
+        local_height:
+          type: integer
+          format: uint64
+          description: Current local height
+          example: 500
+        network_height:
+          type: integer
+          format: uint64
+          description: Estimated network height
+          example: 1000
+        percentage:
+          type: number
+          format: float
+          description: Sync percentage (0-100)
+          example: 50.0
+        download_speed_blocks_per_sec:
+          type: number
+          format: float
+          description: Block download speed
+          example: 2.5
+        estimated_time_remaining_secs:
+          type: integer
+          description: Estimated seconds until synced
+          example: 200
+        peer_count:
+          type: integer
+          example: 4
+
+  blockchain:reorg_detected:
+    summary: Emitted when blockchain reorganization detected
+    description: |
+      **Frequency**: Rare (network fork resolution)
+
+      **Use Case**: Warn user, invalidate recent transactions
+
+      **Article XI**: Frontend shows warning banner immediately
+
+    payload:
+      type: object
+      required:
+        - old_height
+        - new_height
+        - rollback_depth
+      properties:
+        old_height:
+          type: integer
+          format: uint64
+          description: Height before reorg
+          example: 1005
+        new_height:
+          type: integer
+          format: uint64
+          description: Height after reorg
+          example: 1003
+        rollback_depth:
+          type: integer
+          description: Number of blocks rolled back
+          example: 2
+        reason:
+          type: string
+          description: Reorg trigger reason
+          example: "Longer chain received from peer 192.168.1.100"
+
+  mining:started:
+    summary: Emitted when mining starts
+    description: |
+      **Frequency**: User-triggered (on start_mining command)
+
+      **Use Case**: Update mining status UI, show "Mining Active" indicator
+
+    payload:
+      type: object
+      required:
+        - cpu_threads
+        - gpu_enabled
+        - mining_address
+      properties:
+        cpu_threads:
+          type: integer
+          description: Number of CPU threads started
+          example: 6
+        gpu_enabled:
+          type: boolean
+          description: GPU mining active
+          example: true
+        gpu_device:
+          type: string
+          description: GPU device name (if gpu_enabled=true)
+          example: "NVIDIA GeForce RTX 3080"
+        mining_address:
+          type: string
+          description: Address receiving rewards
+          example: "btpc1qxyz..."
+        started_at:
+          type: integer
+          format: uint64
+          description: Unix timestamp
+          example: 1699999999
+
+  mining:stopped:
+    summary: Emitted when mining stops
+    description: |
+      **Frequency**: User-triggered (on stop_mining command) or app shutdown
+
+      **Use Case**: Update mining status UI, display final statistics
+
+    payload:
+      type: object
+      required:
+        - blocks_found
+        - total_hashes
+        - uptime_secs
+      properties:
+        blocks_found:
+          type: integer
+          format: uint64
+          description: Total blocks found this session
+          example: 3
+        total_hashes:
+          type: integer
+          format: uint64
+          description: Total hashes computed
+          example: 1000000000
+        uptime_secs:
+          type: integer
+          description: Mining uptime in seconds
+          example: 3600
+        stopped_at:
+          type: integer
+          format: uint64
+          description: Unix timestamp
+          example: 1700003599
+
+  mining:hashrate_updated:
+    summary: Emitted with updated hashrate statistics
+    description: |
+      **Frequency**: Every 5 seconds during mining
+
+      **Use Case**: Update hashrate display in real-time
+
+      **Performance**: Frontend uses this to update chart, no polling needed
+
+    payload:
+      type: object
+      required:
+        - cpu_hashrate
+        - gpu_hashrate
+        - total_hashrate
+      properties:
+        cpu_hashrate:
+          type: number
+          format: float
+          description: CPU hashrate (hashes/sec)
+          example: 50000.0
+        gpu_hashrate:
+          type: number
+          format: float
+          description: GPU hashrate (hashes/sec)
+          example: 500000.0
+        total_hashrate:
+          type: number
+          format: float
+          description: Combined hashrate
+          example: 550000.0
+        timestamp:
+          type: integer
+          format: uint64
+          description: Unix timestamp
+          example: 1699999999
+
+  mining:block_found:
+    summary: Emitted when mining thread finds valid block
+    description: |
+      **Frequency**: ~Every 10 minutes (depends on difficulty and hashrate)
+
+      **Use Case**: Show success notification, update blocks found counter
+
+      **Article XI**: Trigger UI celebration animation immediately
+
+    payload:
+      type: object
+      required:
+        - height
+        - hash
+        - reward
+        - nonce
+      properties:
+        height:
+          type: integer
+          format: uint64
+          description: Block height mined
+          example: 1001
+        hash:
+          type: string
+          description: Block hash
+          example: "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000abcd"
+        reward:
+          type: integer
+          format: uint64
+          description: Block reward in creds
+          example: 5000000000
+        nonce:
+          type: integer
+          format: uint64
+          description: Winning nonce value
+          example: 123456789
+        found_at:
+          type: integer
+          format: uint64
+          description: Unix timestamp
+          example: 1699999999
+        mining_address:
+          type: string
+          description: Address receiving reward
+          example: "btpc1qxyz..."
+
+  mining:address_updated:
+    summary: Emitted when mining address changed
+    description: |
+      **Frequency**: User-triggered (on update_mining_address command)
+
+      **Use Case**: Update mining address display
+
+    payload:
+      type: object
+      required:
+        - new_address
+      properties:
+        new_address:
+          type: string
+          description: New mining address
+          example: "btpc1qabc..."
+        updated_at:
+          type: integer
+          format: uint64
+          description: Unix timestamp
+          example: 1699999999
+
+  wallet:balance_updated:
+    summary: Emitted when wallet balance changes
+    description: |
+      **Frequency**: On new block with transactions affecting wallet
+
+      **Use Case**: Update balance display without polling
+
+      **Article XI**: Frontend never stores balance, always displays from event
+
+    payload:
+      type: object
+      required:
+        - wallet_id
+        - total_balance
+        - confirmed_balance
+        - unconfirmed_balance
+      properties:
+        wallet_id:
+          type: string
+          description: Wallet UUID
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        total_balance:
+          type: integer
+          format: uint64
+          description: Total balance in creds
+          example: 10000000000
+        confirmed_balance:
+          type: integer
+          format: uint64
+          description: Balance with >=6 confirmations
+          example: 9500000000
+        unconfirmed_balance:
+          type: integer
+          format: uint64
+          description: Balance with <6 confirmations
+          example: 500000000
+        utxo_count:
+          type: integer
+          description: Number of UTXOs
+          example: 15
+
+  wallet:transaction_confirmed:
+    summary: Emitted when transaction receives confirmation
+    description: |
+      **Frequency**: On new block containing watched transaction
+
+      **Use Case**: Show confirmation progress, unlock UI after 6 confirmations
+
+      **Article XI**: Update transaction list immediately
+
+    payload:
+      type: object
+      required:
+        - txid
+        - confirmations
+        - block_height
+      properties:
+        txid:
+          type: string
+          description: Transaction ID
+          example: "abc123..."
+        confirmations:
+          type: integer
+          description: Number of confirmations
+          example: 1
+        block_height:
+          type: integer
+          format: uint64
+          description: Block height containing transaction
+          example: 1001
+        block_hash:
+          type: string
+          description: Block hash
+          example: "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000abcd"
+
+  node:initialized:
+    summary: Emitted when embedded node initialization completes
+    description: |
+      **Frequency**: Once on app startup
+
+      **Use Case**: Enable UI controls, show "Ready" status
+
+      **Article XI**: Frontend disables all controls until this event received
+
+    payload:
+      type: object
+      required:
+        - height
+        - network
+        - peer_count
+      properties:
+        height:
+          type: integer
+          format: uint64
+          description: Current blockchain height
+          example: 1000
+        network:
+          type: string
+          enum: [mainnet, testnet, regtest]
+          description: Network type
+          example: "regtest"
+        peer_count:
+          type: integer
+          description: Connected peers
+          example: 0
+        initialized_at:
+          type: integer
+          format: uint64
+          description: Unix timestamp
+          example: 1699999999
+
+  node:initialization_failed:
+    summary: Emitted when node initialization fails
+    description: |
+      **Frequency**: Once on app startup (if error)
+
+      **Use Case**: Show error dialog, suggest recovery actions
+
+      **Article XI**: Frontend shows actionable error message
+
+    payload:
+      type: object
+      required:
+        - error
+        - error_code
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+          example: "Failed to open RocksDB: Corruption detected"
+        error_code:
+          type: string
+          enum: [database_corruption, invalid_genesis, network_config_error, insufficient_disk_space]
+          description: Machine-readable error code
+          example: "database_corruption"
+        recovery_suggestion:
+          type: string
+          description: Suggested recovery action
+          example: "Delete data directory and resync blockchain"
+
+  node:shutdown_started:
+    summary: Emitted when graceful shutdown initiated
+    description: |
+      **Frequency**: Once on app close
+
+      **Use Case**: Show "Shutting down..." dialog, prevent new actions
+
+    payload:
+      type: object
+      required:
+        - shutdown_timeout_secs
+      properties:
+        shutdown_timeout_secs:
+          type: integer
+          description: Maximum shutdown timeout
+          example: 30
+        started_at:
+          type: integer
+          format: uint64
+          description: Unix timestamp
+          example: 1699999999
+
+  node:shutdown_progress:
+    summary: Emitted during shutdown process
+    description: |
+      **Frequency**: On each shutdown step completion
+
+      **Use Case**: Update shutdown progress bar
+
+    payload:
+      type: object
+      required:
+        - step
+        - step_name
+        - completed
+      properties:
+        step:
+          type: integer
+          description: Current step number (1-6)
+          example: 3
+        step_name:
+          type: string
+          description: Step description
+          example: "Flushing mempool to database"
+        completed:
+          type: boolean
+          description: Step completed successfully
+          example: true
+        error:
+          type: string
+          description: Error message (if completed=false)
+          example: null
+
+  node:shutdown_complete:
+    summary: Emitted when shutdown completes
+    description: |
+      **Frequency**: Once on app close (final event)
+
+      **Use Case**: Close window after brief delay
+
+    payload:
+      type: object
+      required:
+        - success
+        - duration_secs
+      properties:
+        success:
+          type: boolean
+          description: Shutdown completed successfully
+          example: true
+        duration_secs:
+          type: integer
+          description: Total shutdown duration
+          example: 8
+        completed_at:
+          type: integer
+          format: uint64
+          description: Unix timestamp
+          example: 1700003607
+
+  node:peer_connected:
+    summary: Emitted when new P2P peer connects
+    description: |
+      **Frequency**: On peer connection
+
+      **Use Case**: Update peer count display, log peer activity
+
+    payload:
+      type: object
+      required:
+        - peer_id
+        - peer_address
+        - peer_count
+      properties:
+        peer_id:
+          type: string
+          description: Peer identifier
+          example: "192.168.1.100:18444"
+        peer_address:
+          type: string
+          description: Peer IP:port
+          example: "192.168.1.100:18444"
+        peer_count:
+          type: integer
+          description: Total connected peers
+          example: 5
+        connected_at:
+          type: integer
+          format: uint64
+          description: Unix timestamp
+          example: 1699999999
+
+  node:peer_disconnected:
+    summary: Emitted when P2P peer disconnects
+    description: |
+      **Frequency**: On peer disconnect
+
+      **Use Case**: Update peer count display, log peer activity
+
+    payload:
+      type: object
+      required:
+        - peer_id
+        - reason
+        - peer_count
+      properties:
+        peer_id:
+          type: string
+          description: Peer identifier
+          example: "192.168.1.100:18444"
+        reason:
+          type: string
+          description: Disconnect reason
+          example: "Timeout"
+        peer_count:
+          type: integer
+          description: Total connected peers
+          example: 4
+        disconnected_at:
+          type: integer
+          format: uint64
+          description: Unix timestamp
+          example: 1699999999
+
+x-event-usage-examples:
+  frontend_listener_setup:
+    description: |
+      Frontend MUST set up event listeners on page load and clean up on unload.
+
+    javascript: |
+      // Import Tauri API
+      import { listen } from '@tauri-apps/api/event';
+
+      // Store unlisten functions for cleanup
+      const eventListeners = [];
+
+      // Initialize event listeners
+      async function initEventListeners() {
+        // Blockchain events
+        const unlistenBlockAdded = await listen('blockchain:block_added', (event) => {
+          console.log('New block:', event.payload.height);
+          updateBlockchainHeight(event.payload.height);
+        });
+        eventListeners.push(unlistenBlockAdded);
+
+        // Mining events
+        const unlistenHashrate = await listen('mining:hashrate_updated', (event) => {
+          updateHashrateDisplay(event.payload.total_hashrate);
+        });
+        eventListeners.push(unlistenHashrate);
+
+        // Wallet events
+        const unlistenBalance = await listen('wallet:balance_updated', (event) => {
+          updateBalanceDisplay(event.payload.total_balance);
+        });
+        eventListeners.push(unlistenBalance);
+      }
+
+      // Cleanup on page unload (Article XI, Section 11.6)
+      window.addEventListener('beforeunload', () => {
+        eventListeners.forEach(unlisten => unlisten());
+        eventListeners.length = 0;
+      });
+
+      // Initialize on page load
+      initEventListeners();
+
+  backend_event_emission:
+    description: |
+      Backend emits events on state changes using Tauri AppHandle.
+
+    rust: |
+      use tauri::Manager;
+
+      // Emit block added event
+      app_handle.emit_all("blockchain:block_added", BlockAddedEvent {
+          height: new_block.height,
+          hash: new_block.hash().to_string(),
+          timestamp: new_block.timestamp,
+          transaction_count: new_block.transactions.len(),
+          miner_address: new_block.coinbase_address.clone(),
+          reward: new_block.reward,
+      })?;
+
+      // Emit mining hashrate update
+      app_handle.emit_all("mining:hashrate_updated", HashrateUpdatedEvent {
+          cpu_hashrate: stats.cpu_hashrate,
+          gpu_hashrate: stats.gpu_hashrate,
+          total_hashrate: stats.total_hashrate,
+          timestamp: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
+      })?;

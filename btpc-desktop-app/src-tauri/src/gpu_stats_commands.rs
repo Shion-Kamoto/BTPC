@@ -8,23 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 use tauri::{command, State};
-
-/// GPU statistics structure for frontend display
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GpuStats {
-    pub device_name: String,
-    pub vendor: String,
-    pub compute_units: u32,
-    pub max_work_group_size: usize,
-    pub global_mem_size: u64,
-    pub local_mem_size: u64,
-    pub max_clock_frequency: u32,
-    pub hashrate: f64,
-    pub total_hashes: u64,
-    pub uptime_seconds: u64,
-    pub temperature: Option<f32>,
-    pub power_usage: Option<f32>,
-}
+use btpc_desktop_app::gpu_stats_types::GpuStats;
 
 /// Tauri command: Get GPU mining statistics from MiningThreadPool
 ///
@@ -48,21 +32,27 @@ pub async fn get_gpu_stats(state: State<'_, crate::AppState>) -> Result<GpuStats
     // Get mining stats to extract GPU data
     let stats = pool.get_stats();
 
-    // TODO: When GPU mining is fully implemented, get actual device info
-    // For now, return placeholder values based on stats
+    // Get actual GPU device info from MiningThreadPool (Bug Fix: GPU not detected in UI)
+    let device_info = pool.get_gpu_device_info(0)
+        .ok_or_else(|| "GPU device 0 not found - mining may not have initialized properly".to_string())?;
+
+    // Get total hashes from GPU stats
+    let gpu_stats = pool.get_gpu_stats(0);
+    let total_hashes = gpu_stats.map(|s| s.total_hashes).unwrap_or(0);
+
     Ok(GpuStats {
-        device_name: "GPU Device 0".to_string(), // TODO: Get actual device name
-        vendor: "Unknown".to_string(),           // TODO: Get actual vendor
-        compute_units: 0,                        // TODO: Get actual compute units
-        max_work_group_size: 0,                  // TODO: Get actual work group size
-        global_mem_size: 0,                      // TODO: Get actual memory size
-        local_mem_size: 0,                       // TODO: Get actual local memory
-        max_clock_frequency: 0,                  // TODO: Get actual clock frequency
+        device_name: device_info.model_name,     // ✅ Real device name from OpenCL
+        vendor: device_info.vendor,              // ✅ Real vendor from OpenCL
+        compute_units: device_info.compute_units, // ✅ Real compute units from OpenCL
+        max_work_group_size: 0,                  // TODO: Add to GpuDevice struct if needed
+        global_mem_size: device_info.global_mem_size, // ✅ Real memory size from OpenCL
+        local_mem_size: 0,                       // TODO: Add to GpuDevice struct if needed
+        max_clock_frequency: device_info.max_clock_frequency, // ✅ Real clock frequency from OpenCL
         hashrate: stats.gpu_hashrate,            // ✅ Available from MiningThreadPool
-        total_hashes: 0,                         // TODO: Track total GPU hashes
+        total_hashes,                            // ✅ Available from per-GPU stats
         uptime_seconds: stats.uptime_seconds,    // ✅ Available from MiningThreadPool
-        temperature: None,                       // TODO: Get GPU temperature
-        power_usage: None,                       // TODO: Get GPU power usage
+        temperature: None,                       // TODO: Get GPU temperature via NVML
+        power_usage: None,                       // TODO: Get GPU power usage via NVML
     })
 }
 
@@ -86,7 +76,7 @@ pub async fn is_gpu_stats_available(state: State<'_, crate::AppState>) -> Result
 // Feature 012: GPU Mining Dashboard with Individual GPU Statistics
 // ============================================================================
 
-use btpc_desktop_app::gpu_health_monitor::{GpuDevice, GpuHealthMetrics};
+use crate::gpu_health_monitor::{GpuDevice, GpuHealthMetrics};
 use std::collections::HashMap;
 
 /// GPU mining statistics for Feature 012 dashboard (per-GPU granularity)
@@ -129,7 +119,7 @@ pub struct GpuDashboardData {
 #[command]
 pub async fn enumerate_gpus() -> Result<Vec<GpuDevice>, String> {
     // Delegate to gpu_health_monitor service (T013)
-    btpc_desktop_app::gpu_health_monitor::enumerate_gpus()
+    crate::gpu_health_monitor::enumerate_gpus()
 }
 
 /// Get current mining statistics for all GPUs or a specific GPU (Feature 012)
@@ -270,7 +260,7 @@ pub async fn get_gpu_mining_stats(
 pub async fn get_gpu_health_metrics(
     gpu_device_index: Option<u32>,
 ) -> Result<HashMap<u32, GpuHealthMetrics>, String> {
-    use btpc_desktop_app::gpu_health_monitor;
+    use crate::gpu_health_monitor;
 
     if let Some(device_index) = gpu_device_index {
         // Poll specific GPU
@@ -391,7 +381,7 @@ pub async fn get_temperature_threshold(
 pub async fn get_gpu_dashboard_data(
     state: State<'_, crate::AppState>,
 ) -> Result<GpuDashboardData, String> {
-    use btpc_desktop_app::gpu_health_monitor;
+    use crate::gpu_health_monitor;
 
     // 1. Enumerate GPU devices
     let devices = gpu_health_monitor::enumerate_gpus()

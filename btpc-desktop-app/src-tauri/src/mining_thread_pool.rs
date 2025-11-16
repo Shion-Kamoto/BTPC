@@ -19,9 +19,44 @@ use tokio::sync::{mpsc, broadcast};
 
 use crate::gpu_miner::{GpuMiner, enumerate_gpu_devices};
 
+// Import RpcClientInterface trait directly from rpc_client module
+use crate::debug_logger::get_debug_logger;
+use crate::rpc_client::RpcClientInterface;
+
 /// Trait for types that can log mining events
 pub trait MiningLogger {
     fn add_entry(&mut self, level: String, message: String);
+}
+
+/// Cached block template with expiration tracking
+///
+/// Reduces RPC requests by reusing templates for 10 seconds.
+/// Fixes 429 rate limit errors from requesting new template every batch.
+struct CachedTemplate {
+    template: crate::rpc_client::BlockTemplate,
+    cached_at: Instant,
+    /// Cache duration (10 seconds - node generates new block every ~10s)
+    ttl: Duration,
+}
+
+impl CachedTemplate {
+    fn new(template: crate::rpc_client::BlockTemplate) -> Self {
+        Self {
+            template,
+            cached_at: Instant::now(),
+            ttl: Duration::from_secs(10),
+        }
+    }
+
+    /// Check if cache is still valid
+    fn is_valid(&self) -> bool {
+        self.cached_at.elapsed() < self.ttl
+    }
+
+    /// Get cached template (clones data)
+    fn get(&self) -> crate::rpc_client::BlockTemplate {
+        self.template.clone()
+    }
 }
 
 /// Per-GPU mining statistics (Feature 012: T016)
@@ -84,6 +119,10 @@ pub struct MiningThreadPool {
     /// Per-GPU statistics tracking (Feature 012: T016)
     /// Maps GPU device index to individual mining stats
     per_gpu_stats: Arc<RwLock<HashMap<u32, PerGpuStats>>>,
+
+    /// GPU device information (hardware specs)
+    /// Maps GPU device index to device info for stats display
+    gpu_device_info: Arc<RwLock<HashMap<u32, crate::gpu_miner::GpuDevice>>>,
 }
 
 impl MiningThreadPool {
@@ -102,6 +141,7 @@ impl MiningThreadPool {
             cpu_shutdown_tx: None,
             gpu_shutdown_tx: None,
             per_gpu_stats: Arc::new(RwLock::new(HashMap::new())),
+            gpu_device_info: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -241,20 +281,23 @@ impl MiningThreadPool {
     ///
     /// # Arguments
     /// * `mining_address` - Coinbase output address
+    /// * `rpc_client` - RPC client for block template requests and block submission
     /// * `log_tx` - Optional channel for sending mining log events (level, message)
     /// * `mining_logs` - Optional direct access to mining logs buffer (bypasses channel)
     ///
     /// # Returns
     /// * `Ok(u32)` - Number of GPU devices initialized
     /// * `Err(antml:Error)` - Failed to start GPU mining
-    pub async fn start_gpu_mining<T>(
+    pub async fn start_gpu_mining<T, R>(
         &mut self,
         mining_address: String,
+        rpc_client: Arc<R>,
         log_tx: Option<mpsc::UnboundedSender<(String, String)>>,
         mining_logs: Option<Arc<std::sync::Mutex<T>>>,
     ) -> Result<u32>
     where
         T: 'static + Send + MiningLogger,
+        R: 'static + Send + Sync + RpcClientInterface,
     {
         // Stop existing GPU mining if active
         if self.gpu_mining_active.load(Ordering::SeqCst) {
@@ -286,10 +329,15 @@ impl MiningThreadPool {
         let mining_active = self.gpu_mining_active.clone();
         let per_gpu_stats = self.per_gpu_stats.clone();
         let start_time = self.start_time.clone();
+        let blocks_found_counter = self.blocks_found.clone(); // Clone global blocks counter
 
-        // Initialize stats for each GPU
-        for device in &gpu_devices {
-            self.init_gpu_stats(device.device_index);
+        // Initialize stats and store device info for each GPU
+        {
+            let mut device_info_map = self.gpu_device_info.write().unwrap();
+            for device in &gpu_devices {
+                self.init_gpu_stats(device.device_index);
+                device_info_map.insert(device.device_index, device.clone());
+            }
         }
 
         // Record start time
@@ -305,9 +353,12 @@ impl MiningThreadPool {
             let mining_active = mining_active.clone();
             let per_gpu_stats = per_gpu_stats.clone();
             let start_time = start_time.clone();
+            let blocks_found_counter_clone = blocks_found_counter.clone(); // Clone for this GPU thread
             let mut shutdown_rx_clone = shutdown_rx.resubscribe();
             let log_tx_clone = log_tx.clone();
             let mining_logs_clone = mining_logs.clone();
+            let gpu_total_hashes_clone = self.gpu_total_hashes.clone();
+            let rpc_client_clone = rpc_client.clone();
 
             tokio::spawn(async move {
                 println!("🚀 Starting GPU {} mining thread", device_index);
@@ -327,8 +378,11 @@ impl MiningThreadPool {
                 miner.set_mining(true);
                 println!("✅ GPU {} initialized successfully", device_index);
 
-                // Mining loop
+                // Mining loop with template caching
                 let mut nonce_start = (device_index * 1_000_000_000) as u32; // Partition nonce space
+                let mut cached_template: Option<CachedTemplate> = None; // Template cache (10s TTL)
+                let mut current_template: Option<crate::rpc_client::BlockTemplate> = None; // Working template
+
                 while mining_active.load(Ordering::SeqCst) {
                     // Check for shutdown signal (non-blocking)
                     if shutdown_rx_clone.try_recv().is_ok() {
@@ -336,26 +390,177 @@ impl MiningThreadPool {
                         break;
                     }
 
-                    // TODO: Get current block template from node
-                    // For now, create placeholder header for testing
+                    // Cache validity check - only fetch when truly needed
+                    let should_fetch_template = match (current_template.as_ref(), cached_template.as_ref()) {
+                        // No template at all - must fetch
+                        (None, _) => true,
+                        // Have template but cache expired - should fetch new one
+                        (Some(_), Some(cache)) if !cache.is_valid() => true,
+                        // Have template and cache is still valid - keep using it
+                        (Some(_), Some(cache)) if cache.is_valid() => false,
+                        // Have template but no cache metadata (shouldn't happen) - keep using template
+                        (Some(_), None) => false,
+                        // Unreachable: all Some/Some cases covered above
+                        _ => false,
+                    };
+
+                    if should_fetch_template {
+                        // Debug logging to understand cache behavior
+                        if current_template.is_none() {
+                            eprintln!("[GPU MINING] 🔄 Fetching initial template...");
+                        } else if let Some(cache) = &cached_template {
+                            eprintln!("[GPU MINING] 🔄 Cache expired ({}s old), fetching new template...",
+                                     cache.cached_at.elapsed().as_secs());
+                        }
+
+                        match rpc_client_clone.get_block_template().await {
+                            Ok(template) => {
+                                let height = template.height;
+                                eprintln!("[GPU MINING] ✅ Template fetched successfully (height: {})", height);
+
+                                // Update both cache and working template
+                                cached_template = Some(CachedTemplate::new(template.clone()));
+                                current_template = Some(template);
+                            },
+                            Err(e) => {
+                                // Parse error type to handle rate limiting specifically
+                                let error_str = e.to_string();
+                                if error_str.contains("429") || error_str.contains("Too Many Requests") {
+                                    eprintln!("[GPU MINING] ⚠️ Rate limited - will reuse existing template if available");
+
+                                    // CRITICAL FIX: Don't clear templates on rate limit!
+                                    // Keep using the existing template if we have one
+                                    if current_template.is_none() {
+                                        // No template to work with - must wait
+                                        eprintln!("[GPU MINING] 😴 No template available, waiting 30s for rate limit to clear...");
+                                        tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
+                                        continue;
+                                    } else {
+                                        // Have a template - keep mining with it
+                                        eprintln!("[GPU MINING] ♻️ Reusing existing template to continue mining");
+                                        // Extend cache TTL to prevent repeated fetch attempts
+                                        if let Some(ref mut cache) = cached_template {
+                                            cache.cached_at = Instant::now();
+                                            eprintln!("[GPU MINING] 📅 Extended cache TTL by 10s to avoid rate limit");
+                                        }
+                                    }
+                                } else {
+                                    // Non-rate-limit error (network issue, RPC down, etc.)
+                                    eprintln!("[GPU MINING] ❌ Failed to get block template: {}", e);
+
+                                    // For non-rate-limit errors, only clear if we have no fallback
+                                    if current_template.is_none() {
+                                        eprintln!("[GPU MINING] 😴 No template available, waiting 5s before retry...");
+                                        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                                        continue;
+                                    } else {
+                                        eprintln!("[GPU MINING] ♻️ Network error - continuing with existing template");
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // Cache is still valid - no fetch needed (silent operation)
+                        // This is the normal case that should happen most of the time
+                    }
+
+                    // Use current template (guaranteed to exist here)
+                    let block_template = current_template.as_ref().unwrap();
+
+                    // Parse header from template
+                    let prev_hash = match hex::decode(&block_template.previousblockhash) {
+                        Ok(bytes) if bytes.len() == 64 => {
+                            let mut arr = [0u8; 64];
+                            arr.copy_from_slice(&bytes);
+                            btpc_core::crypto::Hash::from_bytes(arr)
+                        },
+                        _ => btpc_core::crypto::Hash::zero(),
+                    };
+                    let target_bytes = match hex::decode(&block_template.target) {
+                        Ok(bytes) if bytes.len() == 64 => {
+                            let mut arr = [0u8; 64];
+                            arr.copy_from_slice(&bytes);
+                            arr
+                        },
+                        _ => [0u8; 64],
+                    };
+
+                    // Create coinbase transaction and calculate merkle root BEFORE mining
+                    let recipient_hash = btpc_core::crypto::Hash::zero(); // Placeholder recipient
+                    let mut coinbase_tx = btpc_core::blockchain::Transaction::coinbase(
+                        block_template.coinbasevalue,
+                        recipient_hash,
+                    );
+                    // CRITICAL: Set fork_id to 2 for regtest network
+                    // (default is 0=mainnet, 1=testnet, 2=regtest)
+                    coinbase_tx.fork_id = 2;
+
+                    // Debug log: Coinbase transaction
+                    if let Some(logger) = get_debug_logger() {
+                        let tx_id = hex::encode(coinbase_tx.hash().as_slice());
+                        logger.log_transaction(
+                            "COINBASE",
+                            &tx_id,
+                            coinbase_tx.inputs.len(),
+                            coinbase_tx.outputs.len(),
+                            block_template.coinbasevalue
+                        );
+                    }
+
+                    let transactions = vec![coinbase_tx];
+                    let merkle_root = match btpc_core::blockchain::calculate_merkle_root(&transactions) {
+                        Ok(root) => {
+                            // Debug log: Merkle root
+                            if let Some(logger) = get_debug_logger() {
+                                logger.log_merkle_root(transactions.len(), &hex::encode(root.as_slice()));
+                            }
+                            root
+                        },
+                        Err(e) => {
+                            eprintln!("[GPU MINING] ❌ Failed to calculate merkle root: {}", e);
+                            if let Some(logger) = get_debug_logger() {
+                                logger.log_error("MERKLE_ROOT", &format!("{}", e));
+                            }
+                            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                            continue;
+                        }
+                    };
+
+                    // Build header with proper merkle root for mining
+                    let bits_value = u32::from_str_radix(&block_template.bits, 16).unwrap_or(0x1d00ffff);
                     let header = btpc_core::blockchain::BlockHeader::new(
-                        1, // version
-                        btpc_core::crypto::Hash::zero(), // prev_hash
-                        btpc_core::crypto::Hash::zero(), // merkle_root
-                        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
-                        0x1d00ffff, // bits (difficulty)
-                        0, // nonce (will be set by GPU)
+                        block_template.version,
+                        prev_hash,
+                        merkle_root, // REAL merkle root
+                        block_template.curtime,
+                        bits_value,
+                        0, // nonce (set by GPU)
                     );
-                    let difficulty_target = btpc_core::consensus::DifficultyTarget::from_bits(0x1d00ffff);
-                    let target = btpc_core::consensus::pow::MiningTarget::from_difficulty(
-                        btpc_core::consensus::difficulty::Difficulty::from_bits(0x1d00ffff)
-                    );
+                    let target = btpc_core::consensus::pow::MiningTarget::from_bytes(target_bytes);
+
+                    // Debug log: Block header details
+                    if let Some(logger) = get_debug_logger() {
+                        logger.log_block_header(
+                            Some(device_index),
+                            block_template.version,
+                            &hex::encode(prev_hash.as_slice()),
+                            &hex::encode(merkle_root.as_slice()),
+                            block_template.curtime,
+                            bits_value,
+                            nonce_start
+                        );
+                    }
 
                     // Mine batch on GPU
                     match miner.mine_batch(&header, &target, nonce_start) {
                         Ok(Some(nonce)) => {
                             // Found valid nonce!
                             println!("🎉 GPU {} found valid block! Nonce: {}", device_index, nonce);
+
+                            // Debug log: Block found
+                            if let Some(logger) = get_debug_logger() {
+                                logger.log_mining_event("BLOCK_FOUND", Some(device_index), &format!("Nonce: {}", nonce));
+                            }
 
                             // DIRECT LOGGING - write to mining_logs buffer directly
                             let message = format!("GPU {} ({}) found valid block! Nonce: {}", device_index, device_name, nonce);
@@ -377,15 +582,86 @@ impl MiningThreadPool {
                                 }
                             }
 
-                            // TODO: Submit block to node
-                            // Update stats
-                            let mut stats = per_gpu_stats.write().unwrap();
-                            if let Some(entry) = stats.get_mut(&device_index) {
-                                entry.blocks_found += 1;
+                            // Build block with found nonce
+                            let mut final_header = header.clone();
+                            final_header.nonce = nonce;
+
+                            let block_to_submit = btpc_core::blockchain::Block {
+                                header: final_header,
+                                transactions: transactions.clone(),
+                            };
+
+                            // Debug log: Complete block details
+                            let block_hash = block_to_submit.hash();
+                            if let Some(logger) = get_debug_logger() {
+                                logger.log_complete_block(
+                                    Some(device_index),
+                                    0, // height unknown at mining time
+                                    &hex::encode(block_hash.as_slice()),
+                                    &hex::encode(prev_hash.as_slice()),
+                                    &hex::encode(merkle_root.as_slice()),
+                                    nonce,
+                                    block_template.curtime,
+                                    transactions.len()
+                                );
+                            }
+
+                            let block_hex = hex::encode(block_to_submit.serialize());
+
+                            // Debug log: Block submission attempt
+                            if let Some(logger) = get_debug_logger() {
+                                logger.log_block_submission(
+                                    Some(device_index),
+                                    nonce,
+                                    block_hex.len(),
+                                    &hex::encode(merkle_root.as_slice())
+                                );
+                                logger.log_block_hex(Some(device_index), &block_hex);
+                            }
+
+                            match rpc_client_clone.submit_block(&block_hex).await {
+                                Ok(msg) => {
+                                    eprintln!("[GPU MINING] ✅ Block submitted successfully: {}", msg);
+
+                                    // Debug log: Block accepted
+                                    if let Some(logger) = get_debug_logger() {
+                                        logger.log_block_result(Some(device_index), true, &msg);
+                                    }
+
+                                    if let Some(ref tx) = log_tx_clone {
+                                        let _ = tx.send(("SUCCESS".to_string(), format!("GPU {} block accepted by network", device_index)));
+                                    }
+
+                                    // ✅ ONLY increment blocks_found when submission succeeds
+                                    // Increment global counter (displayed in frontend)
+                                    blocks_found_counter_clone.fetch_add(1, Ordering::SeqCst);
+
+                                    // Increment per-GPU counter (for GPU dashboard)
+                                    let mut stats = per_gpu_stats.write().unwrap();
+                                    if let Some(entry) = stats.get_mut(&device_index) {
+                                        entry.blocks_found += 1;
+                                    }
+                                }
+                                Err(e) => {
+                                    eprintln!("[GPU MINING] ❌ Block submission failed: {}", e);
+
+                                    // Debug log: Block rejected
+                                    if let Some(logger) = get_debug_logger() {
+                                        logger.log_block_result(Some(device_index), false, &format!("{}", e));
+                                        logger.log_error("BLOCK_SUBMIT", &format!("GPU {}: {}", device_index, e));
+                                    }
+
+                                    if let Some(ref tx) = log_tx_clone {
+                                        let _ = tx.send(("ERROR".to_string(), format!("GPU {} block rejected: {}", device_index, e)));
+                                    }
+                                    // ❌ Do NOT increment blocks_found on failure
+                                }
                             }
                         }
                         Ok(None) => {
                             // Batch exhausted, continue with next batch
+                            // RATE LIMIT FIX: Add small delay to prevent 429 errors (GPU mines 1M nonces in ~50ms)
+                            tokio::time::sleep(Duration::from_millis(100)).await;
                         }
                         Err(e) => {
                             eprintln!("⚠️ GPU {} mining error: {}", device_index, e);
@@ -635,6 +911,32 @@ impl MiningThreadPool {
     pub fn clear_gpu_stats(&self) {
         let mut stats = self.per_gpu_stats.write().unwrap();
         stats.clear();
+    }
+
+    /// Get GPU device information for a specific device
+    ///
+    /// Returns hardware specifications for the requested GPU.
+    ///
+    /// # Arguments
+    /// * `device_index` - GPU device index to query
+    ///
+    /// # Returns
+    /// * `Some(GpuDevice)` - Device info for the requested GPU
+    /// * `None` - GPU device not found
+    pub fn get_gpu_device_info(&self, device_index: u32) -> Option<crate::gpu_miner::GpuDevice> {
+        let device_info = self.gpu_device_info.read().unwrap();
+        device_info.get(&device_index).cloned()
+    }
+
+    /// Get all GPU device information
+    ///
+    /// Returns hardware specifications for all registered GPUs.
+    ///
+    /// # Returns
+    /// HashMap mapping device_index to GpuDevice for all GPUs
+    pub fn get_all_gpu_device_info(&self) -> HashMap<u32, crate::gpu_miner::GpuDevice> {
+        let device_info = self.gpu_device_info.read().unwrap();
+        device_info.clone()
     }
 }
 

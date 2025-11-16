@@ -29,9 +29,16 @@ pub mod gpu_health_monitor;       // GPU health monitoring and thermal managemen
 pub mod gpu_stats_persistence;    // GPU stats persistence and historical tracking
 pub mod mining_thread_pool;       // Unified CPU+GPU mining thread pool
 pub mod gpu_miner;                // OpenCL GPU mining implementation
+pub mod gpu_stats_types;          // Feature 011: GPU stats types (shared for testing)
+// Note: gpu_stats_commands is in main.rs only (needs AppState)
+pub mod debug_logger;             // Comprehensive debug event logger
+
+// Note: unified_database and embedded_node are in main.rs only (active development with type mismatches)
 
 // Also re-export common items for convenience
 pub use error::{BtpcError, BtpcResult, ProcessError};
 pub use state_management::StateManager;
 pub use process_health::{ProcessHealthMonitor, CrashInfo, HealthStatus};
 pub use lock_manager::{LockManager, FileLockGuard, ensure_single_instance};
+pub use rpc_client::{RpcClient, RpcClientInterface};
+pub use mining_thread_pool::MiningThreadPool;

@@ -73,7 +73,7 @@ mod gpu_miner;                // OpenCL GPU mining implementation
 mod gpu_stats_commands;       // Tauri commands for GPU stats retrieval
 mod gpu_health_monitor;       // GPU health monitoring and thermal management
 mod gpu_stats_persistence;    // GPU stats persistence and historical tracking
-mod mining_thread_pool;       // Unified mining thread pool (CPU + GPU)
+use btpc_desktop_app::mining_thread_pool; // Import from lib.rs (used by mining_commands)
 mod mining_commands;          // Unified mining commands with GPU support
 
 // Transaction modules (Feature 007: Transaction Sending)
@@ -1732,6 +1732,38 @@ async fn get_utxo_stats(state: State<'_, AppState>) -> Result<UTXOStats, String>
     Ok(utxo_manager.get_stats())
 }
 
+/// Get all application settings from backend
+///
+/// Returns settings as key-value pairs for localStorage sync per Article XI (Backend-First Architecture).
+/// Currently returns minimal settings since BTPC doesn't have persistent configuration storage yet.
+///
+/// # Frontend Usage
+/// ```javascript
+/// const result = await window.invoke('get_all_settings');
+/// if (result.success) {
+///     for (const [key, value] of Object.entries(result.data)) {
+///         localStorage.setItem(key, value);
+///     }
+/// }
+/// ```
+#[derive(Serialize)]
+struct GetAllSettingsResponse {
+    success: bool,
+    data: HashMap<String, String>,
+}
+
+#[tauri::command]
+async fn get_all_settings() -> Result<GetAllSettingsResponse, String> {
+    // TODO: Implement persistent settings storage when configuration requirements are defined
+    // For now, return empty settings HashMap (no persistent settings exist yet)
+    let settings = HashMap::new();
+
+    Ok(GetAllSettingsResponse {
+        success: true,
+        data: settings,
+    })
+}
+
 #[tauri::command]
 async fn get_wallet_utxos(state: State<'_, AppState>) -> Result<Vec<UTXO>, String> {
     let wallet_file = state.config.data_dir.join("wallet").join(&state.config.wallet.default_wallet_file);
@@ -2281,7 +2313,8 @@ async fn check_wallet_lock_status(
 #[tauri::command]
 async fn unlock_wallets(
     password: String,
-    state: State<'_, AppState>
+    state: State<'_, AppState>,
+    session: State<'_, std::sync::RwLock<auth_state::SessionState>>
 ) -> Result<String, String> {
     // Check if already unlocked
     {
@@ -2310,6 +2343,13 @@ async fn unlock_wallets(
     {
         let mut locked_guard = state.wallets_locked.write().await;
         *locked_guard = false;
+    }
+
+    // CRITICAL FIX (T011-001): Set SessionState.authenticated = true
+    // This ensures check_session (navigation guard) recognizes the user as logged in
+    {
+        let mut session_state = session.write().unwrap();
+        session_state.login(); // Sets authenticated=true, generates session token
     }
 
     Ok("Wallets unlocked successfully".to_string())
@@ -2379,7 +2419,8 @@ async fn change_master_password(
 #[tauri::command]
 async fn migrate_to_encrypted(
     password: String,
-    state: State<'_, AppState>
+    state: State<'_, AppState>,
+    session: State<'_, std::sync::RwLock<auth_state::SessionState>>
 ) -> Result<String, String> {
     use std::path::Path;
 
@@ -2430,6 +2471,13 @@ async fn migrate_to_encrypted(
     {
         let mut locked_guard = state.wallets_locked.write().await;
         *locked_guard = false;
+    }
+
+    // CRITICAL FIX (T011-001): Set SessionState.authenticated = true
+    // This ensures check_session (navigation guard) recognizes the user as logged in
+    {
+        let mut session_state = session.write().unwrap();
+        session_state.login(); // Sets authenticated=true, generates session token
     }
 
     Ok("Migration successful. Plaintext backed up to wallets_metadata.json.backup".to_string())
@@ -3085,6 +3133,7 @@ fn main() {
             get_logs,
             get_mining_logs,
             get_utxo_stats,
+            get_all_settings,  // Settings sync for Article XI (Backend-First Architecture)
             get_wallet_utxos,
             get_spendable_utxos,
             add_mining_utxo,

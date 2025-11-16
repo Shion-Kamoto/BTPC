@@ -61,14 +61,27 @@ impl FeeEstimator {
         // Test connection first
         match rpc_client.ping().await {
             Ok(true) => {
-                // TODO: Implement estimatesmartfee RPC call
-                // For now, query mempool and calculate from recent transactions
-                // This is a placeholder - actual implementation would call:
-                // rpc_client.estimate_smart_fee(blocks: 6).await
+                // Query estimatesmartfee RPC (6 block target = ~1 hour confirmation)
+                match rpc_client.estimate_smart_fee(6).await {
+                    Ok(feerate_btc_per_kb) => {
+                        // Convert BTC/kB to satoshis/byte
+                        // feerate_btc_per_kb is in BTC per kilobyte
+                        // 1 BTC = 100,000,000 satoshis
+                        // 1 kB = 1000 bytes
+                        let satoshis_per_byte = (feerate_btc_per_kb * 100_000_000.0 / 1000.0) as u64;
 
-                // Conservative fallback for now
-                println!("⚠️  RPC fee estimation not yet implemented, using fallback");
-                Ok(Self::fallback_fee_rate())
+                        // Sanity check: ensure reasonable bounds (10 sat/byte min, 10000 sat/byte max)
+                        let bounded_rate = satoshis_per_byte.clamp(10, 10000);
+
+                        println!("✅ RPC fee estimate: {} sat/byte (from {:.8} BTC/kB)",
+                                bounded_rate, feerate_btc_per_kb);
+                        Ok(bounded_rate)
+                    }
+                    Err(e) => {
+                        println!("⚠️  RPC fee estimation failed ({}), using fallback", e);
+                        Ok(Self::fallback_fee_rate())
+                    }
+                }
             }
             Ok(false) | Err(_) => {
                 println!("⚠️  RPC unavailable, using fallback fee rate");

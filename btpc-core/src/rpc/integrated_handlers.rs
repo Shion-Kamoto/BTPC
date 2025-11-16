@@ -224,11 +224,14 @@ impl IntegratedRpcHandlers {
         let consensus_engine = Arc::clone(&self.consensus_engine);
         server
             .register_method("submitblock", move |params| {
-                // Placeholder for submitblock
-                Ok(json!({
-                    "result": "accepted",
-                    "hash": "0000000000000000000000000000000000000000000000000000000000000000"
-                }))
+                let block_validator = Arc::clone(&block_validator);
+                let consensus_engine = Arc::clone(&consensus_engine);
+                // Use tokio::runtime::Handle to block on async function
+                tokio::task::block_in_place(|| {
+                    tokio::runtime::Handle::current().block_on(async move {
+                        Self::submit_block(block_validator, consensus_engine, params).await
+                    })
+                })
             })
             .await;
 
@@ -599,24 +602,42 @@ impl IntegratedRpcHandlers {
         consensus_engine: Arc<TokioRwLock<ConsensusEngine>>,
         params: Option<Value>,
     ) -> Result<Value, RpcServerError> {
-        let params = params.ok_or(RpcServerError::InvalidParams(
-            "Missing block hex".to_string(),
-        ))?;
+        eprintln!("[SUBMITBLOCK] Called with params: {:?}", params.as_ref().map(|v| format!("{:?}", v).chars().take(100).collect::<String>()));
+
+        let params = params.ok_or_else(|| {
+            eprintln!("[SUBMITBLOCK ERROR] ❌ No params provided");
+            RpcServerError::InvalidParams("Missing block hex".to_string())
+        })?;
 
         let block_hex = if let Value::Array(ref arr) = params {
+            eprintln!("[SUBMITBLOCK] Params is array with {} elements", arr.len());
             arr.first()
                 .and_then(|v| v.as_str())
-                .ok_or(RpcServerError::InvalidParams(
-                    "Invalid block hex".to_string(),
-                ))?
+                .ok_or_else(|| {
+                    eprintln!("[SUBMITBLOCK ERROR] ❌ First array element is not a string");
+                    RpcServerError::InvalidParams("Invalid block hex".to_string())
+                })?
         } else {
+            eprintln!("[SUBMITBLOCK ERROR] ❌ Params is not an array: {:?}", params);
             return Err(RpcServerError::InvalidParams(
                 "Expected array parameters".to_string(),
             ));
         };
 
-        // TODO: Deserialize block from hex
-        let block = Block::create_test_block();
+        // Deserialize block from hex
+        eprintln!("[SUBMITBLOCK] Received block_hex length: {}", block_hex.len());
+        let block_bytes = hex::decode(block_hex).map_err(|e| {
+            eprintln!("[SUBMITBLOCK ERROR] ❌ Hex decode failed: {}", e);
+            RpcServerError::InvalidParams(format!("Invalid hex encoding: {}", e))
+        })?;
+        eprintln!("[SUBMITBLOCK] Decoded {} bytes", block_bytes.len());
+
+        let block = Block::deserialize(&block_bytes).map_err(|e| {
+            eprintln!("[SUBMITBLOCK ERROR] ❌ Block deserialization failed: {}", e);
+            eprintln!("[SUBMITBLOCK ERROR] Block bytes (first 100): {:?}", &block_bytes[..block_bytes.len().min(100)]);
+            RpcServerError::InvalidParams(format!("Failed to deserialize block: {}", e))
+        })?;
+        eprintln!("[SUBMITBLOCK] ✅ Block deserialized successfully");
 
         // Validate and apply block
         match block_validator.apply_block(&block).await {
@@ -797,8 +818,14 @@ impl IntegratedRpcHandlers {
             ));
         };
 
-        // TODO: Deserialize block from hex
-        let block = Block::create_test_block();
+        // Deserialize block from hex
+        let block_bytes = hex::decode(block_hex).map_err(|e| {
+            RpcServerError::InvalidParams(format!("Invalid hex encoding: {}", e))
+        })?;
+
+        let block = Block::deserialize(&block_bytes).map_err(|e| {
+            RpcServerError::InvalidParams(format!("Failed to deserialize block: {}", e))
+        })?;
 
         match block_validator.validate_block_with_context(&block).await {
             Ok(()) => Ok(json!({

@@ -1,0 +1,607 @@
+openapi: 3.0.3
+info:
+  title: Embedded Node API
+  description: |
+    Tauri command API for embedded btpc-core blockchain node.
+    Replaces RPC client with direct in-process function calls.
+
+    **Article XI Compliance**:
+    - All commands validate in backend FIRST
+    - State changes emit Tauri events
+    - Frontend queries backend, never stores authoritative state
+
+  version: 1.0.0
+  contact:
+    name: BTPC Development Team
+
+servers:
+  - url: tauri://localhost
+    description: Tauri IPC (in-process)
+
+tags:
+  - name: node
+    description: Node lifecycle and status operations
+  - name: blockchain
+    description: Blockchain state queries
+  - name: sync
+    description: Blockchain synchronization operations
+
+paths:
+  /init_embedded_node:
+    post:
+      tags:
+        - node
+      summary: Initialize embedded blockchain node
+      description: |
+        Creates and initializes the embedded btpc-core node instance.
+
+        **Lifecycle**: Called once in Tauri setup(), before app window shown.
+
+        **State Transition**: Initializing → Syncing
+
+        **Validation**:
+        - data_dir must exist and be writable
+        - network type must be valid (mainnet/testnet/regtest)
+        - RocksDB must initialize successfully
+
+        **Events Emitted**:
+        - `node:initialized` on success
+        - `node:initialization_failed` on error
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - data_dir
+                - network
+              properties:
+                data_dir:
+                  type: string
+                  description: Path to blockchain data directory
+                  example: "/home/user/.btpc/mainnet"
+                network:
+                  type: string
+                  enum: [mainnet, testnet, regtest]
+                  description: Network type (determines genesis block and consensus rules)
+                  example: "regtest"
+                cache_size_mb:
+                  type: integer
+                  description: RocksDB cache size in MB (default 512)
+                  minimum: 128
+                  maximum: 4096
+                  default: 512
+                enable_p2p:
+                  type: boolean
+                  description: Enable P2P networking (false for offline testing)
+                  default: true
+      responses:
+        '200':
+          description: Node initialized successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  height:
+                    type: integer
+                    format: uint64
+                    description: Current blockchain height
+                    example: 1000
+                  network:
+                    type: string
+                    example: "regtest"
+                  peer_count:
+                    type: integer
+                    description: Number of connected peers
+                    example: 0
+        '500':
+          description: Initialization failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /get_blockchain_state:
+    get:
+      tags:
+        - blockchain
+      summary: Get current blockchain state
+      description: |
+        Returns snapshot of blockchain state (height, tip hash, sync status).
+
+        **Performance Target**: <5ms (read from Arc<RwLock<>>)
+
+        **Article XI**: Single source of truth is backend state, frontend queries this
+
+        **Events**: Subscribe to `blockchain:state_updated` for real-time updates
+
+      responses:
+        '200':
+          description: Current blockchain state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlockchainState'
+        '500':
+          description: Node not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /get_sync_progress:
+    get:
+      tags:
+        - sync
+      summary: Get blockchain sync progress
+      description: |
+        Returns detailed sync progress information.
+
+        **Use Case**: Display sync progress bar in UI
+
+        **Update Frequency**: Backend emits `blockchain:sync_progress` event every 5 seconds
+
+        **Performance**: <5ms (read from cached state)
+
+      responses:
+        '200':
+          description: Sync progress details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [initializing, syncing, synced, disconnected]
+                    description: Current sync status
+                    example: "syncing"
+                  local_height:
+                    type: integer
+                    format: uint64
+                    description: Current local blockchain height
+                    example: 500
+                  network_height:
+                    type: integer
+                    format: uint64
+                    description: Estimated network height (from peers)
+                    example: 1000
+                  percentage:
+                    type: number
+                    format: float
+                    description: Sync percentage (0-100)
+                    example: 50.0
+                  peer_count:
+                    type: integer
+                    description: Number of connected peers
+                    example: 4
+                  download_speed_blocks_per_sec:
+                    type: number
+                    format: float
+                    description: Block download speed
+                    example: 2.5
+                  estimated_time_remaining_secs:
+                    type: integer
+                    description: Estimated seconds until fully synced
+                    example: 200
+        '500':
+          description: Error getting sync progress
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /get_block_by_height:
+    get:
+      tags:
+        - blockchain
+      summary: Get block by height
+      description: |
+        Retrieves block data for specified height.
+
+        **Performance Target**: <20ms (RocksDB lookup with cache)
+
+        **Validation**: Height must be <= current blockchain height
+
+      parameters:
+        - name: height
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: uint64
+            minimum: 0
+          description: Block height to retrieve
+          example: 100
+      responses:
+        '200':
+          description: Block data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Block'
+        '404':
+          description: Block not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Database error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /get_block_by_hash:
+    get:
+      tags:
+        - blockchain
+      summary: Get block by hash
+      description: |
+        Retrieves block data for specified block hash.
+
+        **Performance Target**: <20ms (RocksDB lookup)
+
+        **Validation**: Hash must be valid 128-char hex string (SHA-512)
+
+      parameters:
+        - name: hash
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^[0-9a-f]{128}$'
+          description: Block hash (SHA-512, 128 hex chars)
+          example: "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000abcd"
+      responses:
+        '200':
+          description: Block data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Block'
+        '404':
+          description: Block not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Database error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /get_utxo_set:
+    get:
+      tags:
+        - blockchain
+      summary: Get UTXO set for address
+      description: |
+        Returns all unspent transaction outputs for given address.
+
+        **Performance Target**: <20ms for <100 UTXOs
+
+        **Use Case**: Transaction creation, balance calculation
+
+        **Article XI**: Backend validates UTXO availability before transaction creation
+
+      parameters:
+        - name: address
+          in: query
+          required: true
+          schema:
+            type: string
+          description: BTPC address
+          example: "btpc1qxyz..."
+      responses:
+        '200':
+          description: UTXO set for address
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  address:
+                    type: string
+                    example: "btpc1qxyz..."
+                  total_balance:
+                    type: integer
+                    format: uint64
+                    description: Total balance in creds (1 BTPC = 1e8 creds)
+                    example: 10000000000
+                  utxos:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UTXO'
+        '400':
+          description: Invalid address format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Database error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /validate_transaction:
+    post:
+      tags:
+        - blockchain
+      summary: Validate transaction before signing
+      description: |
+        Pre-validates transaction structure and UTXO availability.
+
+        **Use Case**: Frontend calls this before prompting for password
+
+        **Validation**:
+        - All inputs reference unspent UTXOs
+        - Input sum >= output sum + fee
+        - Output addresses are valid
+        - No double-spending (mempool checked)
+
+        **Performance Target**: <50ms
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - inputs
+                - outputs
+              properties:
+                inputs:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      txid:
+                        type: string
+                        description: Transaction ID (hex)
+                      output_index:
+                        type: integer
+                        description: Output index in transaction
+                outputs:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      address:
+                        type: string
+                        description: Recipient address
+                      amount:
+                        type: integer
+                        format: uint64
+                        description: Amount in creds
+      responses:
+        '200':
+          description: Transaction is valid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                    example: true
+                  total_input:
+                    type: integer
+                    format: uint64
+                    example: 100000000
+                  total_output:
+                    type: integer
+                    format: uint64
+                    example: 99000000
+                  fee:
+                    type: integer
+                    format: uint64
+                    example: 1000000
+        '400':
+          description: Transaction is invalid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Input UTXO 0 already spent"
+                  error_code:
+                    type: string
+                    enum: [utxo_not_found, insufficient_balance, invalid_address, double_spend]
+                    example: "double_spend"
+
+  /shutdown_node:
+    post:
+      tags:
+        - node
+      summary: Gracefully shutdown embedded node
+      description: |
+        Triggers graceful shutdown sequence.
+
+        **Shutdown Order**:
+        1. Stop accepting new commands
+        2. Stop mining threads (5s timeout)
+        3. Close P2P connections (5s timeout)
+        4. Flush mempool to RocksDB (10s timeout)
+        5. Flush RocksDB WAL (5s timeout)
+        6. Zeroize cryptographic keys (instant)
+
+        **Total Timeout**: 30 seconds
+
+        **Events Emitted**:
+        - `node:shutdown_started`
+        - `node:shutdown_progress` (step updates)
+        - `node:shutdown_complete`
+
+      responses:
+        '200':
+          description: Shutdown initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Shutdown initiated, closing in 30s max"
+
+components:
+  schemas:
+    BlockchainState:
+      type: object
+      properties:
+        height:
+          type: integer
+          format: uint64
+          description: Current blockchain height
+          example: 1000
+        best_block_hash:
+          type: string
+          description: Hash of chain tip block (SHA-512, hex)
+          example: "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000abcd"
+        sync_status:
+          type: string
+          enum: [initializing, syncing, synced, disconnected]
+          description: Current synchronization status
+          example: "synced"
+        peer_count:
+          type: integer
+          description: Number of connected P2P peers
+          example: 8
+        last_updated:
+          type: integer
+          format: uint64
+          description: Unix timestamp of last state update
+          example: 1699999999
+
+    Block:
+      type: object
+      properties:
+        height:
+          type: integer
+          format: uint64
+          example: 100
+        hash:
+          type: string
+          description: Block hash (SHA-512, hex)
+          example: "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000abcd"
+        previous_hash:
+          type: string
+          description: Previous block hash
+        timestamp:
+          type: integer
+          format: uint64
+          description: Unix timestamp
+          example: 1699999999
+        nonce:
+          type: integer
+          format: uint64
+          description: Proof-of-work nonce
+        difficulty:
+          type: string
+          description: Target difficulty (hex)
+        transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Transaction'
+
+    Transaction:
+      type: object
+      properties:
+        txid:
+          type: string
+          description: Transaction ID (SHA-512 of serialized tx)
+        version:
+          type: integer
+          example: 1
+        inputs:
+          type: array
+          items:
+            type: object
+            properties:
+              txid:
+                type: string
+              output_index:
+                type: integer
+              signature:
+                type: string
+                description: ML-DSA (Dilithium5) signature (hex)
+        outputs:
+          type: array
+          items:
+            type: object
+            properties:
+              address:
+                type: string
+              amount:
+                type: integer
+                format: uint64
+        lock_time:
+          type: integer
+          format: uint64
+
+    UTXO:
+      type: object
+      properties:
+        txid:
+          type: string
+          description: Transaction ID containing this output
+          example: "abc123..."
+        output_index:
+          type: integer
+          description: Index of output in transaction
+          example: 0
+        amount:
+          type: integer
+          format: uint64
+          description: Amount in creds (1 BTPC = 1e8 creds)
+          example: 100000000
+        script_pubkey:
+          type: string
+          description: Locking script (hex)
+          example: "76a914..."
+        height:
+          type: integer
+          format: uint64
+          description: Block height where UTXO was created
+          example: 100
+        confirmations:
+          type: integer
+          description: Number of confirmations
+          example: 900
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+          example: "Node not initialized"
+        error_code:
+          type: string
+          description: Machine-readable error code
+          example: "NODE_NOT_INITIALIZED"
+        details:
+          type: string
+          description: Additional context for debugging
+          example: "Call init_embedded_node() first"

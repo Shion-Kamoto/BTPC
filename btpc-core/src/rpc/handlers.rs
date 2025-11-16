@@ -443,13 +443,21 @@ impl BlockchainRpcHandlers {
         };
 
         // Decode hex to bytes
+        eprintln!("[SUBMITBLOCK] Received hex length: {}", block_hex.len());
         let block_bytes = hex::decode(block_hex)
-            .map_err(|e| RpcServerError::InvalidParams(format!("Invalid hex: {}", e)))?;
+            .map_err(|e| {
+                eprintln!("[SUBMITBLOCK ERROR] ❌ Hex decode failed: {}", e);
+                RpcServerError::InvalidParams(format!("Invalid hex: {}", e))
+            })?;
+        eprintln!("[SUBMITBLOCK] Decoded {} bytes", block_bytes.len());
+        eprintln!("[SUBMITBLOCK] First 200 bytes: {:?}", &block_bytes[..block_bytes.len().min(200)]);
 
         // Deserialize block
         let block = Block::deserialize(&block_bytes).map_err(|e| {
+            eprintln!("[SUBMITBLOCK ERROR] ❌ Deserialization failed: {}", e);
             RpcServerError::InvalidParams(format!("Invalid block format: {}", e))
         })?;
+        eprintln!("[SUBMITBLOCK] ✅ Block deserialized successfully, {} transactions", block.transactions.len());
 
         // Get block hash before validation
         let block_hash = block.hash();

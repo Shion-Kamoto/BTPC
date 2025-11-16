@@ -7,6 +7,26 @@ use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+/// Block template for mining
+#[derive(Debug, Clone, Deserialize)]
+pub struct BlockTemplate {
+    pub version: u32,
+    pub previousblockhash: String,
+    pub transactions: Vec<serde_json::Value>,
+    pub coinbasevalue: u64,
+    pub target: String,
+    pub mintime: u64,
+    pub curtime: u64,
+    pub bits: String,
+    pub height: u64,
+}
+
+/// Trait for RPC client interface (for generic mining pool usage)
+pub trait RpcClientInterface {
+    fn get_block_template(&self) -> impl std::future::Future<Output = Result<BlockTemplate>> + Send;
+    fn submit_block(&self, block_hex: &str) -> impl std::future::Future<Output = Result<String>> + Send;
+}
+
 /// JSON-RPC 2.0 Request
 #[derive(Debug, Clone, Serialize)]
 struct JsonRpcRequest {
@@ -353,6 +373,64 @@ impl RpcClient {
 
         serde_json::from_value(txs_value.clone())
             .map_err(|e| anyhow!("Failed to parse transactions: {}", e))
+    }
+
+    /// Get block template for mining
+    ///
+    /// Returns a block template with header, coinbase transaction, and mining target.
+    /// Used by GPU/CPU miners to construct candidate blocks.
+    pub async fn get_block_template(&self) -> Result<BlockTemplate> {
+        let result = self.call("getblocktemplate", Some(json!([]))).await?;
+        serde_json::from_value(result)
+            .map_err(|e| anyhow!("Failed to parse block template: {}", e))
+    }
+
+    /// Submit mined block to network
+    ///
+    /// # Arguments
+    /// * `block_hex` - Hex-encoded serialized block with valid nonce
+    ///
+    /// Returns block hash if accepted, error if validation fails
+    pub async fn submit_block(&self, block_hex: &str) -> Result<String> {
+        let result = self.call("submitblock", Some(json!([block_hex]))).await?;
+
+        // submitblock returns null on success, or error message on failure
+        if result.is_null() {
+            Ok("Block submitted successfully".to_string())
+        } else {
+            Err(anyhow!("Block submission failed: {}", result))
+        }
+    }
+
+    /// Estimate smart fee for transaction
+    ///
+    /// # Arguments
+    /// * `conf_target` - Confirmation target in blocks (e.g., 6 for ~1 hour)
+    ///
+    /// Returns estimated fee rate in satoshis per byte
+    pub async fn estimate_smart_fee(&self, conf_target: u64) -> Result<f64> {
+        let result = self.call("estimatesmartfee", Some(json!([conf_target]))).await?;
+
+        // Extract feerate from response
+        if let Some(feerate) = result.get("feerate") {
+            feerate.as_f64()
+                .ok_or_else(|| anyhow!("Invalid feerate in response"))
+        } else {
+            // Fallback to conservative default if RPC doesn't support estimatesmartfee
+            Ok(0.00001) // 1000 satoshis per byte default
+        }
+    }
+}
+
+// Implement the trait for RpcClient
+impl RpcClientInterface for RpcClient {
+    fn get_block_template(&self) -> impl std::future::Future<Output = Result<BlockTemplate>> + Send {
+        async move { self.get_block_template().await }
+    }
+
+    fn submit_block(&self, block_hex: &str) -> impl std::future::Future<Output = Result<String>> + Send {
+        let block_hex = block_hex.to_string();
+        async move { self.submit_block(&block_hex).await }
     }
 }
 
