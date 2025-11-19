@@ -37,6 +37,9 @@ pub mod debug_logger; // Comprehensive debug event logger
 pub mod embedded_node;
 pub mod unified_database; // Unified RocksDB database for blockchain and UTXO data // In-process blockchain node (eliminates external btpc_node dependency)
 
+// Persistent settings storage
+pub mod settings_storage; // RocksDB-based settings persistence
+
 // Also re-export common items for convenience
 pub use embedded_node::{
     BlockchainState, EmbeddedNode, MempoolStats, SyncProgress, TransactionInfo,

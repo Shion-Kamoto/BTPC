@@ -23,6 +23,39 @@ use crate::gpu_miner::{enumerate_gpu_devices, GpuMiner};
 use crate::debug_logger::get_debug_logger;
 use crate::rpc_client::RpcClientInterface;
 
+// REM-C002: Mining event types for frontend notification
+/// Events emitted by the mining thread pool
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "type", content = "data")]
+pub enum MiningEvent {
+    /// Block successfully mined and submitted
+    BlockMined {
+        block_hash: String,
+        block_height: u64,
+        reward_btpc: f64,
+        device_id: u32,
+        device_name: String,
+        difficulty: String,
+        nonce: u64,
+    },
+    /// GPU thermal throttling occurred
+    ThermalThrottle {
+        device_id: u32,
+        device_name: String,
+        current_temperature: f32,
+        thermal_limit: f32,
+        action: String, // "warning", "throttle", "shutdown"
+    },
+    /// GPU error encountered
+    GpuError {
+        device_id: u32,
+        device_name: String,
+        error_type: String, // "kernel_error", "device_lost", "memory_error"
+        error_message: String,
+        mining_stopped: bool,
+    },
+}
+
 /// Trait for types that can log mining events
 pub trait MiningLogger {
     fn add_entry(&mut self, level: String, message: String);
@@ -123,6 +156,9 @@ pub struct MiningThreadPool {
     /// GPU device information (hardware specs)
     /// Maps GPU device index to device info for stats display
     gpu_device_info: Arc<RwLock<HashMap<u32, crate::gpu_miner::GpuDevice>>>,
+
+    /// REM-C002: Mining event channel sender (optional for event emission)
+    mining_event_tx: Option<mpsc::UnboundedSender<MiningEvent>>,
 }
 
 impl MiningThreadPool {
@@ -142,7 +178,15 @@ impl MiningThreadPool {
             gpu_shutdown_tx: None,
             per_gpu_stats: Arc::new(RwLock::new(HashMap::new())),
             gpu_device_info: Arc::new(RwLock::new(HashMap::new())),
+            mining_event_tx: None, // REM-C002
         }
+    }
+
+    /// Set the mining event channel sender (REM-C002)
+    ///
+    /// Called by mining_commands.rs to enable event emission to frontend
+    pub fn set_event_channel(&mut self, tx: mpsc::UnboundedSender<MiningEvent>) {
+        self.mining_event_tx = Some(tx);
     }
 
     /// Start CPU mining
@@ -342,6 +386,7 @@ impl MiningThreadPool {
         let start_time = self.start_time.clone();
         let blocks_found_counter = self.blocks_found.clone(); // Clone global blocks counter
         let mining_address_arc = self.mining_address.clone(); // Clone Arc for closure access
+        let mining_event_tx = self.mining_event_tx.clone(); // REM-C002: Clone event channel
 
         // Initialize stats and store device info for each GPU
         {
@@ -373,6 +418,7 @@ impl MiningThreadPool {
             let gpu_total_hashes_clone = self.gpu_total_hashes.clone();
             let rpc_client_clone = rpc_client.clone();
             let mining_address_clone = mining_address_arc.clone(); // Clone Arc for EACH GPU thread
+            let event_tx_clone = mining_event_tx.clone(); // REM-C002: Clone event channel for this thread
 
             tokio::spawn(async move {
                 println!("🚀 Starting GPU {} mining thread", device_index);
@@ -530,14 +576,21 @@ impl MiningThreadPool {
                                 // Convert 20-byte hash160 to 64-byte Hash (pad with zeros)
                                 let mut padded = [0u8; 64];
                                 padded[..20].copy_from_slice(hash_bytes);
-                                btpc_core::crypto::Hash::from_bytes(padded)
+                                let result_hash = btpc_core::crypto::Hash::from_bytes(padded);
+
+                                eprintln!("[GPU MINING] ✅ Successfully parsed mining address: '{}'", mining_addr_str);
+                                eprintln!("[GPU MINING] ✅ Extracted hash160 (first 20 bytes): {}", hex::encode(&hash_bytes[..20]));
+
+                                result_hash
                             }
                             Err(e) => {
-                                eprintln!(
-                                    "[GPU MINING] ⚠️ Failed to parse mining address '{}': {}",
-                                    mining_addr_str, e
-                                );
-                                eprintln!("[GPU MINING] ⚠️ Using fallback zero hash");
+                                eprintln!("[GPU MINING] ❌❌❌ CRITICAL ERROR ❌❌❌");
+                                eprintln!("[GPU MINING] ❌ Failed to parse mining address: '{}'", mining_addr_str);
+                                eprintln!("[GPU MINING] ❌ Error details: {}", e);
+                                eprintln!("[GPU MINING] ❌ Address length: {} bytes", mining_addr_str.len());
+                                eprintln!("[GPU MINING] ❌ Address format: {:?}", mining_addr_str.chars().take(20).collect::<String>());
+                                eprintln!("[GPU MINING] ⚠️ MINING REWARDS WILL BE LOST - Using fallback zero hash");
+                                eprintln!("[GPU MINING] ⚠️ All mined blocks will credit to address: 0000000000000000000000000000000000000000");
                                 btpc_core::crypto::Hash::zero() // Fallback
                             }
                         };
@@ -726,6 +779,19 @@ impl MiningThreadPool {
                                     if let Some(entry) = stats.get_mut(&device_index) {
                                         entry.blocks_found += 1;
                                     }
+
+                                    // REM-C002: Emit block_mined event
+                                    if let Some(ref tx) = event_tx_clone {
+                                        let _ = tx.send(MiningEvent::BlockMined {
+                                            block_hash: hex::encode(block_hash.as_slice()),
+                                            block_height: block_template.height + 1,
+                                            reward_btpc: 32.375, // Fixed reward per block
+                                            device_id: device_index,
+                                            device_name: device_name.clone(),
+                                            difficulty: block_template.bits.clone(),
+                                            nonce: nonce as u64,
+                                        });
+                                    }
                                 }
                                 Err(e) => {
                                     eprintln!("[GPU MINING] ❌ Block submission failed: {}", e);
@@ -760,7 +826,73 @@ impl MiningThreadPool {
                         }
                         Err(e) => {
                             eprintln!("⚠️ GPU {} mining error: {}", device_index, e);
+
+                            // REM-C002: Emit gpu_error event
+                            if let Some(ref tx) = event_tx_clone {
+                                let _ = tx.send(MiningEvent::GpuError {
+                                    device_id: device_index,
+                                    device_name: device_name.clone(),
+                                    error_type: "kernel_error".to_string(),
+                                    error_message: format!("{}", e),
+                                    mining_stopped: false, // Mining continues after error
+                                });
+                            }
+
                             tokio::time::sleep(Duration::from_secs(1)).await;
+                        }
+                    }
+
+                    // REM-C002: Check GPU temperature for thermal throttling
+                    if let Some(temperature) = miner.get_temperature() {
+                        // Thermal threshold is 80°C (warning), 85°C (throttle), 90°C (shutdown)
+                        const THERMAL_WARNING: f32 = 80.0;
+                        const THERMAL_THROTTLE: f32 = 85.0;
+                        const THERMAL_SHUTDOWN: f32 = 90.0;
+
+                        if temperature >= THERMAL_SHUTDOWN {
+                            // Emergency shutdown
+                            eprintln!("🔥 GPU {} CRITICAL TEMPERATURE: {}°C - EMERGENCY SHUTDOWN", device_index, temperature);
+
+                            if let Some(ref tx) = event_tx_clone {
+                                let _ = tx.send(MiningEvent::ThermalThrottle {
+                                    device_id: device_index,
+                                    device_name: device_name.clone(),
+                                    current_temperature: temperature,
+                                    thermal_limit: THERMAL_SHUTDOWN,
+                                    action: "shutdown".to_string(),
+                                });
+                            }
+
+                            // Stop mining immediately
+                            mining_active.store(false, Ordering::SeqCst);
+                            break;
+                        } else if temperature >= THERMAL_THROTTLE {
+                            // Throttle mining (reduce hashrate)
+                            eprintln!("⚠️ GPU {} HIGH TEMPERATURE: {}°C - THROTTLING", device_index, temperature);
+
+                            if let Some(ref tx) = event_tx_clone {
+                                let _ = tx.send(MiningEvent::ThermalThrottle {
+                                    device_id: device_index,
+                                    device_name: device_name.clone(),
+                                    current_temperature: temperature,
+                                    thermal_limit: THERMAL_THROTTLE,
+                                    action: "throttle".to_string(),
+                                });
+                            }
+
+                            // Add extra delay to reduce hashrate
+                            tokio::time::sleep(Duration::from_secs(5)).await;
+                        } else if temperature >= THERMAL_WARNING {
+                            // Warning only
+                            if let Some(ref tx) = event_tx_clone {
+                                let _ = tx.send(MiningEvent::ThermalThrottle {
+                                    device_id: device_index,
+                                    device_name: device_name.clone(),
+                                    current_temperature: temperature,
+                                    thermal_limit: THERMAL_WARNING,
+                                    action: "warning".to_string(),
+                                });
+                            }
                         }
                     }
 

@@ -28,6 +28,7 @@ use std::time::{Duration, SystemTime};
 use tokio::time::sleep;
 
 /// Process health check interval (FR-038: 5 seconds)
+#[allow(dead_code)]
 const HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(5);
 
 /// Crash counter reset time (FR-046: 1 hour stable)

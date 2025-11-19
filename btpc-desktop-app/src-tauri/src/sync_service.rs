@@ -60,11 +60,17 @@ pub struct BlockchainSyncService {
     stats: Arc<Mutex<SyncStats>>,
     /// Whether the service is running
     running: Arc<Mutex<bool>>,
+    /// App handle for emitting events (REM-C002)
+    app: Option<tauri::AppHandle>,
 }
 
 impl BlockchainSyncService {
     /// Create a new blockchain sync service
-    pub fn new(utxo_manager: Arc<Mutex<UTXOManager>>, config: SyncConfig) -> Self {
+    pub fn new(
+        utxo_manager: Arc<Mutex<UTXOManager>>,
+        config: SyncConfig,
+        app: Option<tauri::AppHandle>,
+    ) -> Self {
         let rpc_client = Arc::new(RpcClient::new(&config.rpc_host, config.rpc_port));
 
         Self {
@@ -73,6 +79,7 @@ impl BlockchainSyncService {
             config,
             stats: Arc::new(Mutex::new(SyncStats::default())),
             running: Arc::new(Mutex::new(false)),
+            app,
         }
     }
 
@@ -90,6 +97,7 @@ impl BlockchainSyncService {
         let running_flag = self.running.clone();
         let poll_interval = self.config.poll_interval_secs;
         let max_blocks = self.config.max_blocks_per_sync;
+        let app = self.app.clone();
 
         // Spawn background sync task
         tokio::spawn(async move {
@@ -97,7 +105,7 @@ impl BlockchainSyncService {
 
             while *running_flag.lock().unwrap() {
                 // Perform sync iteration
-                match Self::sync_iteration(&rpc_client, &utxo_manager, &stats, max_blocks).await {
+                match Self::sync_iteration(&rpc_client, &utxo_manager, &stats, max_blocks, &app).await {
                     Ok(synced_count) => {
                         if synced_count > 0 {
                             println!("✅ Synced {} blocks", synced_count);
@@ -143,6 +151,7 @@ impl BlockchainSyncService {
         utxo_manager: &Arc<Mutex<UTXOManager>>,
         stats: &Arc<Mutex<SyncStats>>,
         max_blocks: u64,
+        app: &Option<tauri::AppHandle>,
     ) -> Result<u64> {
         // Mark as syncing
         {
@@ -169,7 +178,15 @@ impl BlockchainSyncService {
         let pending_blocks = node_height.saturating_sub(current_height);
 
         if pending_blocks == 0 {
-            // Already synced
+            // Already synced - REM-C002: Emit sync_complete event
+            if let Some(ref app_handle) = app {
+                use tauri::Emitter;
+                app_handle.emit("sync_complete", serde_json::json!({
+                    "final_height": node_height,
+                    "sync_duration_seconds": 0
+                })).ok();
+            }
+
             let mut stats_guard = stats.lock().unwrap();
             stats_guard.node_height = node_height;
             stats_guard.pending_blocks = 0;
@@ -183,7 +200,7 @@ impl BlockchainSyncService {
 
         let mut synced_count = 0;
         for height in (current_height + 1)..=(current_height + blocks_to_sync) {
-            match Self::sync_block(rpc_client, utxo_manager, height).await {
+            match Self::sync_block(rpc_client, utxo_manager, height, app).await {
                 Ok(_) => {
                     synced_count += 1;
 
@@ -200,13 +217,35 @@ impl BlockchainSyncService {
         }
 
         // Update final stats
-        {
+        let (current_height, percentage) = {
             let mut stats_guard = stats.lock().unwrap();
             stats_guard.node_height = node_height;
             stats_guard.pending_blocks = node_height - stats_guard.current_height;
             stats_guard.is_syncing = false;
             stats_guard.last_sync_time = Some(Utc::now());
             stats_guard.last_error = None;
+
+            // Calculate percentage for event
+            let percentage = if node_height > 0 {
+                (stats_guard.current_height as f64 / node_height as f64) * 100.0
+            } else {
+                100.0
+            };
+
+            (stats_guard.current_height, percentage)
+        };
+
+        // REM-C002: Emit sync_progress event
+        if let Some(ref app_handle) = app {
+            use tauri::Emitter;
+            let blocks_per_second = if synced_count > 0 { synced_count as f64 / 10.0 } else { 0.0 };
+
+            app_handle.emit("sync_progress", serde_json::json!({
+                "current_height": current_height,
+                "target_height": node_height,
+                "percentage": percentage,
+                "blocks_per_second": blocks_per_second
+            })).ok();
         }
 
         Ok(synced_count)
@@ -217,14 +256,18 @@ impl BlockchainSyncService {
         rpc_client: &RpcClient,
         utxo_manager: &Arc<Mutex<UTXOManager>>,
         height: u64,
+        app: &Option<tauri::AppHandle>,
     ) -> Result<()> {
         // Get block from node
         let block_info = rpc_client.get_block_by_height(height).await?;
 
+        let tx_count = block_info.tx.len();
+        let block_hash = block_info.hash.clone();
+
         println!(
             "📦 Processing block {} ({} txs)",
             height,
-            block_info.tx.len()
+            tx_count
         );
 
         // Process each transaction in the block
@@ -320,6 +363,16 @@ impl BlockchainSyncService {
             }
         }
 
+        // REM-C002: Emit block_received event
+        if let Some(ref app_handle) = app {
+            use tauri::Emitter;
+            app_handle.emit("block_received", serde_json::json!({
+                "block_hash": block_hash,
+                "height": height,
+                "transactions": tx_count
+            })).ok();
+        }
+
         println!("✅ Block {} processed successfully", height);
         Ok(())
     }
@@ -331,6 +384,7 @@ impl BlockchainSyncService {
             &self.utxo_manager,
             &self.stats,
             self.config.max_blocks_per_sync,
+            &self.app,
         )
         .await
     }
@@ -375,7 +429,7 @@ mod tests {
             UTXOManager::new(temp_dir.path().to_path_buf()).unwrap(),
         ));
 
-        let sync_service = BlockchainSyncService::new(utxo_manager, SyncConfig::default());
+        let sync_service = BlockchainSyncService::new(utxo_manager, SyncConfig::default(), None);
 
         assert!(!sync_service.is_running());
         let stats = sync_service.get_stats();
@@ -390,7 +444,7 @@ mod tests {
             UTXOManager::new(temp_dir.path().to_path_buf()).unwrap(),
         ));
 
-        let sync_service = BlockchainSyncService::new(utxo_manager, SyncConfig::default());
+        let sync_service = BlockchainSyncService::new(utxo_manager, SyncConfig::default(), None);
 
         let result = sync_service.sync_now().await;
         assert!(result.is_ok());

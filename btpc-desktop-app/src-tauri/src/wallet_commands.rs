@@ -7,7 +7,7 @@ use crate::wallet_manager::{
     CreateWalletRequest, CreateWalletResponse, UpdateWalletRequest, WalletInfo, WalletSummary,
 };
 use crate::AppState;
-use tauri::State;
+use tauri::{Emitter, State};
 
 /// Create a new wallet with nickname and metadata
 #[tauri::command]
@@ -101,12 +101,33 @@ pub async fn update_wallet_balance(
     state: State<'_, AppState>,
     wallet_id: String,
     balance_credits: u64,
+    app: tauri::AppHandle,
 ) -> Result<String, String> {
+    // Get old balance before updating
+    let old_balance = {
+        let wallet_manager = state.wallet_manager.lock()
+            .map_err(|_| "Failed to lock wallet manager".to_string())?;
+        wallet_manager.get_wallet(&wallet_id)
+            .ok_or_else(|| format!("Wallet with ID '{}' not found", wallet_id))?
+            .cached_balance_credits
+    };
+
+    // Update balance
     let mut wallet_manager = state.wallet_manager.lock()
         .map_err(|_| "Failed to lock wallet manager".to_string())?;
     wallet_manager
         .update_wallet_balance(&wallet_id, balance_credits)
         .map_err(|e| format!("Failed to update balance: {}", e))?;
+
+    // REM-C002: Emit wallet_balance_updated event
+    let change = balance_credits as i64 - old_balance as i64;
+    app.emit("wallet_balance_updated", serde_json::json!({
+        "wallet_id": wallet_id,
+        "old_balance": old_balance,
+        "new_balance": balance_credits,
+        "change": change
+    })).ok();
+
     Ok("Balance updated successfully".to_string())
 }
 
@@ -405,42 +426,6 @@ async fn sign_and_broadcast_transaction(
         transaction.outputs.len()
     ))
 }
-
-/// Start mining to specific wallet (DEPRECATED - use mining_commands::start_mining with MiningConfig)
-// This command is deprecated in Feature 012 - kept for backward compatibility
-/*
-#[tauri::command]
-pub async fn start_mining_to_wallet(
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-    wallet_id: String,
-    blocks: u32,
-) -> Result<String, String> {
-    // Get wallet address and clean it
-    let wallet_address = {
-        let wallet_manager = state.wallet_manager.lock()
-        .map_err(|_| "Failed to lock wallet manager".to_string())?;
-        let wallet = wallet_manager.get_wallet(&wallet_id)
-            .ok_or_else(|| format!("Wallet with ID '{}' not found", wallet_id))?;
-
-        // Clean address by stripping "Address: " prefix if present
-        let address = if wallet.address.starts_with("Address: ") {
-            wallet.address.strip_prefix("Address: ").unwrap_or(&wallet.address).to_string()
-        } else {
-            wallet.address.clone()
-        };
-
-        println!("🔧 DEBUG (start_mining_to_wallet): Wallet address: '{}' (length: {}) -> clean: '{}' (length: {})",
-                 wallet.address, wallet.address.len(), address, address.len());
-
-        address
-    };
-
-    // Use existing mining function with wallet address
-    crate::start_mining(app, state, wallet_address, blocks).await
-}
-*/
-// END OF DEPRECATED start_mining_to_wallet
 
 /// Backup specific wallet
 #[tauri::command]

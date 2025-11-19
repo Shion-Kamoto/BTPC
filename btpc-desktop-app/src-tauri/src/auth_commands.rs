@@ -30,8 +30,8 @@
 
 use crate::auth_crypto::{
     constant_time_compare, decrypt_aes_gcm, derive_key_argon2id, encrypt_aes_gcm,
-    generate_random_nonce, generate_random_salt, AES_KEY_SIZE, ARGON2_ITERATIONS, ARGON2_MEMORY_KB,
-    ARGON2_PARALLELISM,
+    generate_random_nonce, generate_random_salt, validate_password_entropy, AES_KEY_SIZE,
+    ARGON2_ITERATIONS, ARGON2_MEMORY_KB, ARGON2_PARALLELISM, MINIMUM_ENTROPY_BITS,
 };
 use crate::auth_state::{get_credentials_path, MasterCredentials, SessionState};
 use serde::{Deserialize, Serialize};
@@ -153,6 +153,22 @@ pub fn create_master_password(
             message: None,
             error: Some("PASSWORDS_DONT_MATCH".to_string()),
         };
+    }
+
+    // T173: Validation: password entropy >= 80 bits (FR-001)
+    match validate_password_entropy(&password) {
+        Ok(entropy) => {
+            // Password meets entropy requirement
+            // Log entropy for debugging (entropy value is not sensitive)
+            println!("Password entropy: {:.2} bits (minimum: {:.2} bits)", entropy, MINIMUM_ENTROPY_BITS);
+        }
+        Err(e) => {
+            return CreatePasswordResponse {
+                success: false,
+                message: None,
+                error: Some(format!("PASSWORD_TOO_WEAK: {}", e)),
+            };
+        }
     }
 
     // Check if credentials already exist
@@ -346,6 +362,15 @@ pub fn login(
 
     // Compare derived key with stored hash using constant-time comparison
     if !constant_time_compare(derived_key.as_ref(), stored_hash.as_ref()) {
+        // REM-C002: Emit login_failed event
+        app.emit("login_failed", serde_json::json!({
+            "timestamp": SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis(),
+            "reason": "incorrect_password"
+        })).ok();
+
         return LoginResponse {
             success: false,
             message: None,
@@ -426,12 +451,17 @@ pub fn logout(app: AppHandle, session: State<RwLock<SessionState>>) -> LogoutRes
 /// - No input
 /// - Read-only operation (<50ms performance requirement)
 /// - Reads Arc<RwLock<SessionState>> in-memory state
+/// - Refreshes last_activity timestamp (REM-C002)
 ///
 /// # Returns
 /// `{ authenticated: boolean, session_token: string | null }`
 #[tauri::command(rename_all = "snake_case")]
 pub fn check_session(session: State<RwLock<SessionState>>) -> CheckSessionResponse {
-    let state = session.read().unwrap();
+    let mut state = session.write().unwrap();
+
+    // REM-C002: Refresh activity timestamp on each check
+    state.refresh_activity();
+
     CheckSessionResponse {
         authenticated: state.is_authenticated(),
         session_token: state.get_session_token(),

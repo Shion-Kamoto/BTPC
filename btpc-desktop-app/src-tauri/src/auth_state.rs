@@ -32,6 +32,7 @@ pub const FILE_VERSION: u32 = 1;
 
 /// Error type for state management operations
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum StateError {
     IoError(std::io::Error),
     SerializationError(String),
@@ -87,6 +88,9 @@ pub struct SessionState {
 
     /// Unique session token (UUID v4, None if not authenticated)
     pub session_token: Option<String>,
+
+    /// Last activity timestamp for session timeout (REM-C002)
+    pub last_activity: Option<SystemTime>,
 }
 
 impl SessionState {
@@ -96,6 +100,7 @@ impl SessionState {
             authenticated: false,
             login_timestamp: None,
             session_token: None,
+            last_activity: None,
         }
     }
 
@@ -109,6 +114,7 @@ impl SessionState {
         self.authenticated = true;
         self.login_timestamp = Some(now);
         self.session_token = Some(Uuid::new_v4().to_string());
+        self.last_activity = Some(SystemTime::now()); // REM-C002
     }
 
     /// Marks the session as unauthenticated and clears session data
@@ -116,6 +122,7 @@ impl SessionState {
         self.authenticated = false;
         self.login_timestamp = None;
         self.session_token = None;
+        self.last_activity = None; // REM-C002
     }
 
     /// Checks if the session is currently authenticated
@@ -126,6 +133,35 @@ impl SessionState {
     /// Gets the session token if authenticated
     pub fn get_session_token(&self) -> Option<String> {
         self.session_token.clone()
+    }
+
+    /// Checks if the session has expired based on timeout_secs (REM-C002)
+    ///
+    /// # Arguments
+    /// * `timeout_secs` - Session timeout in seconds (e.g., 900 for 15 minutes)
+    ///
+    /// # Returns
+    /// * `true` if session is expired (inactive for longer than timeout_secs)
+    /// * `false` if session is still valid or not authenticated
+    pub fn is_expired(&self, timeout_secs: u64) -> bool {
+        if !self.authenticated {
+            return false; // Not authenticated sessions can't expire
+        }
+
+        if let Some(last_activity) = self.last_activity {
+            if let Ok(elapsed) = last_activity.elapsed() {
+                return elapsed.as_secs() > timeout_secs;
+            }
+        }
+
+        false // Default to not expired if we can't determine
+    }
+
+    /// Refreshes the last activity timestamp (REM-C002)
+    pub fn refresh_activity(&mut self) {
+        if self.authenticated {
+            self.last_activity = Some(SystemTime::now());
+        }
     }
 }
 

@@ -3,9 +3,12 @@
 //! Provides GPU enumeration and health metrics polling (temperature, fan speed, power, etc.)
 //! Uses NVML for NVIDIA GPUs, fallback to sysinfo for AMD/Intel.
 //!
+
+#![allow(dead_code)]
 //! Feature: 012-create-an-new
 
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::Instant;
 
 /// GPU vendor enumeration
@@ -73,7 +76,7 @@ fn enumerate_gpus_opencl() -> Result<Vec<GpuDevice>, String> {
     }
 
     let mut devices = Vec::new();
-    let mut device_index = 0;
+    let device_index = 0;
 
     // Prefer Rusticl platform (newer Mesa OpenCL) over Clover (older)
     // This avoids duplicates when same GPU is exposed through multiple platforms
@@ -335,6 +338,102 @@ pub fn poll_all_gpu_health() -> Vec<GpuHealthMetrics> {
         .iter()
         .filter_map(|device| poll_gpu_health(device.device_index).ok())
         .collect()
+}
+
+// ============================================================================
+// T175: Background GPU Health Monitoring Service (FR-037 - 1 second polling)
+// ============================================================================
+
+use tokio::sync::broadcast;
+use tokio::time::{interval, Duration as TokioDuration, Instant as TokioInstant};
+use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+
+/// GPU health monitoring event
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct GpuHealthEvent {
+    pub device_index: u32,
+    pub metrics: GpuHealthMetrics,
+    pub timestamp: u64,
+}
+
+/// Starts background GPU health monitoring service with 1-second polling interval
+///
+/// # Arguments
+/// * `device_indices` - List of GPU device indices to monitor
+/// * `event_tx` - Broadcast channel for sending health events
+/// * `shutdown_signal` - Atomic bool to stop monitoring loop
+///
+/// # FR-037 Compliance
+/// - Queries GPU sensors every 1 second (tokio::time::interval)
+/// - Updates health metrics with guaranteed 1-second cadence
+/// - Logs warning if polling interval exceeds 1.5 seconds (drift detection)
+///
+/// # Usage
+/// ```rust
+/// let (tx, _rx) = broadcast::channel(100);
+/// let shutdown = Arc::new(AtomicBool::new(false));
+/// tokio::spawn(start_gpu_health_monitoring(vec![0, 1], tx, shutdown.clone()));
+/// ```
+pub async fn start_gpu_health_monitoring(
+    device_indices: Vec<u32>,
+    event_tx: broadcast::Sender<GpuHealthEvent>,
+    shutdown_signal: Arc<AtomicBool>,
+) {
+    // T175: Create 1-second interval timer (FR-037 requirement)
+    let mut poll_interval = interval(TokioDuration::from_secs(1));
+    poll_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+    let mut last_poll_time = TokioInstant::now();
+
+    eprintln!("🔍 GPU health monitoring started (1-second polling interval)");
+    eprintln!("   Monitoring {} GPU(s): {:?}", device_indices.len(), device_indices);
+
+    loop {
+        // Check shutdown signal
+        if shutdown_signal.load(AtomicOrdering::SeqCst) {
+            eprintln!("🛑 GPU health monitoring stopped");
+            break;
+        }
+
+        // Wait for next tick (1 second interval)
+        poll_interval.tick().await;
+
+        // T176: Validate polling interval accuracy (drift detection)
+        let now = TokioInstant::now();
+        let actual_interval = now.duration_since(last_poll_time);
+
+        if actual_interval.as_secs_f64() > 1.5 {
+            eprintln!(
+                "⚠️ GPU health monitoring: polling interval drift detected ({:.2}s > 1.5s expected)",
+                actual_interval.as_secs_f64()
+            );
+        }
+
+        last_poll_time = now;
+
+        // Poll each GPU
+        for &device_index in &device_indices {
+            match poll_gpu_health(device_index) {
+                Ok(metrics) => {
+                    // Emit health event
+                    let event = GpuHealthEvent {
+                        device_index,
+                        metrics,
+                        timestamp: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs(),
+                    };
+
+                    // Send event (ignore if no receivers)
+                    let _ = event_tx.send(event);
+                }
+                Err(e) => {
+                    eprintln!("⚠️ Failed to poll GPU {} health: {}", device_index, e);
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]

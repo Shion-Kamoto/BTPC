@@ -44,12 +44,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::Child;
 use std::sync::{Arc, Mutex};
 use tauri::Emitter;
 use tauri::{Manager, State};
-use tokio::io::{AsyncBufReadExt, BufReader as TokioBufReader};
-use tokio::process::{ChildStderr, ChildStdout};
+use tokio::io::AsyncBufReadExt;
 use tokio::sync::RwLock;
 
 mod btpc_integration;
@@ -66,7 +65,8 @@ mod orphaned_utxo_cleaner;
 mod process_manager;
 pub mod state_management;
 mod sync_service;
-mod tx_storage; // RocksDB-based transaction storage (Constitution Article V) // StateManager<T> for Article XI compliance (auto event emission)
+mod tx_storage; // RocksDB-based transaction storage (Constitution Article V)
+mod settings_storage; // RocksDB-based settings persistence // StateManager<T> for Article XI compliance (auto event emission)
 
 // GPU Mining Dashboard modules (Feature 012)
 mod gpu_health_monitor; // GPU health monitoring and thermal management
@@ -451,6 +451,7 @@ pub struct AppState {
     sync_service: Arc<Mutex<Option<BlockchainSyncService>>>, // Blockchain sync service
     address_book_manager: Arc<Mutex<AddressBookManager>>, // Address book for recipient management
     tx_storage: Arc<tx_storage::TransactionStorage>, // RocksDB-based transaction storage (Constitution Article V)
+    settings_storage: Arc<settings_storage::SettingsStorage>, // RocksDB-based settings persistence
     wallet_password: Arc<RwLock<Option<btpc_core::crypto::SecurePassword>>>, // Session password for encrypted wallets
     wallets_locked: Arc<RwLock<bool>>, // Whether wallets are currently locked
     // Feature 007: Transaction state manager for transaction lifecycle tracking (moved to lib.rs in TD-001)
@@ -514,6 +515,12 @@ impl AppState {
             BtpcError::Application(format!("Failed to initialize transaction storage: {}", e))
         })?;
 
+        // Initialize RocksDB settings storage
+        let settings_storage = settings_storage::SettingsStorage::open(config.data_dir.join("settings"))
+            .map_err(|e| {
+            BtpcError::Application(format!("Failed to initialize settings storage: {}", e))
+        })?;
+
         // Feature 007: Initialize transaction state manager (moved to lib.rs in TD-001)
         let tx_state_manager = btpc_desktop_app::transaction_state::TransactionStateManager::new();
 
@@ -560,6 +567,7 @@ impl AppState {
             sync_service: Arc::new(Mutex::new(None)), // Initialized but not started yet
             address_book_manager: Arc::new(Mutex::new(address_book_manager)),
             tx_storage: Arc::new(tx_storage), // RocksDB transaction storage
+            settings_storage: Arc::new(settings_storage), // RocksDB settings storage
             wallet_password: Arc::new(RwLock::new(None)), // No password on startup (locked)
             wallets_locked: Arc::new(RwLock::new(true)), // Start locked by default
             tx_state_manager: Arc::new(tx_state_manager), // Feature 007: Transaction state manager
@@ -908,7 +916,7 @@ async fn start_node(app: tauri::AppHandle, state: State<'_, AppState>) -> Result
                 max_blocks_per_sync: 100,
             };
 
-            let service = BlockchainSyncService::new(state.utxo_manager.clone(), sync_config);
+            let service = BlockchainSyncService::new(state.utxo_manager.clone(), sync_config, Some(app.clone()));
 
             match service.start() {
                 Ok(_) => {
@@ -1405,379 +1413,6 @@ async fn reload_utxos(state: State<'_, AppState>) -> Result<String, String> {
     }
 }
 
-// OLD start_mining command replaced by mining_commands::start_mining (Feature 012)
-// This legacy command spawns btpc_miner binary externally (deprecated)
-// New command uses MiningThreadPool for unified CPU+GPU mining
-/*
-#[tauri::command]
-async fn start_mining(app: tauri::AppHandle, state: State<'_, AppState>, address: String, blocks: u32) -> Result<String, String> {
-    // Check if mining is already running
-    {
-        let processes = state.mining_processes.lock()
-            .map_err(|_| BtpcError::mutex_poison("mining_processes", "start_mining check").to_string())?;
-        if processes.contains_key("mining") {
-            return Err("Mining is already running. Stop it first.".to_string());
-        }
-    }
-
-    let bin_path = state.config.btpc_home.join("bin").join("btpc_miner");
-
-    if !bin_path.exists() {
-        return Err("Mining binary not found. Please run setup first.".to_string());
-    }
-
-    // Detect available GPUs (TDD v1.1 GPU detection)
-    let gpus = gpu_detection::detect_gpus();
-    let has_gpu = !gpus.is_empty();
-    let best_gpu = gpu_detection::get_best_gpu();
-
-    // Clear previous mining logs and reset stats
-    {
-        let mut mining_logs = state.mining_logs.lock()
-            .map_err(|_| BtpcError::mutex_poison("mining_logs", "start_mining").to_string())?;
-        mining_logs.clear();
-        mining_logs.add_entry("INFO".to_string(), format!("Starting mining: {} blocks to address {}", blocks, address));
-
-        // Log GPU detection results
-        if has_gpu {
-            if let Some(gpu) = &best_gpu {
-                mining_logs.add_entry("INFO".to_string(), format!("GPU detected: {} ({})", gpu.name, gpu.vendor));
-                mining_logs.add_entry("INFO".to_string(), format!("Found {} GPU(s) on system", gpus.len()));
-            }
-        } else {
-            mining_logs.add_entry("INFO".to_string(), "No GPU detected - using CPU mining".to_string());
-        }
-    }
-    {
-        let mut mining_stats = state.mining_stats.lock()
-            .map_err(|_| BtpcError::mutex_poison("mining_stats", "start_mining").to_string())?;
-        mining_stats.reset();
-        mining_stats.start();
-    }
-
-    let mut cmd = Command::new(&bin_path);
-    // Use btpc_miner with user-specified address
-    // Note: btpc_miner doesn't support --blocks parameter, it mines continuously until stopped
-    let network = state.config.network.to_string();
-
-    // Build RPC URL from config (fixed 2025-11-01: miner was using default port 8332)
-    let rpc_url = format!("http://{}:{}", state.config.rpc.host, state.config.rpc.port);
-
-    // Build command arguments with --rpc-url and optional --gpu flag
-    let args = vec!["--network", &network, "--address", &address, "--rpc-url", &rpc_url];
-
-    // Add --gpu flag if GPU is available (pending btpc_miner GPU support)
-    // For now, this is a placeholder for future GPU mining implementation
-    if has_gpu {
-        // TODO: Once btpc_miner supports --gpu flag, uncomment the following:
-        // args.push("--gpu");
-        println!("GPU available but btpc_miner does not yet support GPU mining");
-    }
-
-    cmd.args(&args);
-
-    cmd.stdout(Stdio::piped());
-    cmd.stderr(Stdio::piped());
-
-    let mut child = cmd.spawn().map_err(|e| format!("Failed to start mining: {}", e))?;
-
-    // Get stdout and stderr handles before storing the process
-    let stdout = child.stdout.take()
-        .ok_or_else(|| "Failed to capture stdout: not piped".to_string())?;
-    let stderr = child.stderr.take()
-        .ok_or_else(|| "Failed to capture stderr: not piped".to_string())?;
-
-    // Store the process
-    {
-        let mut processes = state.mining_processes.lock()
-            .map_err(|_| BtpcError::mutex_poison("mining_processes", "start_mining store").to_string())?;
-        processes.insert("mining".to_string(), child);
-    }
-
-    // Update status (old SystemStatus for backward compatibility)
-    {
-        let mut status = state.status.write().await;
-        status.mining_status = format!("Mining {} blocks to {}", blocks, address);
-    }
-
-    // Update MiningStatus via StateManager (Article XI - auto-emits mining_status_changed event)
-    state.mining_status.update(|status| {
-        status.active = true;
-        status.threads = 1; // Default threads, can be updated later
-    }, &app).map_err(|e| format!("Failed to update mining status: {}", e))?;
-
-    println!("📡 StateManager auto-emitted mining_status_changed event: active");
-
-    // Clone the mining logs Arc for the async tasks
-    let mining_logs_stdout = state.mining_logs.clone();
-    let mining_logs_stderr = state.mining_logs.clone();
-    let mining_stats_clone = state.mining_stats.clone();
-
-    // Handle stdout with async tokio reader and track mining rewards
-    let mining_address = address.clone(); // Clone address for async task
-    let utxo_manager_clone = state.utxo_manager.clone(); // Clone UTXO manager for async task
-    tokio::spawn(async move {
-        let tokio_stdout = match ChildStdout::from_std(stdout) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("Failed to convert stdout to tokio stream: {}", e);
-                return;
-            }
-        };
-        let mut reader = TokioBufReader::new(tokio_stdout);
-        let mut line = String::new();
-
-        while let Ok(bytes_read) = reader.read_line(&mut line).await {
-            if bytes_read == 0 {
-                break; // EOF
-            }
-
-            let trimmed_line = line.trim();
-            if !trimmed_line.is_empty() {
-                let mut mining_logs = mining_logs_stdout.lock().unwrap_or_else(|e| {
-                    eprintln!("Mining stdout logging failed - mutex poisoned: {}", e);
-                    e.into_inner()
-                });
-                // Parse mining output for different types
-                let (level, message) = parse_mining_output(trimmed_line);
-
-                // Parse and update hashrate from miner output
-                // Format: "Mining: 1234567 H/s | Total: 9876543 hashes | Uptime: 5.2m"
-                if trimmed_line.contains("H/s") {
-                    if let Some(hashrate_str) = trimmed_line.split("Mining:").nth(1) {
-                        if let Some(hs_part) = hashrate_str.split("H/s").next() {
-                            if let Ok(hashrate) = hs_part.trim().replace(",", "").parse::<u64>() {
-                                let mut stats = mining_stats_clone.lock().unwrap_or_else(|e| {
-                                    eprintln!("Mining stats update failed - mutex poisoned: {}", e);
-                                    e.into_inner()
-                                });
-                                stats.hashrate = hashrate;
-                            }
-                        }
-                    }
-                }
-
-                // Check for successful block mining
-                // NOTE: With blockchain sync service enabled, UTXOs are automatically tracked
-                // when blocks are synced from the node. This manual UTXO insertion is only
-                // needed if blockchain sync is disabled or not yet caught up.
-                // Fixed 2025-11-01: btpc_miner outputs "submitted successfully" not "mined successfully"
-                if trimmed_line.contains("Block found by thread") || trimmed_line.contains("Block submitted successfully") {
-                    // Increment block counter
-                    {
-                        let mut stats = mining_stats_clone.lock().unwrap_or_else(|e| {
-                            eprintln!("Mining block count update failed - mutex poisoned: {}", e);
-                            e.into_inner()
-                        });
-                        stats.increment_blocks();
-                        // Estimate hashrate based on regtest difficulty
-                        stats.calculate_hashrate(1000000); // Rough estimate for regtest
-                    }
-
-                    // Extract block number and add standard BTPC reward (32.375 BTP = 3237500000 credits)
-                    let reward_credits = 3237500000u64; // Constitutional reward per block
-
-                    // Estimate block height (in production, this would come from the actual block)
-                    let estimated_block_height = chrono::Utc::now().timestamp() as u64;
-
-                    // Fallback manual UTXO tracking (blockchain sync will override with real data)
-                    match add_mining_reward_utxo(&utxo_manager_clone, &mining_address, reward_credits, estimated_block_height) {
-                        Ok(_) => {
-                            mining_logs.add_entry("SUCCESS".to_string(),
-                                format!("{} [+{} credits mining reward (manual tracking - will be replaced by blockchain sync)]", message, reward_credits));
-                        }
-                        Err(e) => {
-                            mining_logs.add_entry("WARNING".to_string(),
-                                format!("Manual UTXO tracking failed (OK if blockchain sync is running): {}", e));
-                        }
-                    }
-                } else {
-                    mining_logs.add_entry(level, message);
-                }
-            }
-
-            line.clear(); // Reset line buffer for next iteration
-        }
-    });
-
-    // Handle stderr with async tokio reader
-    tokio::spawn(async move {
-        let tokio_stderr = match ChildStderr::from_std(stderr) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("Failed to convert stderr to tokio stream: {}", e);
-                return;
-            }
-        };
-        let mut reader = TokioBufReader::new(tokio_stderr);
-        let mut line = String::new();
-
-        while let Ok(bytes_read) = reader.read_line(&mut line).await {
-            if bytes_read == 0 {
-                break; // EOF
-            }
-
-            let trimmed_line = line.trim();
-            if !trimmed_line.is_empty() {
-                let mut mining_logs = mining_logs_stderr.lock().unwrap_or_else(|e| {
-                    eprintln!("Mining stderr logging failed - mutex poisoned: {}", e);
-                    e.into_inner()
-                });
-                mining_logs.add_entry("ERROR".to_string(), trimmed_line.to_string());
-            }
-
-            line.clear(); // Reset line buffer for next iteration
-        }
-    });
-
-    // REMOVED: Automatic initial UTXO (was causing phantom block on startup)
-    // Mining rewards are now ONLY added when actual blocks are found by the miner
-    // and detected via stdout parsing in the monitoring thread above.
-
-    Ok(format!("Mining started: {} blocks to {} (UTXO tracking enabled)", blocks, address))
-}
-*/
-// END OF OLD start_mining command (commented out for Feature 012)
-
-// Parse mining output to determine log level and format CLI-style message
-fn parse_mining_output(line: &str) -> (String, String) {
-    let line = line.trim();
-
-    // Clean the line first (remove emojis and prefixes)
-    let cleaned = clean_mining_line(line);
-
-    // Detect block found messages and reformat to clean ASCII style
-    if cleaned.contains("Block found")
-        || (line.contains("Block") && line.contains("mined successfully"))
-    {
-        // Extract block number if possible
-        let block_num =
-            extract_block_number(&cleaned).unwrap_or_else(|| chrono::Utc::now().timestamp() as u64);
-        let reward_btpc = 32.375;
-
-        // Format in clean ASCII style like: "Accepted 123 (100%) · 32.37500000 BTPC · height 123 · ..."
-        let formatted_msg = format!(
-            "Accepted {} (100%) · {:.8} BTPC · height {}",
-            block_num, reward_btpc, block_num
-        );
-
-        return ("SUCCESS".to_string(), formatted_msg);
-    }
-
-    // Detect block hash messages and reformat
-    if cleaned.contains("Block hash:") || cleaned.contains("hash:") {
-        // Extract hash portion
-        if let Some(hash_start) = cleaned.find("hash:") {
-            let hash = &cleaned[hash_start + 5..].trim();
-            let hash_short = if hash.len() > 16 { &hash[..16] } else { hash };
-            return ("INFO".to_string(), format!("hash {}", hash_short));
-        }
-    }
-
-    // Handle specific message types
-    if cleaned.contains("Mining block") || cleaned.contains("Searching") {
-        return ("INFO".to_string(), "Mining...".to_string());
-    } else if cleaned.contains("Started:") || cleaned.contains("Block started") {
-        return ("INFO".to_string(), "Mining started".to_string());
-    } else if cleaned.contains("Reward:") || cleaned.contains("balance:") {
-        return ("SUCCESS".to_string(), cleaned);
-    } else if cleaned.contains("Nonce:") {
-        return ("INFO".to_string(), cleaned);
-    } else if cleaned.contains("Miner:") || cleaned.contains("Blocks:") {
-        return ("INFO".to_string(), cleaned);
-    } else if cleaned.contains("Target:") || cleaned.contains("10 minute") {
-        return ("INFO".to_string(), "Target: 10min blocks".to_string());
-    } else if cleaned.contains("Waiting") {
-        return ("INFO".to_string(), cleaned);
-    } else if cleaned.contains("BTPC") || cleaned.contains("RPC server") {
-        return ("INFO".to_string(), cleaned);
-    } else if cleaned.contains("ERROR") || cleaned.contains("Failed") || cleaned.contains("Error") {
-        return ("ERROR".to_string(), cleaned);
-    } else if cleaned.contains("WARN") || cleaned.contains("Warning") {
-        return ("WARN".to_string(), cleaned);
-    } else if !cleaned.is_empty() {
-        return ("INFO".to_string(), cleaned);
-    }
-
-    ("INFO".to_string(), "".to_string())
-}
-
-// Clean mining line output by removing ALL emojis and verbose prefixes
-fn clean_mining_line(line: &str) -> String {
-    // First, remove common timestamp prefixes like "[2025-10-07 02:44:38 UTC] btpc-miner:"
-    let mut cleaned = line.to_string();
-
-    // Remove timestamp prefixes with regex-like pattern
-    if let Some(miner_pos) = cleaned.find("btpc-miner:") {
-        cleaned = cleaned[miner_pos + 11..].trim().to_string();
-    } else if let Some(wallet_pos) = cleaned.find("btpc-wallet:") {
-        cleaned = cleaned[wallet_pos + 12..].trim().to_string();
-    } else if let Some(core_pos) = cleaned.find("btpc-core:") {
-        cleaned = cleaned[core_pos + 10..].trim().to_string();
-    }
-
-    // Remove ALL emoji characters - comprehensive list
-    cleaned = cleaned
-        .replace("⛏️  ", "")
-        .replace("⛏️", "")
-        .replace("🔄 ", "")
-        .replace("🔄", "")
-        .replace("⏰ ", "")
-        .replace("⏰", "")
-        .replace("🏆 ", "")
-        .replace("🏆", "")
-        .replace("💰 ", "")
-        .replace("💰", "")
-        .replace("✅ ", "")
-        .replace("✅", "")
-        .replace("🔗 ", "")
-        .replace("🔗", "")
-        .replace("📋 ", "")
-        .replace("📋", "")
-        .replace("👛 ", "")
-        .replace("👛", "")
-        .replace("📊 ", "")
-        .replace("📊", "")
-        .replace("🎯 ", "")
-        .replace("🎯", "")
-        .replace("⏳ ", "")
-        .replace("⏳", "")
-        .replace("🚀 ", "")
-        .replace("🚀", "")
-        .replace("🔧 ", "")
-        .replace("🔧", "")
-        .replace("🏦 ", "")
-        .replace("🏦", "")
-        .replace("⚠️ ", "")
-        .replace("⚠️", "")
-        .replace("⚠", "")
-        .replace("🎉 ", "")
-        .replace("🎉", "")
-        .replace("🎊 ", "")
-        .replace("🎊", "")
-        .replace("🏅 ", "")
-        .replace("🏅", "")
-        .trim()
-        .to_string();
-
-    cleaned
-}
-
-// Extract block number from mining output
-fn extract_block_number(line: &str) -> Option<u64> {
-    // Look for patterns like "Block 123" or "block 123"
-    if let Some(start) = line.to_lowercase().find("block ") {
-        let after_block = &line[start + 6..];
-        if let Some(end) = after_block.find(|c: char| !c.is_numeric()) {
-            after_block[..end].parse().ok()
-        } else {
-            after_block.parse().ok()
-        }
-    } else {
-        None
-    }
-}
-
 // NOTE: stop_mining command moved to mining_commands.rs (Feature 012)
 // Old implementation stopped external btpc_miner binary
 // New implementation uses MiningThreadPool for unified CPU+GPU mining
@@ -1935,10 +1570,12 @@ struct GetAllSettingsResponse {
 }
 
 #[tauri::command]
-async fn get_all_settings() -> Result<GetAllSettingsResponse, String> {
-    // TODO: Implement persistent settings storage when configuration requirements are defined
-    // For now, return empty settings HashMap (no persistent settings exist yet)
-    let settings = HashMap::new();
+async fn get_all_settings(state: State<'_, AppState>) -> Result<GetAllSettingsResponse, String> {
+    // Load settings from RocksDB (Backend-First Architecture per Article XI)
+    let settings = state
+        .settings_storage
+        .load_all_settings()
+        .map_err(|e| format!("Failed to load settings: {}", e))?;
 
     Ok(GetAllSettingsResponse {
         success: true,
@@ -2778,7 +2415,7 @@ async fn migrate_to_encrypted(
 // ============================================================================
 
 #[tauri::command]
-async fn start_blockchain_sync(state: State<'_, AppState>) -> Result<String, String> {
+async fn start_blockchain_sync(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<String, String> {
     // Create sync service if not already created
     {
         let mut sync_service_guard = state.sync_service.lock().map_err(|_| {
@@ -2798,7 +2435,7 @@ async fn start_blockchain_sync(state: State<'_, AppState>) -> Result<String, Str
         };
 
         // Create new sync service
-        let service = BlockchainSyncService::new(state.utxo_manager.clone(), sync_config);
+        let service = BlockchainSyncService::new(state.utxo_manager.clone(), sync_config, Some(app.clone()));
 
         // Start the service
         service
@@ -3423,6 +3060,37 @@ fn main() {
                     .await;
             });
 
+            // REM-C002: Start session timeout monitor (15-minute timeout)
+            // Checks every 60 seconds for expired sessions
+            let app_handle_for_timeout = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let session_state = app_handle_for_timeout.state::<std::sync::RwLock<auth_state::SessionState>>();
+                loop {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+
+                    let should_expire = {
+                        let state = session_state.read().unwrap();
+                        state.is_authenticated() && state.is_expired(900) // 15 min timeout
+                    };
+
+                    if should_expire {
+                        {
+                            let mut state = session_state.write().unwrap();
+                            state.logout();
+                        }
+
+                        // REM-C002: Emit session_expired event
+                        app_handle_for_timeout.emit("session_expired", serde_json::json!({
+                            "timestamp": std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap()
+                                .as_secs(),
+                            "reason": "inactivity_timeout"
+                        })).ok();
+                    }
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -3442,6 +3110,7 @@ fn main() {
             send_btpc,
             mining_commands::start_mining, // New GPU-aware mining command (Feature 012)
             mining_commands::stop_mining,  // New GPU-aware stop command (Feature 012)
+            mining_commands::get_mining_history, // REM-C003: Added 2025-11-19
             setup_btpc,
             get_logs,
             get_mining_logs,
@@ -3491,6 +3160,7 @@ fn main() {
             commands::embedded_node::start_embedded_blockchain_sync,
             commands::embedded_node::stop_embedded_blockchain_sync,
             commands::embedded_node::shutdown_embedded_node,
+            commands::embedded_node::get_peer_info,  // REM-C001: Added 2025-11-19
             // Block explorer commands
             get_blockchain_info,
             get_recent_blocks,
@@ -3556,7 +3226,18 @@ fn main() {
             gpu_stats_commands::get_gpu_health_metrics,
             gpu_stats_commands::set_temperature_threshold,
             gpu_stats_commands::get_temperature_threshold,
-            gpu_stats_commands::get_gpu_dashboard_data
+            gpu_stats_commands::get_gpu_dashboard_data,
+            // T182: Database backup/restore/integrity commands (FR-055, FR-056)
+            commands::database::check_database_integrity,
+            commands::database::create_database_backup,
+            commands::database::restore_database_backup,
+             commands::database::list_database_backups,
+            // GPU detection commands
+            commands::gpu_stats::get_available_gpus,
+            commands::gpu_stats::check_gpu_available,
+            commands::gpu_stats::get_recommended_gpu,
+            // Mining statistics
+            mining_commands::get_mining_stats
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

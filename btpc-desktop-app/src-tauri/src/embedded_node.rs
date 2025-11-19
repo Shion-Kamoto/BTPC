@@ -60,6 +60,9 @@ pub struct EmbeddedNode {
     /// FIX 2025-11-16: Added to create UTXOs when blocks are mined
     /// Using std::sync::Mutex for consistency with rest of codebase
     utxo_manager: Arc<std::sync::Mutex<crate::utxo_manager::UTXOManager>>,
+
+    /// App handle for emitting events (REM-C002: block_received event)
+    app_handle: Option<tauri::AppHandle>,
 }
 
 impl EmbeddedNode {
@@ -117,6 +120,7 @@ impl EmbeddedNode {
             _data_dir: data_dir,
             shutdown_tx: None,
             utxo_manager,
+            app_handle: None, // Will be set after initialization in main.rs
         };
 
         let node_arc = Arc::new(RwLock::new(node));
@@ -755,6 +759,23 @@ impl EmbeddedNode {
 
         Ok(format!("Block accepted: {}", block_hash_hex))
     }
+
+    /// Get P2P peer information
+    ///
+    /// # Returns
+    /// * `Vec<PeerInfo>` - List of connected peers with stats
+    ///
+    /// # Note
+    /// Currently returns empty vector as full P2P implementation is not yet complete.
+    /// This provides graceful degradation - frontend can safely call this method.
+    /// Future implementation will track real peer connections.
+    pub fn get_peer_info(&self) -> Vec<PeerInfo> {
+        // TODO: Implement actual peer tracking when P2P layer is fully integrated
+        // For now, return empty vector (graceful degradation)
+        // The connected_peers counter exists but individual peer details don't yet
+
+        vec![]
+    }
 }
 
 // Implement RpcClientInterface for Arc<RwLock<EmbeddedNode>> (enables mining pool compatibility)
@@ -805,6 +826,25 @@ pub struct SyncProgress {
 
     /// Sync percentage (0-100)
     pub sync_percentage: f64,
+}
+
+/// REM-C001: Peer information for network monitoring
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PeerInfo {
+    /// Peer network address (IP:port)
+    pub address: String,
+
+    /// Peer protocol version
+    pub version: String,
+
+    /// Peer's reported blockchain height
+    pub height: u64,
+
+    /// Average ping time in milliseconds
+    pub ping_ms: u64,
+
+    /// Unix timestamp when connection established
+    pub connected_since: u64,
 }
 
 /// Node state for initialization response

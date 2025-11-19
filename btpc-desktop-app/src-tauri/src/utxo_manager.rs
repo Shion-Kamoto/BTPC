@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use anyhow::{anyhow, Result};
 use btpc_core::crypto::Address;
 use chrono::{DateTime, NaiveDateTime, Utc};

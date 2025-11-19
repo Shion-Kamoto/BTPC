@@ -42,7 +42,7 @@ zeroize = { version = "1.7", features = ["derive"] }  # Secure password memory c
 
 # Crypto dependencies (from BTPC core)
 pqc_dilithium = "0.1"
-btpc-core = { path = "../../btpc-core" }
+btpc-core = { path = "../btpc-core" }
 
 # Database dependencies
 rocksdb = "0.21"  # Match workspace version to avoid native library conflicts

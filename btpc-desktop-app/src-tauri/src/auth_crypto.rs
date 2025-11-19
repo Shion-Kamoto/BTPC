@@ -52,6 +52,7 @@ pub const SALT_SIZE: usize = 16; // 128 bits
 
 /// Error type for cryptography operations
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum CryptoError {
     Argon2Error(String),
     AesGcmError(String),
@@ -146,6 +147,82 @@ pub fn generate_random_salt() -> Result<[u8; SALT_SIZE], CryptoError> {
     let mut salt = [0u8; SALT_SIZE];
     OsRng.fill_bytes(&mut salt);
     Ok(salt)
+}
+
+// ============================================================================
+// T172: Password Entropy Calculation (NIST SP 800-63B)
+// ============================================================================
+
+/// Minimum entropy required in bits per NIST SP 800-63B and FR-001
+pub const MINIMUM_ENTROPY_BITS: f64 = 80.0;
+
+/// Calculates Shannon entropy of a password in bits
+///
+/// # Security
+/// - Implements NIST SP 800-63B entropy calculation
+/// - FR-001 requirement: minimum 80 bits entropy
+/// - Uses Shannon entropy: H = -Σ(p(x) * log2(p(x)))
+///
+/// # Arguments
+/// * `password` - Password string to analyze
+///
+/// # Returns
+/// Entropy value in bits
+///
+/// # Examples
+/// ```
+/// let weak_password = "password123";
+/// let entropy = calculate_password_entropy(weak_password);
+/// assert!(entropy < 80.0); // Too weak
+///
+/// let strong_password = "X9$mK#pL2@vN8!qR5^wT";
+/// let entropy = calculate_password_entropy(strong_password);
+/// assert!(entropy >= 80.0); // Acceptable
+/// ```
+pub fn calculate_password_entropy(password: &str) -> f64 {
+    if password.is_empty() {
+        return 0.0;
+    }
+
+    // Count character frequency
+    let mut freq_map = std::collections::HashMap::new();
+    let len = password.len() as f64;
+
+    for ch in password.chars() {
+        *freq_map.entry(ch).or_insert(0.0) += 1.0;
+    }
+
+    // Calculate Shannon entropy: H = -Σ(p(x) * log2(p(x)))
+    let entropy: f64 = freq_map
+        .values()
+        .map(|&count| {
+            let probability = count / len;
+            -probability * probability.log2()
+        })
+        .sum();
+
+    // Total entropy = entropy per character * number of characters
+    entropy * len
+}
+
+/// Validates password meets minimum entropy requirement
+///
+/// # Arguments
+/// * `password` - Password to validate
+///
+/// # Returns
+/// `Ok(entropy)` if password meets requirement, `Err` otherwise
+pub fn validate_password_entropy(password: &str) -> Result<f64, CryptoError> {
+    let entropy = calculate_password_entropy(password);
+
+    if entropy < MINIMUM_ENTROPY_BITS {
+        return Err(CryptoError::Argon2Error(format!(
+            "Password entropy {} bits is below required {} bits",
+            entropy, MINIMUM_ENTROPY_BITS
+        )));
+    }
+
+    Ok(entropy)
 }
 
 // ============================================================================

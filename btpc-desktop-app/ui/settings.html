@@ -140,6 +140,7 @@
                 <button class="tab-btn active" role="tab" id="tab-btn-network" data-tab="network" aria-selected="true" aria-controls="tab-panel-network" tabindex="0">Network</button>
                 <button class="tab-btn" role="tab" id="tab-btn-node" data-tab="node" aria-selected="false" aria-controls="tab-panel-node" tabindex="-1">Node</button>
                 <button class="tab-btn" role="tab" id="tab-btn-application" data-tab="application" aria-selected="false" aria-controls="tab-panel-application" tabindex="-1">Application</button>
+                <button class="tab-btn" role="tab" id="tab-btn-database" data-tab="database" aria-selected="false" aria-controls="tab-panel-database" tabindex="-1">Database</button>
                 <button class="tab-btn" role="tab" id="tab-btn-security" data-tab="security" aria-selected="false" aria-controls="tab-panel-security" tabindex="-1">Security</button>
             </div>
 
@@ -230,6 +231,63 @@
                     <div style="display: flex; gap: 12px; margin-top: 24px;">
                         <button class="btn btn-primary" onclick="saveSettings()"><span class="icon icon-save"></span> Save Settings</button>
                         <button class="btn btn-secondary" onclick="exportConfig()"><span class="icon icon-export"></span> Export Configuration</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Database Settings Tab -->
+            <div id="tab-panel-database" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-database" tabindex="0">
+                <div class="card">
+                    <div class="card-header">Database Integrity</div>
+                    <div class="form-group">
+                        <label class="form-label">Check Database Health</label>
+                        <p style="color: var(--text-muted); font-size: 0.875rem; margin-bottom: 12px;">
+                            Verify blockchain database integrity and detect corruption (FR-056)
+                        </p>
+                        <button class="btn btn-secondary" onclick="checkDatabaseIntegrity()">
+                            <span class="icon icon-circle-check"></span> Run Integrity Check
+                        </button>
+                        <div id="integrity-result" style="margin-top: 12px; padding: 12px; display: none; border-radius: 6px;"></div>
+                    </div>
+                </div>
+
+                <div class="card" style="margin-top: 24px;">
+                    <div class="card-header">Database Backup</div>
+                    <div class="form-group">
+                        <label class="form-label">Create Backup</label>
+                        <p style="color: var(--text-muted); font-size: 0.875rem; margin-bottom: 12px;">
+                            Create atomic checkpoint backup of blockchain database using RocksDB snapshot (FR-055)
+                        </p>
+                        <div style="display: flex; gap: 12px; align-items: flex-end;">
+                            <div style="flex: 1;">
+                                <input type="text" class="form-input" id="backup-name" placeholder="backup-2025-11-19" value="backup-<?php echo date('Y-m-d'); ?>">
+                                <small style="color: var(--text-muted); font-size: 0.8125rem;">Saved to ~/.btpc/backups/</small>
+                            </div>
+                            <button class="btn btn-primary" onclick="createDatabaseBackup()">
+                                <span class="icon icon-save"></span> Create Backup
+                            </button>
+                        </div>
+                        <div id="backup-result" style="margin-top: 12px; padding: 12px; display: none; border-radius: 6px;"></div>
+                    </div>
+                </div>
+
+                <div class="card" style="margin-top: 24px;">
+                    <div class="card-header">Restore from Backup</div>
+                    <div class="form-group">
+                        <label class="form-label">Available Backups</label>
+                        <p style="color: var(--text-muted); font-size: 0.875rem; margin-bottom: 12px;">
+                            Restore blockchain database from previous checkpoint. Application will restart after restore.
+                        </p>
+                        <select class="form-input" id="backup-list" style="margin-bottom: 12px;">
+                            <option value="">Loading backups...</option>
+                        </select>
+                        <button class="btn btn-secondary" onclick="loadBackupList()">
+                            <span class="icon icon-refresh"></span> Refresh List
+                        </button>
+                        <button class="btn btn-primary" onclick="restoreDatabaseBackup()" style="margin-left: 12px;">
+                            <span class="icon icon-upload"></span> Restore Selected Backup
+                        </button>
+                        <div id="restore-result" style="margin-top: 12px; padding: 12px; display: none; border-radius: 6px;"></div>
                     </div>
                 </div>
             </div>
@@ -613,6 +671,152 @@
                 msgEl.style.border = '1px solid #ef4444';
                 msgEl.style.color = '#ef4444';
                 console.error('Change password error:', e);
+            }
+        }
+
+        // Database Functions
+        async function checkDatabaseIntegrity() {
+            const resultEl = document.getElementById('integrity-result');
+            resultEl.textContent = 'Checking database integrity...';
+            resultEl.style.display = 'block';
+            resultEl.style.background = 'rgba(59, 130, 246, 0.1)';
+            resultEl.style.border = '1px solid #3b82f6';
+            resultEl.style.color = '#3b82f6';
+
+            try {
+                const result = await window.invoke('check_database_integrity');
+
+                if (result.success && result.is_valid) {
+                    resultEl.textContent = `✅ Database integrity check passed! Checked at: ${new Date(result.checked_at * 1000).toLocaleString()}`;
+                    resultEl.style.background = 'rgba(16, 185, 129, 0.1)';
+                    resultEl.style.border = '1px solid var(--btpc-accent)';
+                    resultEl.style.color = 'var(--btpc-accent)';
+                } else if (result.success && !result.is_valid) {
+                    resultEl.textContent = `❌ Database corruption detected! Errors: ${result.errors.join(', ')}`;
+                    resultEl.style.background = 'rgba(239, 68, 68, 0.1)';
+                    resultEl.style.border = '1px solid #ef4444';
+                    resultEl.style.color = '#ef4444';
+                } else {
+                    resultEl.textContent = `❌ Check failed: ${result.error_message}`;
+                    resultEl.style.background = 'rgba(239, 68, 68, 0.1)';
+                    resultEl.style.border = '1px solid #ef4444';
+                    resultEl.style.color = '#ef4444';
+                }
+            } catch (e) {
+                resultEl.textContent = `❌ Error: ${e}`;
+                resultEl.style.background = 'rgba(239, 68, 68, 0.1)';
+                resultEl.style.border = '1px solid #ef4444';
+                resultEl.style.color = '#ef4444';
+            }
+        }
+
+        async function createDatabaseBackup() {
+            const backupName = document.getElementById('backup-name').value || `backup-${new Date().toISOString().split('T')[0]}`;
+            const resultEl = document.getElementById('backup-result');
+
+            resultEl.textContent = 'Creating backup...';
+            resultEl.style.display = 'block';
+            resultEl.style.background = 'rgba(59, 130, 246, 0.1)';
+            resultEl.style.border = '1px solid #3b82f6';
+            resultEl.style.color = '#3b82f6';
+
+            try {
+                const result = await window.invoke('create_database_backup', { backupName });
+
+                if (result.success) {
+                    resultEl.textContent = `✅ Backup created successfully at: ${result.backup_path}`;
+                    resultEl.style.background = 'rgba(16, 185, 129, 0.1)';
+                    resultEl.style.border = '1px solid var(--btpc-accent)';
+                    resultEl.style.color = 'var(--btpc-accent)';
+
+                    // Reload backup list
+                    await loadBackupList();
+                } else {
+                    resultEl.textContent = `❌ Backup failed: ${result.error_message}`;
+                    resultEl.style.background = 'rgba(239, 68, 68, 0.1)';
+                    resultEl.style.border = '1px solid #ef4444';
+                    resultEl.style.color = '#ef4444';
+                }
+            } catch (e) {
+                resultEl.textContent = `❌ Error: ${e}`;
+                resultEl.style.background = 'rgba(239, 68, 68, 0.1)';
+                resultEl.style.border = '1px solid #ef4444';
+                resultEl.style.color = '#ef4444';
+            }
+        }
+
+        async function loadBackupList() {
+            const selectEl = document.getElementById('backup-list');
+            selectEl.innerHTML = '<option value="">Loading...</option>';
+
+            try {
+                const result = await window.invoke('list_database_backups');
+
+                if (result.success && result.backups.length > 0) {
+                    selectEl.innerHTML = '<option value="">Select a backup...</option>';
+                    result.backups.forEach(backup => {
+                        const option = document.createElement('option');
+                        option.value = backup.path;
+                        option.textContent = `${backup.name} (${new Date(backup.created_at * 1000).toLocaleString()}) - ${(backup.size_bytes / 1024 / 1024).toFixed(2)} MB`;
+                        selectEl.appendChild(option);
+                    });
+                } else if (result.success) {
+                    selectEl.innerHTML = '<option value="">No backups found</option>';
+                } else {
+                    selectEl.innerHTML = `<option value="">Error: ${result.error_message}</option>`;
+                }
+            } catch (e) {
+                selectEl.innerHTML = `<option value="">Error: ${e}</option>`;
+            }
+        }
+
+        async function restoreDatabaseBackup() {
+            const backupPath = document.getElementById('backup-list').value;
+            const resultEl = document.getElementById('restore-result');
+
+            if (!backupPath) {
+                resultEl.textContent = '⚠️ Please select a backup to restore';
+                resultEl.style.display = 'block';
+                resultEl.style.background = 'rgba(245, 158, 11, 0.1)';
+                resultEl.style.border = '1px solid #f59e0b';
+                resultEl.style.color = '#f59e0b';
+                return;
+            }
+
+            if (!confirm('⚠️ WARNING: This will replace your current database with the backup. The application will restart. Continue?')) {
+                return;
+            }
+
+            resultEl.textContent = 'Restoring database...';
+            resultEl.style.display = 'block';
+            resultEl.style.background = 'rgba(59, 130, 246, 0.1)';
+            resultEl.style.border = '1px solid #3b82f6';
+            resultEl.style.color = '#3b82f6';
+
+            try {
+                const result = await window.invoke('restore_database_backup', { backupPath });
+
+                if (result.success) {
+                    resultEl.textContent = `✅ ${result.message} Application will restart in 3 seconds...`;
+                    resultEl.style.background = 'rgba(16, 185, 129, 0.1)';
+                    resultEl.style.border = '1px solid var(--btpc-accent)';
+                    resultEl.style.color = 'var(--btpc-accent)';
+
+                    // TODO: Trigger application restart via Tauri API
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 3000);
+                } else {
+                    resultEl.textContent = `❌ Restore failed: ${result.error_message}`;
+                    resultEl.style.background = 'rgba(239, 68, 68, 0.1)';
+                    resultEl.style.border = '1px solid #ef4444';
+                    resultEl.style.color = '#ef4444';
+                }
+            } catch (e) {
+                resultEl.textContent = `❌ Error: ${e}`;
+                resultEl.style.background = 'rgba(239, 68, 68, 0.1)';
+                resultEl.style.border = '1px solid #ef4444';
+                resultEl.style.color = '#ef4444';
             }
         }
 

@@ -14,7 +14,7 @@ use btpc_core::crypto::{Address, Script};
 use btpc_desktop_app::transaction_builder::{TransactionBuilder, TransactionSummary};
 use btpc_desktop_app::transaction_commands_core; // TD-001: Import core business logic from lib.rs
 use btpc_desktop_app::transaction_state::{
-    TransactionState, TransactionStateManager, TransactionStatus,
+    TransactionState, TransactionStatus,
 };
 use btpc_desktop_app::utxo_manager::Transaction;
 use chrono::Utc;
@@ -585,6 +585,7 @@ fn convert_to_core_transaction(
 
 /// Helper: Serialize desktop app Transaction to bytes
 /// Converts to wire format for RPC submission
+#[allow(dead_code)]
 fn serialize_transaction_to_bytes(tx: &Transaction) -> Vec<u8> {
     // Simple serialization using bincode (matches desktop app's Transaction struct)
     // For production, this should match btpc-core's Transaction::serialize() format

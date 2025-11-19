@@ -154,6 +154,7 @@ impl FeeEstimator {
     /// Estimate minimum fee for given transaction parameters
     ///
     /// This provides the absolute minimum fee needed, useful for validation.
+    #[allow(dead_code)]
     pub async fn estimate_minimum_fee(
         &self,
         inputs_count: usize,

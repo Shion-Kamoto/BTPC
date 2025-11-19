@@ -28,6 +28,53 @@ class BtpcUpdateManager {
         this.errorCount = 0;
         this.maxErrors = 5;
         this.isAutoUpdateRunning = false; // Article XI: Singleton guard to prevent duplicate starts
+        this.eventUnlisteners = []; // Store event unlisten functions
+
+        // Initialize event listeners for mining events
+        this.initializeEventListeners();
+    }
+
+    /**
+     * Initialize event listeners for mining and blockchain events
+     * Triggers immediate wallet refresh when blocks are mined
+     */
+    async initializeEventListeners() {
+        if (!window.__TAURI__ || !window.__TAURI__.event) {
+            console.warn('Tauri event API not available, event listeners disabled');
+            return;
+        }
+
+        try {
+            // Listen for block_mined events
+            const unlistenBlockMined = await window.__TAURI__.event.listen('block_mined', async (event) => {
+                console.log('🎉 Block mined event received:', event.payload);
+
+                // Immediately refresh wallet balance and mining stats
+                await Promise.allSettled([
+                    this.updateWalletBalance(),
+                    this.updateMiningStatus(),
+                    this.updateBlockchainInfo()
+                ]);
+
+                console.log('✅ Wallet balance refreshed after block mined');
+            });
+            this.eventUnlisteners.push(unlistenBlockMined);
+
+            // Listen for sync_complete events (affects wallet balance)
+            const unlistenSyncComplete = await window.__TAURI__.event.listen('sync_complete', async (event) => {
+                console.log('🔄 Sync complete event received:', event.payload);
+
+                // Refresh all state after sync completes
+                await this.updateAll();
+
+                console.log('✅ All state refreshed after sync complete');
+            });
+            this.eventUnlisteners.push(unlistenSyncComplete);
+
+            console.log('✅ Mining event listeners initialized');
+        } catch (error) {
+            console.error('Failed to initialize event listeners:', error);
+        }
     }
 
     /**
@@ -273,13 +320,24 @@ class BtpcUpdateManager {
     }
 
     /**
-     * Stop all automatic updates
+     * Stop all automatic updates and clean up event listeners
      */
     stopAutoUpdate() {
         this.intervals.forEach(interval => clearInterval(interval));
         this.intervals = [];
         this.isAutoUpdateRunning = false;
-        console.log('Auto-update stopped');
+
+        // Clean up event listeners
+        this.eventUnlisteners.forEach(unlisten => {
+            try {
+                unlisten();
+            } catch (error) {
+                console.error('Error cleaning up event listener:', error);
+            }
+        });
+        this.eventUnlisteners = [];
+
+        console.log('Auto-update stopped and event listeners cleaned up');
     }
 
     /**

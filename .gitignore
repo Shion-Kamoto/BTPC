@@ -1,0 +1,26 @@
+# Claude Code credentials and private artifacts
+.claude/
+
+# Rust
+target/
+Cargo.lock
+
+# Build outputs
+*.exe
+*.dll
+*.so
+*.dylib
+
+# IDE
+.vscode/
+.idea/
+
+# Tauri
+btpc-desktop-app/src-tauri/target/
+
+# Node modules
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db

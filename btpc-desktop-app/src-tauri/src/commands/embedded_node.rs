@@ -174,6 +174,43 @@ pub async fn shutdown_embedded_node(node: State<'_, NodeHandle>) -> Result<(), S
         .map_err(|e| format!("Failed to shutdown node: {}", e))
 }
 
+/// Get P2P peer information
+///
+/// # Returns
+/// * `Ok(GetPeerInfoResponse)` - List of connected peers
+/// * `Err(String)` - Query failed
+///
+/// # Note
+/// Currently returns empty list as full P2P implementation is pending.
+/// This provides graceful degradation for frontend network status displays.
+///
+/// # Frontend Usage
+/// ```javascript
+/// const peerInfo = await invoke('get_peer_info');
+/// console.log('Connected peers:', peerInfo.total_peers);
+/// console.log('Peers:', peerInfo.peers);
+/// ```
+///
+/// # REM-C001
+/// Added 2025-11-19 to complete node-api.md contract
+#[tauri::command]
+pub async fn get_peer_info(node: State<'_, NodeHandle>) -> Result<GetPeerInfoResponse, String> {
+    let node_lock = node.read().await;
+    let peers = node_lock.get_peer_info();
+
+    Ok(GetPeerInfoResponse {
+        total_peers: peers.len(),
+        peers,
+    })
+}
+
+/// Response structure for get_peer_info command
+#[derive(Debug, serde::Serialize)]
+pub struct GetPeerInfoResponse {
+    pub peers: Vec<btpc_desktop_app::embedded_node::PeerInfo>,
+    pub total_peers: usize,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -3,6 +3,8 @@
 //! Implements OpenCL-based GPU mining for BTPC using SHA-512 proof-of-work.
 //!
 //! Architecture:
+
+#![allow(dead_code)]
 //! - One OpenCL context per GPU device
 //! - Parallel nonce search across work-items
 //! - Atomic result reporting (first valid nonce wins)
@@ -10,10 +12,9 @@
 use anyhow::{anyhow, Result};
 use btpc_core::blockchain::BlockHeader;
 use btpc_core::consensus::pow::MiningTarget;
-use btpc_core::crypto::Hash;
 use opencl3::command_queue::{CommandQueue, CL_QUEUE_PROFILING_ENABLE};
 use opencl3::context::Context;
-use opencl3::device::{get_all_devices, Device, CL_DEVICE_TYPE_ALL, CL_DEVICE_TYPE_GPU};
+use opencl3::device::{Device, CL_DEVICE_TYPE_ALL, CL_DEVICE_TYPE_GPU};
 use opencl3::kernel::{ExecuteKernel, Kernel};
 use opencl3::memory::{Buffer, CL_MEM_READ_ONLY, CL_MEM_WRITE_ONLY};
 use opencl3::platform::get_platforms;
@@ -21,7 +22,6 @@ use opencl3::program::Program;
 use opencl3::types::{cl_uint, CL_BLOCKING, CL_NON_BLOCKING};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 /// OpenCL kernel source (embedded at compile time)
 const KERNEL_SOURCE: &str = include_str!("sha512_kernel.cl");
@@ -384,6 +384,58 @@ impl GpuMiner {
     /// Set mining status
     pub fn set_mining(&self, active: bool) {
         self.is_mining.store(active, Ordering::Relaxed);
+    }
+
+    /// Get GPU temperature in Celsius (REM-C002: thermal monitoring)
+    ///
+    /// Attempts to read GPU temperature using platform-specific extensions.
+    /// Returns None if temperature monitoring is not supported.
+    ///
+    /// # Platform Support
+    /// - NVIDIA: Uses cl_nv_device_attribute_query extension (CL_DEVICE_GPU_CORE_TEMPERATURE_NV)
+    /// - AMD: Uses cl_amd_device_attribute_query extension (CL_DEVICE_BOARD_TEMPERATURE_AMD)
+    /// - Intel/Others: Not supported (returns None)
+    ///
+    /// # Returns
+    /// - `Some(temp)` - Temperature in Celsius
+    /// - `None` - Temperature monitoring not supported or failed
+    pub fn get_temperature(&self) -> Option<f32> {
+        use opencl3::device::cl_device_info;
+
+        // Vendor-specific temperature query constants
+        // NVIDIA: cl_nv_device_attribute_query extension
+        const CL_DEVICE_GPU_CORE_TEMPERATURE_NV: cl_device_info = 0x4008;
+
+        // AMD: cl_amd_device_attribute_query extension
+        const CL_DEVICE_BOARD_TEMPERATURE_AMD: cl_device_info = 0x4098;
+
+        // Get vendor name to determine which extension to try
+        let vendor = self.device.vendor().ok()?;
+        let vendor_lower = vendor.to_lowercase();
+
+        // Try NVIDIA extension first if NVIDIA GPU
+        if vendor_lower.contains("nvidia") {
+            // Try to query NVIDIA GPU core temperature using vendor extension
+            // Note: This requires the cl_nv_device_attribute_query extension
+            // Returns temperature in Celsius as cl_uint
+
+            // For now, vendor extensions are not directly supported by opencl3 safe API
+            // Would require unsafe FFI calls to clGetDeviceInfo with vendor-specific params
+            // Returning None to indicate temperature monitoring not available
+            eprintln!("[THERMAL] NVIDIA GPU {} temperature query requires unsafe FFI (not implemented)", self.device_index);
+        }
+
+        // Try AMD extension if AMD GPU
+        if vendor_lower.contains("amd") || vendor_lower.contains("advanced micro devices") {
+            // AMD temperature query also requires unsafe FFI with vendor extensions
+            // opencl3 safe API doesn't support vendor-specific device info queries
+            eprintln!("[THERMAL] AMD GPU {} temperature query requires unsafe FFI (not implemented)", self.device_index);
+        }
+
+        // Intel or other vendors - no standard temperature extension available
+        // Temperature monitoring requires vendor-specific extensions not available in opencl3 safe API
+        // For production use, consider using system monitoring tools (nvidia-smi, rocm-smi)
+        None
     }
 }
 
