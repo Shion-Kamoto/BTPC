@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Central hub (solid) -->
+  <circle cx="12" cy="12" r="3" fill="currentColor"/>
+  <!-- Satellite nodes (filled for visibility) -->
+  <circle cx="6" cy="6" r="2.5" fill="currentColor" fill-opacity="0.8"/>
+  <circle cx="18" cy="6" r="2.5" fill="currentColor" fill-opacity="0.8"/>
+  <circle cx="6" cy="18" r="2.5" fill="currentColor" fill-opacity="0.8"/>
+  <circle cx="18" cy="18" r="2.5" fill="currentColor" fill-opacity="0.8"/>
+  <!-- Bold connecting lines -->
+  <path d="M9.5 10.5L7.5 8M14.5 10.5l2-2.5M9.5 13.5l-2 2.5M14.5 13.5l2 2.5"/>
+</svg>

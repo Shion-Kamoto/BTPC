@@ -1,0 +1,29 @@
+{
+  "productName": "BTPC Desktop",
+  "version": "1.0.0",
+  "identifier": "com.btpc.desktop",
+  "build": {
+    "frontendDist": "../ui"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "BTPC Blockchain Manager",
+        "width": 1000,
+        "height": 700,
+        "minWidth": 800,
+        "minHeight": 600,
+        "resizable": true,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    },
+    "withGlobalTauri": true
+  },
+  "bundle": {
+    "active": false,
+    "icon": []
+  }
+}

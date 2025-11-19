@@ -1,0 +1,1670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BTPC Wallet - Transactions</title>
+    <link rel="stylesheet" href="btpc-styles.css">
+    <style>
+        .tab-nav {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .tab-btn {
+            padding: 12px 24px;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 0.9375rem;
+            font-weight: 500;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 200ms ease;
+        }
+        .tab-btn:hover {
+            color: var(--text-primary);
+            background: var(--bg-hover);
+        }
+        .tab-btn:focus {
+            outline: 2px solid var(--btpc-primary);
+            outline-offset: 2px;
+        }
+        .tab-btn:focus-visible {
+            outline: 2px solid var(--btpc-primary);
+            outline-offset: 2px;
+        }
+        .tab-btn.active {
+            color: var(--btpc-primary);
+            border-bottom-color: var(--btpc-primary);
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="page-container">
+        <!-- Sidebar Navigation -->
+        <div class="sidebar">
+            <div class="logo-section">
+                <div class="logo-image">
+                    <div class="btpc-animated-logo">
+                        <span class="btpc-letter">₿</span>
+                        <span class="btpc-letter">T</span>
+                        <span class="btpc-letter">P</span>
+                        <span class="btpc-letter">C</span>
+                    </div>
+                    <div class="quantum-orbital"></div>
+                    <div class="quantum-orbital"></div>
+                    <div class="quantum-symbol">
+                        <span class="btc-symbol">₿</span>
+                        <span class="q-symbol">Q</span>
+                    </div>
+                </div>
+                <div class="logo-header">BTPC Wallet</div>
+                <div class="logo-subtitle">Quantum-Resistant</div>
+
+                <!-- Balance Card inside logo section -->
+                <div class="account-info">
+                    <div class="account-name">Total Balance</div>
+                    <div class="balance-amount">
+                        <span id="wallet-balance">0.00000000</span>
+                        <span class="balance-unit">BTPC</span>
+                    </div>
+                </div>
+            </div>
+
+            <nav>
+                <a href="index.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-home"></span></span>
+                    <span class="nav-text">Dashboard</span>
+                </a>
+                <a href="wallet-manager.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-wallet"></span></span>
+                    <span class="nav-text">Wallet</span>
+                </a>
+                <a href="transactions.html" class="nav-item active">
+                    <span class="nav-icon"><span class="icon icon-transactions"></span></span>
+                    <span class="nav-text">Transactions</span>
+                </a>
+                <a href="mining.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-pickaxe"></span></span>
+                    <span class="nav-text">Mining</span>
+                </a>
+                <a href="node.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-link"></span></span>
+                    <span class="nav-text">Node</span>
+                </a>
+                <a href="settings.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-settings"></span></span>
+                    <span class="nav-text">Settings</span>
+                </a>
+            </nav>
+
+            <!-- Network Status -->
+            <div class="network-status-footer">
+                <div class="network-status-row">
+                    <span class="network-status-label">Network</span>
+                    <span class="network-status-value" id="network-name">Mainnet</span>
+                </div>
+                <div class="network-status-row">
+                    <span class="network-status-label">Status</span>
+                    <span class="network-status-value" id="sync-status">Syncing...</span>
+                </div>
+                <div class="sync-progress-bar">
+                    <div class="sync-progress-fill" id="sync-progress" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="page-header">
+                <div class="page-header-left">
+                    <h1>Transactions</h1>
+                    <p>Send, receive, and track your BTPC transactions</p>
+                </div>
+                <div class="logout-container">
+                    <button id="logout-btn" class="btn-logout">
+                        <img src="src/assets/icons-svg/unlock.svg" alt="Logout" class="logout-icon">
+                        <span>Logout</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tab Navigation -->
+            <div class="tab-nav" role="tablist" aria-label="Transaction Sections">
+                <button class="tab-btn active" id="tab-btn-send" data-tab="send" role="tab" aria-selected="true" aria-controls="tab-panel-send" tabindex="0">Send</button>
+                <button class="tab-btn" id="tab-btn-receive" data-tab="receive" role="tab" aria-selected="false" aria-controls="tab-panel-receive" tabindex="-1">Receive</button>
+                <button class="tab-btn" id="tab-btn-history" data-tab="history" role="tab" aria-selected="false" aria-controls="tab-panel-history" tabindex="-1">History</button>
+                <button class="tab-btn" id="tab-btn-addressbook" data-tab="addressbook" role="tab" aria-selected="false" aria-controls="tab-panel-addressbook" tabindex="-1">Address Book</button>
+            </div>
+
+            <!-- Send Tab -->
+            <div id="tab-panel-send" class="tab-content active" role="tabpanel" aria-labelledby="tab-btn-send" tabindex="0">
+                <div class="card">
+                    <div class="card-header">Send BTPC</div>
+                    <div class="form-group">
+                        <label class="form-label">From Wallet</label>
+                        <select class="form-input" id="send-from-wallet">
+                            <option value="">Select wallet...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Select from Address Book</label>
+                        <select class="form-input" id="address-book-selector" onchange="selectFromAddressBook()">
+                            <option value="">Choose saved address...</option>
+                        </select>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <div class="form-group">
+                            <label class="form-label">Recipient Address</label>
+                            <input type="text" class="form-input" id="send-address" placeholder="Enter Base58 BTPC address (~34 characters)">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Amount (BTPC)</label>
+                            <input type="number" class="form-input" id="send-amount" placeholder="0.00000000" step="0.00000001">
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 12px;">
+                        <button class="btn btn-primary" onclick="sendTransaction()"><span class="icon icon-send"></span> Send BTPC</button>
+                        <button class="btn btn-secondary" onclick="switchTab('history')"><span class="icon icon-chart"></span> View History</button>
+                        <button class="btn btn-secondary" onclick="saveCurrentAddressToBook()" title="Save current recipient address to Address Book"><span class="icon icon-bookmark"></span> Save Address</button>
+                    </div>
+
+                    <!-- Transaction Status Display (Real-time Event Updates) -->
+                    <div id="transaction-status" style="display: none; margin-top: 20px; padding: 16px; border-radius: 8px; background: var(--bg-secondary); border-left: 4px solid var(--btpc-primary);">
+                        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+                            <div id="status-icon" style="font-size: 1.5rem;"></div>
+                            <div>
+                                <div id="status-title" style="font-weight: 600; color: var(--text-primary);"></div>
+                                <div id="status-message" style="color: var(--text-secondary); font-size: 0.875rem; margin-top: 4px;"></div>
+                            </div>
+                        </div>
+                        <div id="status-details" style="font-size: 0.8125rem; color: var(--text-muted); margin-top: 8px; font-family: monospace;"></div>
+                        <div id="status-progress" style="margin-top: 12px; height: 4px; background: var(--bg-tertiary); border-radius: 2px; overflow: hidden; display: none;">
+                            <div id="status-progress-bar" style="height: 100%; background: var(--btpc-primary); width: 0%; transition: width 0.3s ease;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Receive Tab -->
+            <div id="tab-panel-receive" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-receive" tabindex="0">
+                <div class="card">
+                    <div class="card-header">Receive BTPC</div>
+                    <div class="form-group">
+                        <label class="form-label">Select Wallet to Receive</label>
+                        <select class="form-input" id="receive-wallet" onchange="updateReceiveAddress()">
+                            <option value="">Choose a wallet...</option>
+                        </select>
+                    </div>
+                    <div id="receive-address-section" style="display: none;">
+                        <div class="form-group">
+                            <label class="form-label">Your Receive Address</label>
+                            <div class="form-input mono" id="receive-address" style="word-break: break-all; cursor: pointer; background: var(--bg-card);" onclick="copyReceiveAddress()">
+                                -
+                            </div>
+                            <div style="font-size: 0.8125rem; color: var(--text-muted); margin-top: 8px;">Click to copy address</div>
+                        </div>
+                        <div style="text-align: center; padding: 40px;">
+                            <div style="background: white; padding: 20px; border-radius: 12px; display: inline-block;">
+                                <canvas id="qr-canvas" width="256" height="256"></canvas>
+                            </div>
+                            <div style="margin-top: 16px; color: var(--text-muted); font-size: 0.875rem;">QR Code for easy scanning</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- History Tab -->
+            <div id="tab-panel-history" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-history" tabindex="0">
+                <div class="card">
+                    <div class="card-header">
+                        <span>Transaction History</span>
+                        <button class="btn btn-secondary" onclick="refreshTransactions()" style="padding: 6px 16px;"><span class="icon icon-refresh"></span> Refresh</button>
+                    </div>
+
+                    <div id="transactions-container">
+                        <!-- Empty State -->
+                        <div id="empty-transactions" style="padding: 60px 20px; text-align: center;">
+                            <div style="font-size: 3rem; margin-bottom: 16px;"><span class="icon icon-transactions" style="width: 48px; height: 48px;"></span></div>
+                            <div style="font-size: 1.125rem; color: var(--text-primary); margin-bottom: 8px;">No transactions yet</div>
+                            <div style="color: var(--text-muted); margin-bottom: 24px;">Your transaction history will appear here</div>
+                            <button class="btn btn-primary" onclick="switchTab('send')"><span class="icon icon-send"></span> Send BTPC</button>
+                        </div>
+
+                        <!-- Transaction Table -->
+                        <div id="transaction-table" style="display: none;">
+                            <!-- Pagination Info -->
+                            <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+                                <div style="color: var(--text-muted); font-size: 0.875rem;">
+                                    Showing <span id="tx-range-start">0</span>-<span id="tx-range-end">0</span> of <span id="tx-total">0</span> transactions
+                                </div>
+                                <div style="display: flex; gap: 8px;">
+                                    <button id="prev-page-btn" class="btn btn-secondary" style="padding: 6px 16px; font-size: 0.875rem;" onclick="previousPage()">
+                                        ← Previous
+                                    </button>
+                                    <div style="padding: 6px 12px; color: var(--text-muted); font-size: 0.875rem;">
+                                        Page <span id="current-page-num">1</span>
+                                    </div>
+                                    <button id="next-page-btn" class="btn btn-secondary" style="padding: 6px 16px; font-size: 0.875rem;" onclick="nextPage()">
+                                        Next →
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="table-container">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>TX ID</th>
+                                            <th>Type</th>
+                                            <th>Amount</th>
+                                            <th>Time</th>
+                                            <th>Status</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="transaction-tbody">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Address Book Tab -->
+            <div id="tab-panel-addressbook" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-addressbook" tabindex="0">
+                <div class="card">
+                    <div class="card-header">
+                        <span>Address Book</span>
+                        <button class="btn btn-primary" onclick="showAddAddressModal()" style="padding: 6px 16px;"><span class="icon icon-add"></span> Add New Address</button>
+                    </div>
+
+                    <!-- Search Bar -->
+                    <div style="margin-bottom: 20px;">
+                        <input type="text" class="form-input" id="addressbook-search" placeholder="Search by label, address, notes, or category..." oninput="filterAddressBook()">
+                    </div>
+
+                    <div id="addressbook-container">
+                        <!-- Empty State -->
+                        <div id="empty-addressbook" style="padding: 60px 20px; text-align: center;">
+                            <div style="font-size: 3rem; margin-bottom: 16px;"><span class="icon icon-bookmark" style="width: 48px; height: 48px;"></span></div>
+                            <div style="font-size: 1.125rem; color: var(--text-primary); margin-bottom: 8px;">No saved addresses yet</div>
+                            <div style="color: var(--text-muted); margin-bottom: 24px;">Save frequently used recipient addresses for quick access</div>
+                            <button class="btn btn-primary" onclick="showAddAddressModal()"><span class="icon icon-add"></span> Add First Address</button>
+                        </div>
+
+                        <!-- Address Book Table -->
+                        <div id="addressbook-table" style="display: none;">
+                            <div class="table-container">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Label</th>
+                                            <th>Address</th>
+                                            <th>Category</th>
+                                            <th>Usage</th>
+                                            <th>Last Used</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="addressbook-tbody">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="qrcode.min.js"></script>
+    <script src="btpc-tauri-context.js"></script>
+    <script src="btpc-event-listeners.js"></script>
+    <script src="btpc-navigation-guard.js"></script>
+    <script src="btpc-event-manager.js"></script>
+    <script src="btpc-common.js"></script>
+    <script src="btpc-update-manager.js"></script>
+    <script src="password-modal.js"></script>
+    <script src="btpc-tab-manager.js"></script>
+    <script src="btpc-logout.js"></script>
+    <script>
+        let allTransactions = [];
+        let allWallets = [];
+        let allAddressBookEntries = [];
+        const updateManager = window.btpcUpdateManager;
+
+        // Pagination variables (using RocksDB backend pagination)
+        let currentPage = 1;
+        const transactionsPerPage = 50; // Limit to 50 transactions per page
+        let totalTransactionCount = 0; // Total count from backend
+        let hasMoreTransactions = false; // Flag from backend
+
+        // ============================================================================
+        // Address Cleaning Utility (matches Rust backend implementation)
+        // ============================================================================
+        // CRITICAL: Removes "Address: " prefix and trims whitespace to ensure
+        // addresses are in clean Base58 format for QR codes, display, and copying
+        function cleanAddress(address) {
+            if (!address) return '';
+            const trimmed = address.trim();
+            if (trimmed.startsWith('Address: ')) {
+                return trimmed.substring(9).trim(); // Remove "Address: " prefix
+            }
+            return trimmed;
+        }
+
+        // Tab Manager instance (initialized after DOM loads)
+        let tabManager;
+
+        // Tab switching helper function (for backward compatibility)
+        function switchTab(tabName) {
+            if (tabManager) {
+                tabManager.activateTab(tabName, true);
+            }
+        }
+
+        async function loadWallets() {
+            if (!window.invoke) {
+                console.log('Tauri API not ready, will retry...');
+                setTimeout(loadWallets, 1000);
+                return;
+            }
+
+            try {
+                const wallets = await window.invoke('list_wallets');
+                allWallets = wallets || [];
+
+                // Populate send wallet dropdown
+                const sendSelect = document.getElementById('send-from-wallet');
+                sendSelect.innerHTML = '<option value="">Select wallet...</option>';
+
+                // Populate receive wallet dropdown
+                const receiveSelect = document.getElementById('receive-wallet');
+                receiveSelect.innerHTML = '<option value="">Choose a wallet...</option>';
+
+                allWallets.forEach(wallet => {
+                    // CRITICAL: Use wallet ID as value for reliable lookups
+                    // Display shows nickname and balance for user clarity
+                    const cleanAddr = cleanAddress(wallet.address);
+                    console.log('🔧 DEBUG (loadWallets): Wallet', wallet.nickname, '-> Raw:', wallet.address, '-> Cleaned:', cleanAddr);
+
+                    const sendOption = document.createElement('option');
+                    sendOption.value = wallet.id; // Use wallet ID for reliable lookup
+                    sendOption.textContent = `${wallet.nickname} - ${(wallet.cached_balance_btp || 0).toFixed(8)} BTPC`;
+                    sendSelect.appendChild(sendOption);
+
+                    const receiveOption = document.createElement('option');
+                    receiveOption.value = cleanAddr; // Use cleaned address
+                    receiveOption.textContent = `${wallet.nickname}`;
+                    receiveSelect.appendChild(receiveOption);
+                });
+            } catch (e) {
+                console.log('Failed to load wallets:', e);
+            }
+        }
+
+        async function loadTransactions() {
+            try {
+                //  Use RocksDB paginated API for efficient queries
+                const offset = (currentPage - 1) * transactionsPerPage;
+                const paginatedResult = await window.invoke('get_paginated_transaction_history', {
+                    offset: offset,
+                    limit: transactionsPerPage
+                });
+
+                // Store paginated response
+                allTransactions = paginatedResult.transactions || [];
+                totalTransactionCount = paginatedResult.total_count || 0;
+                hasMoreTransactions = paginatedResult.has_more || false;
+
+                console.log(`📄 Loaded page ${currentPage}: ${allTransactions.length} transactions (${totalTransactionCount} total)`);
+                updateTransactionDisplay();
+            } catch (e) {
+                console.log('Failed to load transactions:', e);
+                // Fall back to empty state
+                allTransactions = [];
+                totalTransactionCount = 0;
+                hasMoreTransactions = false;
+                updateTransactionDisplay();
+            }
+        }
+
+        function updateTransactionDisplay() {
+            if (allTransactions.length === 0) {
+                document.getElementById('empty-transactions').style.display = 'block';
+                document.getElementById('transaction-table').style.display = 'none';
+            } else {
+                document.getElementById('empty-transactions').style.display = 'none';
+                document.getElementById('transaction-table').style.display = 'block';
+                renderTransactionTable();
+            }
+        }
+
+        function renderTransactionTable() {
+            const tbody = document.getElementById('transaction-tbody');
+            tbody.innerHTML = '';
+
+            // Use backend pagination data instead of frontend pagination
+            const startIndex = (currentPage - 1) * transactionsPerPage + 1;
+            const endIndex = startIndex + allTransactions.length - 1;
+            const totalPages = Math.ceil(totalTransactionCount / transactionsPerPage);
+
+            // Update pagination info using backend data
+            document.getElementById('tx-range-start').textContent = totalTransactionCount > 0 ? startIndex : 0;
+            document.getElementById('tx-range-end').textContent = totalTransactionCount > 0 ? endIndex : 0;
+            document.getElementById('tx-total').textContent = totalTransactionCount;
+            document.getElementById('current-page-num').textContent = currentPage;
+
+            // Enable/disable pagination buttons based on backend flags
+            document.getElementById('prev-page-btn').disabled = currentPage === 1;
+            document.getElementById('next-page-btn').disabled = !hasMoreTransactions;
+
+            // Render all transactions (already paginated by backend)
+            allTransactions.forEach(tx => {
+                const row = document.createElement('tr');
+
+                // Calculate amount from outputs (in BTPC)
+                const totalAmount = tx.outputs.reduce((sum, output) => sum + (output.value / 100000000), 0);
+
+                // Determine transaction type
+                const isCoinbase = tx.is_coinbase || false;
+                const txType = isCoinbase ? 'MINING' : 'RECEIVE';
+                const typeSymbol = isCoinbase ? '[M]' : '[R]';
+
+                // Format timestamp in ASCII style (YYYY-MM-DD HH:MM:SS)
+                let timestampDisplay = 'PENDING';
+                if (tx.confirmed_at) {
+                    try {
+                        const date = new Date(tx.confirmed_at);
+                        const year = date.getFullYear();
+                        const month = String(date.getMonth() + 1).padStart(2, '0');
+                        const day = String(date.getDate()).padStart(2, '0');
+                        const hours = String(date.getHours()).padStart(2, '0');
+                        const minutes = String(date.getMinutes()).padStart(2, '0');
+                        const seconds = String(date.getSeconds()).padStart(2, '0');
+                        timestampDisplay = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+                    } catch (e) {
+                        console.warn('Invalid confirmed_at:', tx.confirmed_at);
+                    }
+                }
+
+                // Block height display
+                const blockDisplay = tx.block_height ? `#${tx.block_height}` : 'MEMPOOL';
+
+                // Status
+                const statusDisplay = tx.block_height ? 'CONFIRMED' : 'PENDING';
+                const statusColor = tx.block_height ? 'var(--status-success)' : 'var(--status-warning)';
+
+                row.innerHTML = `
+                    <td class="mono" style="font-size: 0.75rem;">${tx.txid.substring(0, 16)}...</td>
+                    <td class="mono" style="font-size: 0.75rem;">${typeSymbol} ${txType}</td>
+                    <td class="mono" style="color: var(--status-success); font-weight: 600; font-size: 0.75rem;">+${totalAmount.toFixed(8)} BTPC</td>
+                    <td class="mono" style="font-size: 0.75rem;">${timestampDisplay}</td>
+                    <td class="mono" style="color: ${statusColor}; font-size: 0.75rem;">${statusDisplay}</td>
+                    <td>
+                        <button class="btn btn-secondary" style="padding: 6px 16px; font-size: 0.75rem;" onclick="viewTransaction('${tx.txid}')">
+                            VIEW
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        // Pagination navigation functions
+        function previousPage() {
+            if (currentPage > 1) {
+                currentPage--;
+                loadTransactions(); // Fetch new page from backend
+            }
+        }
+
+        function nextPage() {
+            if (hasMoreTransactions) {
+                currentPage++;
+                loadTransactions(); // Fetch new page from backend
+            }
+        }
+
+        // Global variable to store transaction data while waiting for password
+        let pendingTransaction = null;
+
+        async function sendTransaction() {
+            if (!window.invoke) {
+                alert('Tauri API not ready. Please wait a moment and try again.');
+                return;
+            }
+
+            const walletId = document.getElementById('send-from-wallet').value;
+            const toAddress = document.getElementById('send-address').value.trim();
+            const amount = parseFloat(document.getElementById('send-amount').value);
+
+            if (!walletId) {
+                alert('Please select a wallet to send from');
+                return;
+            }
+
+            if (!toAddress || !amount || amount <= 0) {
+                alert('Please enter a valid address and amount');
+                return;
+            }
+
+            // Find the wallet by ID
+            const wallet = allWallets.find(w => w.id === walletId);
+            if (!wallet) {
+                alert('Selected wallet not found');
+                return;
+            }
+
+            // Store transaction data and show password modal
+            pendingTransaction = {
+                walletId: wallet.id,
+                toAddress: toAddress,
+                amount: amount
+            };
+
+            showPasswordModal(wallet.nickname);
+        }
+
+        function showPasswordModal(walletName) {
+            document.getElementById('password-wallet-name').textContent = walletName;
+            document.getElementById('wallet-password-input').value = '';
+            document.getElementById('password-modal').style.display = 'flex';
+            // Focus on password input
+            setTimeout(() => {
+                document.getElementById('wallet-password-input').focus();
+            }, 100);
+        }
+
+        function closePasswordModal() {
+            document.getElementById('password-modal').style.display = 'none';
+            document.getElementById('wallet-password-input').value = '';
+            pendingTransaction = null;
+        }
+
+        async function submitPassword() {
+            const password = document.getElementById('wallet-password-input').value;
+
+            if (!password) {
+                toast.warning('Please enter a password');
+                return;
+            }
+
+            if (!pendingTransaction) {
+                toast.error('No pending transaction');
+                closePasswordModal();
+                return;
+            }
+
+            // Store transaction data locally before closing modal
+            const txData = {
+                walletId: pendingTransaction.walletId,
+                fromAddress: allWallets.find(w => w.id === pendingTransaction.walletId)?.address || '',
+                toAddress: pendingTransaction.toAddress,
+                amount: pendingTransaction.amount,
+                password: password
+            };
+
+            // Close modal UI without clearing pendingTransaction yet
+            document.getElementById('password-modal').style.display = 'none';
+            document.getElementById('wallet-password-input').value = '';
+
+            // Convert BTPC to credits (1 BTPC = 100,000,000 credits)
+            const amountcredits = Math.floor(txData.amount * 100000000);
+
+            try {
+                // Step 1: Create unsigned transaction
+                showLoading('Creating transaction...', 'Selecting UTXOs and calculating fees');
+                console.log('📝 Step 1: Creating transaction...');
+
+                const createResult = await window.invoke('create_transaction', {
+                    wallet_id: txData.walletId,
+                    from_address: txData.fromAddress,
+                    to_address: txData.toAddress,
+                    amount: amountcredits,
+                    fee_rate: null  // Use default fee rate
+                });
+
+                console.log('✅ Transaction created:', createResult);
+                const transactionId = createResult.transaction_id;
+                const feeBtpc = (createResult.summary.fee / 100000000).toFixed(8);
+                const totalBtpc = ((amountcredits + createResult.summary.fee) / 100000000).toFixed(8);
+
+                // Step 2: Sign transaction with ML-DSA
+                showLoading('Signing transaction...', `Fee: ${feeBtpc} BTPC (Total: ${totalBtpc} BTPC)`);
+                console.log('✍️ Step 2: Signing with ML-DSA...');
+
+                const signResult = await window.invoke('sign_transaction', {
+                    transaction_id: transactionId,
+                    wallet_id: txData.walletId,
+                    password: txData.password
+                });
+
+                console.log('✅ Transaction signed:', signResult);
+
+                // Step 3: Broadcast to network
+                showLoading('Broadcasting transaction...', 'Submitting to BTPC network...');
+                console.log('📡 Step 3: Broadcasting to network...');
+
+                const broadcastResult = await window.invoke('broadcast_transaction', {
+                    transaction_id: transactionId
+                });
+
+                console.log('✅ Transaction broadcast:', broadcastResult);
+                hideLoading();
+
+                // Success!
+                const txidShort = transactionId.substring(0, 16) + '...';
+                toast.success(`Transaction sent! ${txidShort}`, 7000, 'Success');
+
+                // Clear form
+                document.getElementById('send-address').value = '';
+                document.getElementById('send-amount').value = '';
+
+                // Refresh data
+                await loadWallets(); // Refresh wallet balances
+                await loadTransactions(); // Refresh transaction history
+
+                // Auto-switch to history tab
+                switchTab('history');
+
+            } catch (e) {
+                hideLoading();
+                console.error('❌ Transaction error:', e);
+
+                // Parse error message
+                let errorMsg = String(e);
+                if (errorMsg.includes('Cannot connect to BTPC node')) {
+                    toast.error('Cannot connect to BTPC node. Please start the node first.', 8000);
+                } else if (errorMsg.includes('insufficient funds')) {
+                    toast.error('Insufficient funds for transaction + fees', 7000);
+                } else if (errorMsg.includes('Wrong password')) {
+                    toast.error('Incorrect wallet password', 5000);
+                } else {
+                    toast.error(`Transaction failed: ${errorMsg}`, 8000);
+                }
+            } finally {
+                pendingTransaction = null;
+            }
+        }
+
+        function updateReceiveAddress() {
+            const selectedAddress = document.getElementById('receive-wallet').value;
+            console.log('🔧 DEBUG (updateReceiveAddress): Selected value from dropdown:', selectedAddress);
+
+            if (selectedAddress) {
+                // CRITICAL: Clean address to remove "Address: " prefix before display and QR generation
+                // Note: Should already be clean from loadWallets(), but defensive cleaning here too
+                const cleanAddr = cleanAddress(selectedAddress);
+                console.log('🔧 DEBUG (updateReceiveAddress): After cleanAddress():', cleanAddr);
+                console.log('🔧 DEBUG (updateReceiveAddress): Address length:', cleanAddr.length);
+                console.log('🔧 DEBUG (updateReceiveAddress): Passing to generateQRCode():', cleanAddr);
+
+                document.getElementById('receive-address').textContent = cleanAddr;
+                document.getElementById('receive-address-section').style.display = 'block';
+                generateQRCode(cleanAddr);
+            } else {
+                document.getElementById('receive-address-section').style.display = 'none';
+            }
+        }
+
+        function copyReceiveAddress() {
+            const address = document.getElementById('receive-address').textContent;
+            copyToClipboard(address, 'Address copied to clipboard!');
+        }
+
+        function generateQRCode(address) {
+            console.log('🔧 DEBUG (generateQRCode): Received address:', address);
+            console.log('🔧 DEBUG (generateQRCode): Address type:', typeof address);
+            console.log('🔧 DEBUG (generateQRCode): Address length:', address ? address.length : 0);
+
+            const canvas = document.getElementById('qr-canvas');
+            if (!canvas) {
+                console.error('QR canvas not found');
+                return;
+            }
+
+            // Use QRCode library if available
+            if (typeof QRCode !== 'undefined') {
+                try {
+                    console.log('🔧 DEBUG (generateQRCode): Encoding to QR with QRCode library...');
+
+                    // Clear any existing QR code by clearing the canvas parent
+                    const parent = canvas.parentElement;
+                    parent.innerHTML = '';
+
+                    // Create a new div for the QR code
+                    const qrDiv = document.createElement('div');
+                    qrDiv.id = 'qr-canvas';
+                    qrDiv.style.width = '256px';
+                    qrDiv.style.height = '256px';
+                    parent.appendChild(qrDiv);
+
+                    // Generate QR code
+                    new QRCode(qrDiv, {
+                        text: address,
+                        width: 256,
+                        height: 256,
+                        colorDark: "#000000",
+                        colorLight: "#ffffff",
+                        correctLevel: QRCode.CorrectLevel.M
+                    });
+
+                    console.log('🔧 DEBUG (generateQRCode): QR code generated successfully');
+                } catch (e) {
+                    console.error('QR generation failed:', e);
+                    // Fallback to placeholder
+                    const ctx = canvas.getContext('2d');
+                    if (ctx) {
+                        drawQRPlaceholder(ctx, address);
+                    }
+                }
+            } else {
+                console.warn('🔧 DEBUG (generateQRCode): QRCode library not available, using placeholder');
+                // Fallback: draw simple pattern QR-like grid
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                    drawQRPlaceholder(ctx, address);
+                }
+            }
+        }
+
+        function drawQRPlaceholder(ctx, address) {
+            const size = 256;
+            const gridSize = 21;
+            const cellSize = Math.floor(size / gridSize);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, size, size);
+
+            // Draw positioning markers
+            ctx.fillStyle = '#000000';
+            drawMarker(ctx, 0, 0, cellSize);
+            drawMarker(ctx, (gridSize - 7) * cellSize, 0, cellSize);
+            drawMarker(ctx, 0, (gridSize - 7) * cellSize, cellSize);
+
+            // Draw pattern based on address hash
+            let hash = 0;
+            for (let i = 0; i < address.length; i++) {
+                hash = ((hash << 5) - hash) + address.charCodeAt(i);
+                hash = hash & hash;
+            }
+
+            for (let y = 2; y < gridSize - 2; y++) {
+                for (let x = 2; x < gridSize - 2; x++) {
+                    hash = (hash * 1103515245 + 12345) & 0x7fffffff;
+                    if (hash % 3 === 0) {
+                        ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+                    }
+                }
+            }
+        }
+
+        function drawMarker(ctx, x, y, cellSize) {
+            ctx.fillRect(x, y, cellSize * 7, cellSize * 7);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(x + cellSize, y + cellSize, cellSize * 5, cellSize * 5);
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(x + cellSize * 2, y + cellSize * 2, cellSize * 3, cellSize * 3);
+        }
+
+        function refreshTransactions() {
+            loadTransactions();
+        }
+
+        // ============================================================================
+        // Address Book Functions
+        // ============================================================================
+
+        async function loadAddressBook() {
+            if (!window.invoke) {
+                console.log('Tauri API not ready, will retry address book load...');
+                setTimeout(loadAddressBook, 1000);
+                return;
+            }
+
+            try {
+                const entries = await window.invoke('list_address_book_entries');
+                allAddressBookEntries = entries || [];
+
+                // Populate address book dropdown
+                const addressBookSelect = document.getElementById('address-book-selector');
+                addressBookSelect.innerHTML = '<option value="">Choose saved address...</option>';
+
+                allAddressBookEntries.forEach(entry => {
+                    const option = document.createElement('option');
+                    option.value = entry.address;
+                    option.setAttribute('data-label', entry.label);
+
+                    // Show label and truncated address with usage info
+                    const usageInfo = entry.usage_count > 0 ? ` (used ${entry.usage_count}x)` : '';
+                    const truncatedAddress = entry.address.substring(0, 16) + '...';
+                    option.textContent = `${entry.label} - ${truncatedAddress}${usageInfo}`;
+
+                    addressBookSelect.appendChild(option);
+                });
+
+                console.log(`Loaded ${allAddressBookEntries.length} address book entries`);
+
+                // Update the address book table display
+                updateAddressBookDisplay();
+            } catch (e) {
+                console.log('Failed to load address book:', e);
+                allAddressBookEntries = [];
+                updateAddressBookDisplay();
+            }
+        }
+
+        function selectFromAddressBook() {
+            const selector = document.getElementById('address-book-selector');
+            const selectedAddress = selector.value;
+
+            if (selectedAddress) {
+                // Populate the recipient address field
+                document.getElementById('send-address').value = selectedAddress;
+                console.log('Selected address from book:', selectedAddress);
+            }
+        }
+
+        async function saveCurrentAddressToBook() {
+            if (!window.invoke) {
+                alert('Tauri API not ready. Please wait a moment and try again.');
+                return;
+            }
+
+            const address = document.getElementById('send-address').value.trim();
+
+            if (!address) {
+                alert('Please enter a recipient address first');
+                return;
+            }
+
+            // Basic validation - backend will do full Base58 validation
+            if (address.length < 26 || address.length > 42) {
+                alert('Invalid address format. BTPC addresses are typically ~34 characters (Base58 format).');
+                return;
+            }
+
+            // Check if address already exists
+            const existing = allAddressBookEntries.find(e => e.address === address);
+            if (existing) {
+                alert(`This address is already in your address book as "${existing.label}"`);
+                return;
+            }
+
+            // Prompt for label
+            const label = prompt('Enter a label for this address:');
+            if (!label || label.trim() === '') {
+                return;
+            }
+
+            // Optional notes
+            const notes = prompt('Enter optional notes (or leave blank):');
+
+            try {
+                const request = {
+                    label: label.trim(),
+                    address: address,
+                    notes: notes && notes.trim() !== '' ? notes.trim() : null,
+                    category: null
+                };
+
+                const entry = await window.invoke('add_address_book_entry', { request });
+                alert(`Address saved to address book as "${entry.label}"`);
+
+                // Reload address book
+                await loadAddressBook();
+            } catch (e) {
+                alert(`Failed to save address: ${e}`);
+            }
+        }
+
+        // Handle hash navigation (from wallet-manager redirects)
+        function handleHashNavigation() {
+            const hash = window.location.hash.substring(1); // Remove #
+
+            if (hash === 'send') {
+                switchTab('send');
+            } else if (hash === 'receive') {
+                switchTab('receive');
+            } else if (hash.startsWith('receive-')) {
+                const address = hash.substring(8); // Remove 'receive-' prefix
+                switchTab('receive');
+                // Find and select wallet with this address
+                const walletSelect = document.getElementById('receive-from-wallet');
+                if (walletSelect) {
+                    for (let i = 0; i < walletSelect.options.length; i++) {
+                        if (walletSelect.options[i].value === address) {
+                            walletSelect.selectedIndex = i;
+                            updateReceiveAddress();
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Subscribe to updates
+        // Subscribe to updates (one-time only - prevent duplicate subscriptions causing stack overflow)
+        if (!window.transactionsPageSubscribed) {
+            window.transactionsPageSubscribed = true;
+            updateManager.subscribe((type, data, fullState) => {
+                if (type === 'wallet') {
+                    const balanceEl = document.getElementById('wallet-balance');
+                    if (balanceEl) {
+                        balanceEl.textContent = (data.balance || 0).toFixed(8);
+                    }
+                }
+                // Note: transactions.html doesn't have chain-height element
+            });
+        }
+
+        // ============================================================================
+        // Feature 007: Real-Time Transaction Event Listeners (Article XI)
+        // ============================================================================
+        // Store unlisten functions for proper cleanup (prevents memory leaks)
+        let transactionEventListeners = [];
+
+        // Transaction status update functions
+        function showTransactionStatus(icon, title, message, details = '', progress = null) {
+            const statusEl = document.getElementById('transaction-status');
+            if (!statusEl) return;
+
+            document.getElementById('status-icon').textContent = icon;
+            document.getElementById('status-title').textContent = title;
+            document.getElementById('status-message').textContent = message;
+            document.getElementById('status-details').textContent = details;
+
+            const progressEl = document.getElementById('status-progress');
+            const progressBar = document.getElementById('status-progress-bar');
+            if (progress !== null) {
+                progressEl.style.display = 'block';
+                progressBar.style.width = `${progress}%`;
+            } else {
+                progressEl.style.display = 'none';
+            }
+
+            statusEl.style.display = 'block';
+        }
+
+        function hideTransactionStatus() {
+            const statusEl = document.getElementById('transaction-status');
+            if (statusEl) {
+                statusEl.style.display = 'none';
+            }
+        }
+
+        // Initialize transaction event listeners (Article XI, Section 11.3)
+        async function setupTransactionEventListeners() {
+            if (!window.__TAURI__ || !window.__TAURI__.event) {
+                console.warn('[Feature 007] Tauri event API not available for transaction listeners');
+                return;
+            }
+
+            try {
+                const { listen } = window.__TAURI__.event;
+
+                // transaction:initiated
+                transactionEventListeners.push(await listen('transaction:initiated', (event) => {
+                    console.log('[Event] transaction:initiated', event.payload);
+                    const { recipient, amount } = event.payload;
+                    const btpc = (amount / 100000000).toFixed(8);
+                    showTransactionStatus('📤', 'Transaction Initiated', `Sending ${btpc} BTPC`, `To: ${recipient.substring(0, 20)}...`, 10);
+                }));
+
+                // fee:estimated
+                transactionEventListeners.push(await listen('fee:estimated', (event) => {
+                    console.log('[Event] fee:estimated', event.payload);
+                    const { total_fee, fee_rate, transaction_size } = event.payload;
+                    const feeBtpc = (total_fee / 100000000).toFixed(8);
+                    showTransactionStatus('💰', 'Fee Estimated', `${feeBtpc} BTPC`, `Rate: ${fee_rate} sat/byte | Size: ${transaction_size} bytes`, 15);
+                }));
+
+                // utxo:reserved
+                transactionEventListeners.push(await listen('utxo:reserved', (event) => {
+                    console.log('[Event] utxo:reserved', event.payload);
+                    const { utxo_count, total_amount } = event.payload;
+                    const btpc = (total_amount / 100000000).toFixed(8);
+                    showTransactionStatus('🔒', 'UTXOs Reserved', `Locked ${utxo_count} UTXOs`, `Total: ${btpc} BTPC`, 20);
+                }));
+
+                // transaction:validated
+                transactionEventListeners.push(await listen('transaction:validated', (event) => {
+                    console.log('[Event] transaction:validated', event.payload);
+                    const { inputs_count, outputs_count, fee } = event.payload;
+                    const feeBtpc = (fee / 100000000).toFixed(8);
+                    showTransactionStatus('✅', 'Transaction Validated', `Ready to sign`, `${inputs_count} inputs, ${outputs_count} outputs | Fee: ${feeBtpc} BTPC`, 30);
+                }));
+
+                // transaction:signing_started
+                transactionEventListeners.push(await listen('transaction:signing_started', (event) => {
+                    console.log('[Event] transaction:signing_started', event.payload);
+                    const { inputs_to_sign } = event.payload;
+                    showTransactionStatus('✍️', 'Signing Transaction', `Generating ML-DSA signatures...`, `Signing ${inputs_to_sign} input(s)`, 40);
+                }));
+
+                // transaction:input_signed
+                transactionEventListeners.push(await listen('transaction:input_signed', (event) => {
+                    console.log('[Event] transaction:input_signed', event.payload);
+                    const { input_index, signature_algorithm } = event.payload;
+                    showTransactionStatus('✍️', 'Signing In Progress', `Input ${input_index + 1} signed`, `Algorithm: ${signature_algorithm}`, 50);
+                }));
+
+                // transaction:signed
+                transactionEventListeners.push(await listen('transaction:signed', (event) => {
+                    console.log('[Event] transaction:signed', event.payload);
+                    const { signatures_count } = event.payload;
+                    showTransactionStatus('🔏', 'Transaction Signed', `All ${signatures_count} signature(s) verified`, 'Ready to broadcast', 60);
+                }));
+
+                // transaction:broadcast
+                transactionEventListeners.push(await listen('transaction:broadcast', (event) => {
+                    console.log('[Event] transaction:broadcast', event.payload);
+                    const { broadcast_to_peers } = event.payload;
+                    showTransactionStatus('📡', 'Broadcasting', `Sending to ${broadcast_to_peers} peer(s)...`, 'Waiting for network confirmation', 70);
+                }));
+
+                // transaction:mempool_accepted
+                transactionEventListeners.push(await listen('transaction:mempool_accepted', (event) => {
+                    console.log('[Event] transaction:mempool_accepted', event.payload);
+                    const { mempool_size, position } = event.payload;
+                    showTransactionStatus('⏳', 'In Mempool', `Position ${position} of ${mempool_size}`, 'Waiting for block confirmation', 80);
+                }));
+
+                // transaction:confirmed
+                transactionEventListeners.push(await listen('transaction:confirmed', (event) => {
+                    console.log('[Event] transaction:confirmed', event.payload);
+                    const { block_height, confirmations } = event.payload;
+                    showTransactionStatus('✅', 'Transaction Confirmed!', `Included in block #${block_height}`, `${confirmations} confirmation(s)`, 100);
+
+                    // Refresh transaction list and wallets
+                    loadTransactions();
+                    loadWallets();
+
+                    // Hide status after 5 seconds
+                    setTimeout(hideTransactionStatus, 5000);
+                }));
+
+                // transaction:confirmation_update
+                transactionEventListeners.push(await listen('transaction:confirmation_update', (event) => {
+                    console.log('[Event] transaction:confirmation_update', event.payload);
+                    const { confirmations, is_final } = event.payload;
+                    if (is_final) {
+                        showTransactionStatus('🎉', 'Transaction Final', `${confirmations} confirmations`, 'Fully confirmed and irreversible', 100);
+                        setTimeout(hideTransactionStatus, 3000);
+                    }
+                }));
+
+                // transaction:failed
+                transactionEventListeners.push(await listen('transaction:failed', (event) => {
+                    console.log('[Event] transaction:failed', event.payload);
+                    const { stage, error_type, error_message, suggested_action } = event.payload;
+                    const action = suggested_action ? ` | ${suggested_action}` : '';
+                    showTransactionStatus('❌', 'Transaction Failed', `Failed at ${stage}: ${error_type}`, error_message + action, null);
+
+                    // Refresh to update wallet state
+                    loadWallets();
+                }));
+
+                // transaction:cancelled
+                transactionEventListeners.push(await listen('transaction:cancelled', (event) => {
+                    console.log('[Event] transaction:cancelled', event.payload);
+                    const { utxos_released } = event.payload;
+                    showTransactionStatus('🚫', 'Transaction Cancelled', `Released ${utxos_released} UTXO(s)`, 'Funds available again', null);
+                    setTimeout(hideTransactionStatus, 3000);
+                }));
+
+                // utxo:released
+                transactionEventListeners.push(await listen('utxo:released', (event) => {
+                    console.log('[Event] utxo:released', event.payload);
+                    const { reason, utxo_count } = event.payload;
+                    console.log(`UTXOs released: ${utxo_count} (reason: ${reason})`);
+                    // Refresh wallet to show updated available balance
+                    loadWallets();
+                }));
+
+                console.log('[Feature 007] Transaction event listeners initialized (Article XI.3)');
+            } catch (e) {
+                console.error('[Feature 007] Failed to setup transaction event listeners:', e);
+            }
+        }
+
+        // Initialize TabManager on page load
+        document.addEventListener('DOMContentLoaded', async () => {
+            tabManager = new TabManager({
+                page: 'transactions',
+                defaultTab: 'send'
+            });
+
+            // Setup transaction event listeners (Article XI, Section 11.3)
+            await setupTransactionEventListeners();
+        });
+
+        // Clean up event listeners on page unload (Article XI, Section 11.6)
+        window.addEventListener('beforeunload', () => {
+            console.log('[Feature 007] Cleaning up transaction event listeners...');
+            transactionEventListeners.forEach(unlisten => {
+                if (unlisten && typeof unlisten === 'function') {
+                    unlisten();
+                }
+            });
+            transactionEventListeners = [];
+        });
+
+        // Load data on page load
+        loadWallets();
+        loadTransactions();
+        loadAddressBook();
+        setInterval(loadTransactions, 10000);
+
+        // Handle hash navigation after wallets load
+        setTimeout(handleHashNavigation, 500);
+
+        // Start manager updates if not already started
+        // Note: startAutoUpdate called globally in btpc-common.js (Article XI compliance)
+        // Removed duplicate call to prevent race condition
+    </script>
+
+    <!-- Transaction Details Modal -->
+    <div id="transaction-details-modal" class="modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <h2>Transaction Details</h2>
+                <button class="modal-close" onclick="closeTransactionModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <pre id="transaction-details-content" class="mono" style="background: var(--bg-secondary); padding: 20px; border-radius: 8px; font-size: 0.875rem; line-height: 1.6; color: var(--text-primary); white-space: pre-wrap; word-wrap: break-word; overflow-x: auto;">Loading...</pre>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Transaction details modal functions
+        async function viewTransaction(txid) {
+            if (!window.invoke) {
+                alert('Tauri API not ready. Please wait a moment and try again.');
+                return;
+            }
+
+            try {
+                // ✅ CONSTITUTION COMPLIANCE: Use RocksDB indexed lookup (O(log n))
+                // Backend is single source of truth (Article XI.1)
+                // Replaced inefficient O(n×m) scan with direct txid lookup
+                const tx = await window.invoke('get_transaction_from_storage', { txid: txid });
+
+                if (!tx) {
+                    alert('Transaction not found');
+                    return;
+                }
+
+                const contentEl = document.getElementById('transaction-details-content');
+                contentEl.textContent = 'Loading...';
+
+                // Show modal immediately
+                document.getElementById('transaction-details-modal').style.display = 'flex';
+
+                // Build ASCII tree display
+                let output = '';
+
+                if (tx.is_coinbase && tx.block_height !== null) {
+                    // Mining transaction - use ASCII tree format
+                    output += `BLOCK CREATED #${tx.block_height}\n`;
+
+                    // Try to get block hash
+                    let blockHash = '[Block hash not available]';
+                    try {
+                        const blockInfo = await window.invoke('get_block_by_height', { height: tx.block_height });
+                        if (blockInfo && blockInfo.hash) {
+                            blockHash = blockInfo.hash;
+                        }
+                    } catch (e) {
+                        console.warn('Could not fetch block hash:', e);
+                    }
+                    output += `├─ Block Hash: ${blockHash}\n`;
+
+                    // Timestamp
+                    let timestampDisplay = 'Unknown';
+                    if (tx.confirmed_at) {
+                        try {
+                            const date = new Date(tx.confirmed_at);
+                            const year = date.getFullYear();
+                            const month = String(date.getMonth() + 1).padStart(2, '0');
+                            const day = String(date.getDate()).padStart(2, '0');
+                            const hours = String(date.getHours()).padStart(2, '0');
+                            const minutes = String(date.getMinutes()).padStart(2, '0');
+                            const seconds = String(date.getSeconds()).padStart(2, '0');
+                            timestampDisplay = `${year}-${month}-${day} ${hours}:${minutes}:${seconds} UTC`;
+                        } catch (e) {
+                            console.warn('Invalid confirmed_at timestamp:', tx.confirmed_at, e);
+                        }
+                    }
+                    output += `├─ Timestamp: ${timestampDisplay}\n`;
+
+                    // Coinbase TXID
+                    output += `├─ Coinbase TXID: ${tx.txid}\n`;
+
+                    // Reward
+                    const totalReward = tx.outputs.reduce((sum, output) => sum + output.value, 0);
+                    const btpReward = (totalReward / 100000000).toFixed(8);
+                    output += `├─ Reward: ${btpReward} BTP (${totalReward} credits)\n`;
+
+                    // Recipient (first output address)
+                    let recipient = '[No recipient]';
+                    if (tx.outputs.length > 0 && tx.outputs[0].address) {
+                        recipient = tx.outputs[0].address;
+                    }
+                    output += `├─ Recipient: ${recipient}\n`;
+
+                    // Status
+                    output += `└─ Status: ✓ Block accepted to blockchain\n`;
+
+                } else {
+                    // Non-mining transaction - fallback to detailed view
+                    output += `TRANSACTION DETAILS\n\n`;
+                    output += `Transaction ID:\n${tx.txid}\n\n`;
+
+                    output += `Type: ${tx.is_coinbase ? 'MINING (Coinbase)' : 'RECEIVE'}\n`;
+                    output += `Block Height: ${tx.block_height !== null ? `#${tx.block_height}` : 'MEMPOOL (Unconfirmed)'}\n\n`;
+
+                    // Timestamp
+                    if (tx.confirmed_at) {
+                        try {
+                            const date = new Date(tx.confirmed_at);
+                            const year = date.getFullYear();
+                            const month = String(date.getMonth() + 1).padStart(2, '0');
+                            const day = String(date.getDate()).padStart(2, '0');
+                            const hours = String(date.getHours()).padStart(2, '0');
+                            const minutes = String(date.getMinutes()).padStart(2, '0');
+                            const seconds = String(date.getSeconds()).padStart(2, '0');
+                            output += `Timestamp: ${year}-${month}-${day} ${hours}:${minutes}:${seconds} UTC\n\n`;
+                        } catch (e) {
+                            console.warn('Invalid timestamp');
+                        }
+                    }
+
+                    // Outputs
+                    output += `Outputs (${tx.outputs.length}):\n`;
+                    tx.outputs.forEach((out, i) => {
+                        const btpcAmount = (out.value / 100000000).toFixed(8);
+                        output += `  [${i + 1}] ${btpcAmount} BTPC (${out.value} credits)\n`;
+                        if (out.address) {
+                            output += `      To: ${out.address}\n`;
+                        }
+                    });
+
+                    output += `\nTotal Amount: ${((tx.outputs.reduce((s, o) => s + o.value, 0)) / 100000000).toFixed(8)} BTPC\n`;
+                }
+
+                contentEl.textContent = output;
+
+            } catch (e) {
+                console.error('Failed to load transaction details:', e);
+                const contentEl = document.getElementById('transaction-details-content');
+                if (contentEl) {
+                    contentEl.textContent = `Error loading transaction details:\n${e}`;
+                } else {
+                    alert(`Failed to load transaction details:\n${e}`);
+                }
+            }
+        }
+
+        function calculateTransactionAmount(tx) {
+            // Calculate total output value in BTPC
+            const totalOutput = tx.outputs.reduce((sum, output) => sum + (output.value / 100000000), 0);
+            return totalOutput.toFixed(8);
+        }
+
+        function closeTransactionModal() {
+            document.getElementById('transaction-details-modal').style.display = 'none';
+        }
+
+        function copyText(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                // Could add a toast notification here
+                console.log('Copied to clipboard:', text);
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                alert('Failed to copy to clipboard');
+            });
+        }
+
+        // Close modal when clicking outside
+        window.addEventListener('click', (event) => {
+            const modal = document.getElementById('transaction-details-modal');
+            if (event.target === modal) {
+                closeTransactionModal();
+            }
+
+            const addressModal = document.getElementById('address-book-modal');
+            if (event.target === addressModal) {
+                closeAddressBookModal();
+            }
+
+            const passwordModal = document.getElementById('password-modal');
+            if (event.target === passwordModal) {
+                closePasswordModal();
+            }
+        });
+
+        // Allow Enter key to submit password
+        const walletPasswordInput = document.getElementById('wallet-password-input');
+        if (walletPasswordInput) {
+            walletPasswordInput.addEventListener('keypress', (event) => {
+                if (event.key === 'Enter') {
+                    submitPassword();
+                }
+            });
+        }
+    </script>
+
+    <!-- Address Book Add/Edit Modal -->
+    <div id="address-book-modal" class="modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h2 id="address-modal-title">Add New Address</h2>
+                <button class="modal-close" onclick="closeAddressBookModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit-entry-id">
+
+                <div class="form-group">
+                    <label class="form-label">Label *</label>
+                    <input type="text" class="form-input" id="modal-label" placeholder="e.g., Alice, Exchange, Friend">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">BTPC Address *</label>
+                    <input type="text" class="form-input mono" id="modal-address" placeholder="Enter Base58 BTPC address">
+                    <div style="font-size: 0.8125rem; color: var(--text-muted); margin-top: 4px;">Must be valid Base58 address with checksum (~34 characters)</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Category (Optional)</label>
+                    <input type="text" class="form-input" id="modal-category" placeholder="e.g., Friends, Business, Exchange">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Notes (Optional)</label>
+                    <textarea class="form-input" id="modal-notes" rows="3" placeholder="Add any notes about this recipient..."></textarea>
+                </div>
+
+                <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                    <button class="btn btn-secondary" onclick="closeAddressBookModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="saveAddressBookEntry()">Save Address</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Password Modal -->
+    <div id="password-modal" class="modal">
+        <div class="modal-content" style="max-width: 450px;">
+            <div class="modal-header">
+                <h2>Enter Wallet Password</h2>
+                <button class="modal-close" onclick="closePasswordModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="margin-bottom: 16px; color: var(--text-secondary);">
+                    Enter password for wallet: <strong id="password-wallet-name"></strong>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Password</label>
+                    <input type="password" class="form-input" id="wallet-password-input" placeholder="Enter your password" autocomplete="current-password">
+                    <div style="font-size: 0.8125rem; color: var(--text-muted); margin-top: 4px;">Your password will not be displayed</div>
+                </div>
+
+                <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                    <button class="btn btn-secondary" onclick="closePasswordModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="submitPassword()">Confirm</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Address Book Management Functions
+        let filteredEntries = [];
+
+        function updateAddressBookDisplay() {
+            if (allAddressBookEntries.length === 0) {
+                document.getElementById('empty-addressbook').style.display = 'block';
+                document.getElementById('addressbook-table').style.display = 'none';
+            } else {
+                document.getElementById('empty-addressbook').style.display = 'none';
+                document.getElementById('addressbook-table').style.display = 'block';
+                renderAddressBookTable(filteredEntries.length > 0 ? filteredEntries : allAddressBookEntries);
+            }
+        }
+
+        function renderAddressBookTable(entries) {
+            const tbody = document.getElementById('addressbook-tbody');
+            tbody.innerHTML = '';
+
+            entries.forEach(entry => {
+                const row = document.createElement('tr');
+
+                // Format timestamps
+                const createdDate = new Date(entry.created_at);
+                const lastUsedDisplay = entry.last_used
+                    ? new Date(entry.last_used).toLocaleDateString()
+                    : 'Never';
+
+                // Truncate address for display
+                const truncatedAddress = entry.address.substring(0, 16) + '...' + entry.address.substring(112);
+
+                row.innerHTML = `
+                    <td style="font-weight: 600;">${entry.label}</td>
+                    <td class="mono" style="font-size: 0.75rem;" title="${entry.address}">${truncatedAddress}</td>
+                    <td>${entry.category || '-'}</td>
+                    <td class="mono">${entry.usage_count}x</td>
+                    <td style="font-size: 0.875rem;">${lastUsedDisplay}</td>
+                    <td>
+                        <button class="btn btn-secondary" style="padding: 4px 12px; font-size: 0.75rem; margin-right: 4px;" onclick="editAddressBookEntry('${entry.id}')" title="Edit">
+                            Edit
+                        </button>
+                        <button class="btn btn-secondary" style="padding: 4px 12px; font-size: 0.75rem; margin-right: 4px;" onclick="copyAddressToClipboard('${entry.address}')" title="Copy Address">
+                            Copy
+                        </button>
+                        <button class="btn btn-secondary" style="padding: 4px 12px; font-size: 0.75rem; background: var(--status-error); color: white;" onclick="deleteAddressBookEntry('${entry.id}', '${entry.label}')" title="Delete">
+                            Delete
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function filterAddressBook() {
+            const query = document.getElementById('addressbook-search').value.toLowerCase().trim();
+
+            if (!query) {
+                filteredEntries = [];
+                updateAddressBookDisplay();
+                return;
+            }
+
+            filteredEntries = allAddressBookEntries.filter(entry => {
+                return entry.label.toLowerCase().includes(query) ||
+                    entry.address.toLowerCase().includes(query) ||
+                    (entry.notes && entry.notes.toLowerCase().includes(query)) ||
+                    (entry.category && entry.category.toLowerCase().includes(query));
+            });
+
+            updateAddressBookDisplay();
+        }
+
+        function showAddAddressModal() {
+            document.getElementById('address-modal-title').textContent = 'Add New Address';
+            document.getElementById('edit-entry-id').value = '';
+            document.getElementById('modal-label').value = '';
+            document.getElementById('modal-address').value = '';
+            document.getElementById('modal-address').disabled = false; // Allow editing for new entries
+            document.getElementById('modal-category').value = '';
+            document.getElementById('modal-notes').value = '';
+            document.getElementById('address-book-modal').style.display = 'flex';
+        }
+
+        function editAddressBookEntry(entryId) {
+            const entry = allAddressBookEntries.find(e => e.id === entryId);
+            if (!entry) {
+                alert('Entry not found');
+                return;
+            }
+
+            document.getElementById('address-modal-title').textContent = 'Edit Address';
+            document.getElementById('edit-entry-id').value = entry.id;
+            document.getElementById('modal-label').value = entry.label;
+            document.getElementById('modal-address').value = entry.address;
+            document.getElementById('modal-address').disabled = true; // Don't allow changing address
+            document.getElementById('modal-category').value = entry.category || '';
+            document.getElementById('modal-notes').value = entry.notes || '';
+            document.getElementById('address-book-modal').style.display = 'flex';
+        }
+
+        async function saveAddressBookEntry() {
+            if (!window.invoke) {
+                alert('Tauri API not ready. Please wait a moment and try again.');
+                return;
+            }
+
+            const entryId = document.getElementById('edit-entry-id').value;
+            const label = document.getElementById('modal-label').value.trim();
+            const address = document.getElementById('modal-address').value.trim();
+            const category = document.getElementById('modal-category').value.trim();
+            const notes = document.getElementById('modal-notes').value.trim();
+
+            // Validation
+            if (!label) {
+                alert('Please enter a label');
+                return;
+            }
+
+            if (!entryId) {
+                // Adding new entry - validate address (basic check, backend will do full Base58 validation)
+                if (!address || address.length < 26 || address.length > 42) {
+                    alert('Invalid address format. BTPC addresses are typically ~34 characters (Base58 format).');
+                    return;
+                }
+            }
+
+            try {
+                if (entryId) {
+                    // Update existing entry
+                    const request = {
+                        id: entryId,
+                        label: label || null,
+                        notes: notes || null,
+                        category: category || null
+                    };
+
+                    await window.invoke('update_address_book_entry', { request });
+                    alert('Address book entry updated successfully');
+                } else {
+                    // Add new entry
+                    const request = {
+                        label: label,
+                        address: address,
+                        notes: notes || null,
+                        category: category || null
+                    };
+
+                    await window.invoke('add_address_book_entry', { request });
+                    alert('Address book entry added successfully');
+                }
+
+                // Reload and refresh
+                await loadAddressBook();
+                updateAddressBookDisplay();
+                closeAddressBookModal();
+            } catch (e) {
+                alert(`Failed to save address book entry: ${e}`);
+            }
+        }
+
+        async function deleteAddressBookEntry(entryId, label) {
+            if (!window.invoke) {
+                alert('Tauri API not ready. Please wait a moment and try again.');
+                return;
+            }
+
+            if (!confirm(`Are you sure you want to delete "${label}" from your address book?`)) {
+                return;
+            }
+
+            try {
+                await window.invoke('delete_address_book_entry', { id: entryId });
+                alert(`"${label}" deleted from address book`);
+
+                // Reload and refresh
+                await loadAddressBook();
+                updateAddressBookDisplay();
+            } catch (e) {
+                alert(`Failed to delete entry: ${e}`);
+            }
+        }
+
+        function copyAddressToClipboard(address) {
+            navigator.clipboard.writeText(address).then(() => {
+                alert('Address copied to clipboard!');
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                alert('Failed to copy to clipboard');
+            });
+        }
+
+        function closeAddressBookModal() {
+            document.getElementById('address-book-modal').style.display = 'none';
+        }
+    </script>
+
+    <!-- Password Modal for Wallet Encryption -->
+    <div id="password-modal-overlay">
+        <div class="password-modal">
+            <h2 id="modal-title">🔒 Unlock Your Wallets</h2>
+            <p id="modal-description">Enter your master password to access your encrypted wallet metadata.</p>
+
+            <div id="migration-notice" class="migration-notice">
+                <h3>⚡ Upgrade to Encrypted Wallets</h3>
+                <p>Your wallet metadata is currently stored in plaintext. For better security, we recommend encrypting it with a master password.</p>
+                <ul>
+                    <li>Encrypts wallet addresses and balances</li>
+                    <li>Protects against unauthorized access</li>
+                    <li>Creates backup before migration</li>
+                </ul>
+                <p style="margin-top: 10px;"><strong>Choose a strong password and remember it!</strong> Without it, you won't be able to access your wallets.</p>
+            </div>
+
+            <div class="password-input-group">
+                <label for="master-password">Master Password</label>
+                <div class="password-input-wrapper">
+                    <input type="password" id="master-password" placeholder="Enter your password" autocomplete="current-password" />
+                    <button type="button" class="toggle-password" id="toggle-password" title="Show/hide password">👁️</button>
+                </div>
+            </div>
+
+            <div id="password-error" class="password-error"></div>
+
+            <div id="password-loading" class="password-loading">
+                <div class="spinner"></div>
+                <p>Unlocking wallets...</p>
+            </div>
+
+            <div class="password-modal-buttons">
+                <button type="button" class="btn-unlock" id="btn-unlock">Unlock Wallets</button>
+                <button type="button" class="btn-cancel" id="btn-cancel" style="display: none;">Cancel</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

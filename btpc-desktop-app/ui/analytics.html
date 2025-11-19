@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BTPC Wallet - Analytics</title>
+    <link rel="stylesheet" href="btpc-styles.css">
+    <style>
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 20px;
+            margin-bottom: 32px;
+        }
+    </style>
+</head>
+<body>
+    <div class="page-container">
+        <!-- Sidebar Navigation -->
+        <div class="sidebar">
+            <div class="logo-section">
+                <div class="logo-image">
+                    <div class="btpc-animated-logo">
+                        <span class="btpc-letter">₿</span>
+                        <span class="btpc-letter">T</span>
+                        <span class="btpc-letter">P</span>
+                        <span class="btpc-letter">C</span>
+                    </div>
+                    <div class="quantum-orbital"></div>
+                    <div class="quantum-orbital"></div>
+                    <div class="quantum-symbol">
+                        <span class="btc-symbol">₿</span>
+                        <span class="q-symbol">Q</span>
+                    </div>
+                </div>
+                <div class="logo-header">BTPC Wallet</div>
+                <div class="logo-subtitle">Quantum-Resistant</div>
+
+                <!-- Balance Card inside logo section -->
+                <div class="account-info">
+                    <div class="account-name">Total Balance</div>
+                    <div class="balance-amount">
+                        <span id="wallet-balance">0.00000000</span>
+                        <span class="balance-unit">BTPC</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navigation Menu -->
+            <nav>
+                <a href="index.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-home"></span></span>
+                    <span class="nav-text">Dashboard</span>
+                </a>
+                <a href="wallet-manager.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-wallet"></span></span>
+                    <span class="nav-text">Wallet</span>
+                </a>
+                <a href="transactions.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-transactions"></span></span>
+                    <span class="nav-text">Transactions</span>
+                </a>
+                <a href="mining.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-pickaxe"></span></span>
+                    <span class="nav-text">Mining</span>
+                </a>
+                <a href="node.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-link"></span></span>
+                    <span class="nav-text">Node</span>
+                </a>
+                <a href="settings.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-settings"></span></span>
+                    <span class="nav-text">Settings</span>
+                </a>
+            </nav>
+
+            <!-- Network Status -->
+            <div class="network-status-footer">
+                <div class="network-status-row">
+                    <span class="network-status-label">Network</span>
+                    <span class="network-status-value" id="network-name">Mainnet</span>
+                </div>
+                <div class="network-status-row">
+                    <span class="network-status-label">Status</span>
+                    <span class="network-status-value" id="sync-status">Syncing...</span>
+                </div>
+                <div class="sync-progress-bar">
+                    <div class="sync-progress-fill" id="sync-progress" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="main-content">
+            <div class="page-header">
+                <h1>Blockchain Analytics</h1>
+                <p>Real-time blockchain synchronization and statistics</p>
+            </div>
+
+            <!-- Sync Status Cards -->
+            <div class="stats-grid">
+                <div class="card">
+                    <div class="stat-label">Sync Status</div>
+                    <div class="stat-value" id="syncStatusValue">Checking...</div>
+                    <div class="stat-subtext" id="syncStatusChange">Connecting to node</div>
+                </div>
+                <div class="card">
+                    <div class="stat-label">Current Height</div>
+                    <div class="stat-value" id="currentHeightValue">0</div>
+                    <div class="stat-subtext">Local blockchain</div>
+                </div>
+                <div class="card">
+                    <div class="stat-label">Node Height</div>
+                    <div class="stat-value" id="nodeHeightValue">0</div>
+                    <div class="stat-subtext">Network height</div>
+                </div>
+                <div class="card">
+                    <div class="stat-label">Pending Blocks</div>
+                    <div class="stat-value" id="pendingBlocksValue">0</div>
+                    <div class="stat-subtext" id="pendingBlocksChange">Blocks to sync</div>
+                </div>
+            </div>
+
+            <!-- Sync Progress Card -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <span>Synchronization Progress</span>
+                    <button class="btn btn-secondary" id="refreshSyncBtn" style="padding: 6px 16px;">
+                        <span class="icon icon-refresh"></span> Refresh
+                    </button>
+                </div>
+
+                <div style="padding: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <span style="font-size: 0.875rem; color: var(--text-secondary);">Progress</span>
+                        <span style="font-size: 0.875rem; color: var(--text-secondary);" id="syncProgressPercent">0%</span>
+                    </div>
+                    <div class="sync-progress-bar" style="height: 12px; margin-bottom: 20px;">
+                        <div class="sync-progress-fill" id="syncProgressBar" style="width: 0%"></div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+                        <div>
+                            <div class="stat-label">Synced Blocks</div>
+                            <div class="stat-subtext" id="syncedBlocksValue">0</div>
+                        </div>
+                        <div>
+                            <div class="stat-label">Last Sync</div>
+                            <div class="stat-subtext" id="lastSyncValue">Never</div>
+                        </div>
+                        <div>
+                            <div class="stat-label">Sync Time</div>
+                            <div class="stat-subtext" id="lastSyncChange">Not synced yet</div>
+                        </div>
+                    </div>
+
+                    <div id="syncErrorMessage" style="display: none; margin-top: 16px; padding: 12px; background: rgba(239, 68, 68, 0.1); border-left: 3px solid var(--status-error); border-radius: 6px; color: var(--status-error); font-size: 0.875rem;"></div>
+                </div>
+            </div>
+
+            <!-- Blockchain Statistics -->
+            <div class="card">
+                <div class="card-header">Blockchain Statistics</div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; padding: 20px;">
+                    <div>
+                        <div class="stat-label">Total Supply</div>
+                        <div class="stat-subtext">21,000,000 BTPC</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">Maximum supply</div>
+                    </div>
+                    <div>
+                        <div class="stat-label">Block Reward</div>
+                        <div class="stat-subtext">32.375 BTPC</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">Linear decay</div>
+                    </div>
+                    <div>
+                        <div class="stat-label">Algorithm</div>
+                        <div class="stat-subtext">SHA-512 PoW</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">Proof of Work</div>
+                    </div>
+                    <div>
+                        <div class="stat-label">Signatures</div>
+                        <div class="stat-subtext">ML-DSA</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">Quantum-resistant</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="btpc-common.js"></script>
+    <script>
+        let syncUpdateInterval = null;
+
+        async function updateSyncStatus() {
+            if (!window.invoke) {
+                console.log('Tauri API not ready, will retry...');
+                return;
+            }
+
+            try {
+                const syncStats = await window.invoke('get_sync_stats');
+
+                // Update sync status
+                const isSyncing = syncStats.is_syncing;
+                const isSynced = syncStats.pending_blocks === 0;
+                const statusValue = document.getElementById('syncStatusValue');
+                const statusChange = document.getElementById('syncStatusChange');
+
+                if (isSynced) {
+                    statusValue.textContent = 'Synced';
+                    statusValue.style.color = 'var(--status-success)';
+                    statusChange.textContent = 'Up to date';
+                    statusChange.style.color = 'var(--status-success)';
+                } else if (isSyncing) {
+                    statusValue.textContent = 'Syncing';
+                    statusValue.style.color = 'var(--btpc-accent)';
+                    statusChange.textContent = 'Synchronizing blockchain';
+                    statusChange.style.color = 'var(--text-muted)';
+                } else {
+                    statusValue.textContent = 'Idle';
+                    statusValue.style.color = 'var(--btpc-orange)';
+                    statusChange.textContent = 'Not syncing';
+                    statusChange.style.color = 'var(--text-muted)';
+                }
+
+                // Update heights
+                document.getElementById('currentHeightValue').textContent = syncStats.current_height.toLocaleString();
+                document.getElementById('nodeHeightValue').textContent = syncStats.node_height.toLocaleString();
+
+                // Update pending blocks
+                const pendingValue = document.getElementById('pendingBlocksValue');
+                const pendingChange = document.getElementById('pendingBlocksChange');
+                pendingValue.textContent = syncStats.pending_blocks.toLocaleString();
+
+                if (syncStats.pending_blocks === 0) {
+                    pendingChange.textContent = 'Fully synced';
+                    pendingChange.style.color = 'var(--status-success)';
+                } else {
+                    pendingChange.textContent = 'Blocks to sync';
+                    pendingChange.style.color = 'var(--text-muted)';
+                }
+
+                // Update synced blocks
+                document.getElementById('syncedBlocksValue').textContent = syncStats.synced_blocks.toLocaleString();
+
+                // Update last sync time
+                const lastSyncValue = document.getElementById('lastSyncValue');
+                const lastSyncChange = document.getElementById('lastSyncChange');
+                if (syncStats.last_sync_time) {
+                    const date = new Date(syncStats.last_sync_time);
+                    const now = new Date();
+                    const secondsAgo = Math.floor((now - date) / 1000);
+
+                    if (secondsAgo < 60) {
+                        lastSyncValue.textContent = `${secondsAgo}s ago`;
+                    } else if (secondsAgo < 3600) {
+                        lastSyncValue.textContent = `${Math.floor(secondsAgo / 60)}m ago`;
+                    } else {
+                        lastSyncValue.textContent = date.toLocaleTimeString();
+                    }
+                    lastSyncChange.textContent = date.toLocaleDateString();
+                } else {
+                    lastSyncValue.textContent = 'Never';
+                    lastSyncChange.textContent = 'Not synced yet';
+                }
+
+                // Update progress bar
+                const syncPercentage = syncStats.node_height > 0
+                    ? Math.min(100, (syncStats.current_height / syncStats.node_height * 100))
+                    : 0;
+                document.getElementById('syncProgressBar').style.width = `${syncPercentage}%`;
+                document.getElementById('syncProgressPercent').textContent = `${syncPercentage.toFixed(1)}%`;
+
+                // Update sidebar height
+                document.getElementById('chain-height').textContent = syncStats.current_height.toLocaleString();
+
+                // Update or hide error message
+                const errorDiv = document.getElementById('syncErrorMessage');
+                if (syncStats.last_error) {
+                    errorDiv.textContent = `[WARN] ${syncStats.last_error}`;
+                    errorDiv.style.display = 'block';
+                } else {
+                    errorDiv.style.display = 'none';
+                }
+
+            } catch (error) {
+                console.error('Failed to update sync status:', error);
+                document.getElementById('syncStatusValue').textContent = 'Unavailable';
+                document.getElementById('syncStatusValue').style.color = 'var(--status-error)';
+                document.getElementById('syncStatusChange').textContent = 'Sync service not running';
+            }
+        }
+
+        // Refresh button handler
+        document.getElementById('refreshSyncBtn').addEventListener('click', async () => {
+            await updateSyncStatus();
+        });
+
+        // Auto-update sync status
+        async function startSyncUpdates() {
+            await updateSyncStatus();
+            syncUpdateInterval = setInterval(updateSyncStatus, 2000); // Update every 2 seconds
+        }
+
+        // Start updates when page loads
+        setTimeout(startSyncUpdates, 500);
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (syncUpdateInterval) {
+                clearInterval(syncUpdateInterval);
+            }
+        });
+    </script>
+</body>
+</html>
