@@ -124,6 +124,11 @@
                     <div class="stat-value" id="chain-height">0</div>
                     <div class="stat-subtext">Blockchain</div>
                 </div>
+                <div class="card">
+                    <div class="stat-label">Mining Difficulty</div>
+                    <div class="stat-value" id="mining-difficulty">1.00</div>
+                    <div class="stat-subtext" id="difficulty-subtext">Network</div>
+                </div>
             </div>
 
             <!-- Quick Actions -->
@@ -300,6 +305,33 @@
         function updateBlockchainDisplay(blockchainData) {
             if (blockchainData && blockchainData.height !== undefined) {
                 document.getElementById('chain-height').textContent = blockchainData.height.toLocaleString();
+            }
+            // Update mining difficulty display
+            if (blockchainData && blockchainData.difficulty !== undefined) {
+                const diffEl = document.getElementById('mining-difficulty');
+                const subtextEl = document.getElementById('difficulty-subtext');
+                const diff = blockchainData.difficulty;
+
+                // Format difficulty based on magnitude
+                if (diff >= 1000000) {
+                    diffEl.textContent = (diff / 1000000).toFixed(2) + 'M';
+                } else if (diff >= 1000) {
+                    diffEl.textContent = (diff / 1000).toFixed(2) + 'K';
+                } else {
+                    diffEl.textContent = diff.toFixed(2);
+                }
+
+                // Update subtext based on difficulty level
+                if (diff > 100) {
+                    subtextEl.textContent = 'High';
+                    subtextEl.style.color = 'var(--status-warning)';
+                } else if (diff > 10) {
+                    subtextEl.textContent = 'Medium';
+                    subtextEl.style.color = 'var(--btpc-primary)';
+                } else {
+                    subtextEl.textContent = 'Network';
+                    subtextEl.style.color = '';
+                }
             }
         }
 

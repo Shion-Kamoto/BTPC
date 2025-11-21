@@ -207,16 +207,6 @@
                     </div>
                 </div>
 
-                <!-- Quick Info -->
-                <div class="card">
-                    <div class="card-header">Quick Information</div>
-                    <div style="color: var(--text-secondary); line-height: 1.8;">
-                        <p><strong>Network:</strong> <span id="info-network-quick">-</span></p>
-                        <p><strong>Block Height:</strong> <span id="block-height-quick">-</span></p>
-                        <p><strong>Difficulty:</strong> <span id="info-difficulty-quick">-</span></p>
-                        <p><strong>RPC Port:</strong> <span id="rpc-port">18360</span></p>
-                    </div>
-                </div>
             </div>
 
             <!-- Blockchain Info Tab -->
@@ -231,14 +221,6 @@
                         <div class="status-item">
                             <span class="status-item-label">Blocks</span>
                             <span class="status-item-value" id="info-blocks">-</span>
-                        </div>
-                        <div class="status-item">
-                            <span class="status-item-label">Headers</span>
-                            <span class="status-item-value" id="info-headers">-</span>
-                        </div>
-                        <div class="status-item">
-                            <span class="status-item-label">Difficulty</span>
-                            <span class="status-item-value" id="info-difficulty">-</span>
                         </div>
                         <div class="status-item">
                             <span class="status-item-label">Network Nodes</span>
@@ -289,7 +271,73 @@
     <script src="btpc-logout.js"></script>
     <script>
         let nodeStatusInterval = null;
+        let nodeStartTime = null;
+        let uptimeInterval = null;
         const updateManager = window.btpcUpdateManager;
+        const NODE_START_TIME_KEY = 'btpc_node_start_time';
+
+        // Format uptime as human-readable string
+        function formatUptime(seconds) {
+            if (seconds < 60) return `${seconds}s`;
+            if (seconds < 3600) {
+                const mins = Math.floor(seconds / 60);
+                const secs = seconds % 60;
+                return `${mins}m ${secs}s`;
+            }
+            if (seconds < 86400) {
+                const hours = Math.floor(seconds / 3600);
+                const mins = Math.floor((seconds % 3600) / 60);
+                return `${hours}h ${mins}m`;
+            }
+            const days = Math.floor(seconds / 86400);
+            const hours = Math.floor((seconds % 86400) / 3600);
+            return `${days}d ${hours}h`;
+        }
+
+        // Update uptime display
+        function updateUptimeDisplay() {
+            if (nodeStartTime) {
+                const uptimeSeconds = Math.floor((Date.now() - nodeStartTime) / 1000);
+                document.getElementById('node-uptime').textContent = formatUptime(uptimeSeconds);
+            }
+        }
+
+        // Start uptime tracking (persists to localStorage)
+        function startUptimeTracking() {
+            // Check if we already have a start time stored
+            const storedTime = localStorage.getItem(NODE_START_TIME_KEY);
+            if (storedTime) {
+                nodeStartTime = parseInt(storedTime, 10);
+            } else {
+                nodeStartTime = Date.now();
+                localStorage.setItem(NODE_START_TIME_KEY, nodeStartTime.toString());
+            }
+            updateUptimeDisplay();
+            if (uptimeInterval) clearInterval(uptimeInterval);
+            uptimeInterval = setInterval(updateUptimeDisplay, 1000);
+        }
+
+        // Stop uptime tracking (clears localStorage)
+        function stopUptimeTracking() {
+            nodeStartTime = null;
+            localStorage.removeItem(NODE_START_TIME_KEY);
+            if (uptimeInterval) {
+                clearInterval(uptimeInterval);
+                uptimeInterval = null;
+            }
+            document.getElementById('node-uptime').textContent = '0s';
+        }
+
+        // Resume uptime tracking if node is already running (page load/navigation)
+        function resumeUptimeTracking() {
+            const storedTime = localStorage.getItem(NODE_START_TIME_KEY);
+            if (storedTime) {
+                nodeStartTime = parseInt(storedTime, 10);
+                updateUptimeDisplay();
+                if (uptimeInterval) clearInterval(uptimeInterval);
+                uptimeInterval = setInterval(updateUptimeDisplay, 1000);
+            }
+        }
 
         // Tab switching
         function switchTab(tabName) {
@@ -320,6 +368,7 @@
                 document.getElementById('stop-node-btn').style.display = 'inline-flex';
                 document.getElementById('node-status').innerHTML = '<span class="icon icon-link" style="color: var(--status-success);"></span> Running';
 
+                startUptimeTracking();
                 startStatusUpdates();
                 toast.success('Node started successfully!');
             } catch (e) {
@@ -349,6 +398,23 @@
                 document.getElementById('node-status').innerHTML = '<span class="icon icon-link" style="opacity: 0.3;"></span> Off';
                 document.getElementById('node-status').style.color = 'var(--text-muted)';
 
+                // Reset all status displays
+                document.getElementById('sync-percent').textContent = '0%';
+                document.getElementById('sync-percent').style.color = '';
+                document.getElementById('peer-count').textContent = '0';
+                const progressBar = document.getElementById('sync-progress-sidebar');
+                if (progressBar) progressBar.style.width = '0%';
+
+                // Reset Blockchain Info tab
+                const networkStatusEl = document.getElementById('info-network-status');
+                networkStatusEl.innerHTML = '<span class="icon icon-link" style="opacity: 0.3;"></span> Off';
+                networkStatusEl.style.color = 'var(--text-muted)';
+                document.getElementById('info-chain').textContent = '-';
+                document.getElementById('info-blocks').textContent = '-';
+                document.getElementById('info-network-nodes').textContent = '0';
+                document.getElementById('info-best-block').textContent = '-';
+
+                stopUptimeTracking();
                 stopStatusUpdates();
                 toast.success('Node stopped successfully');
 
@@ -416,48 +482,67 @@
                 if (info) {
                     // Update all displays
                     const height = info.height || 0;
-                    document.getElementById('block-height-quick').textContent = height.toLocaleString();
                     document.getElementById('info-blocks').textContent = height.toLocaleString();
-                    document.getElementById('info-headers').textContent = (info.headers || 0).toLocaleString();
-                    document.getElementById('info-difficulty').textContent = info.difficulty || '-';
-                    document.getElementById('info-difficulty-quick').textContent = info.difficulty || '-';
                     document.getElementById('info-best-block').textContent = info.best_block_hash || info.bestblockhash || '-';
                     document.getElementById('info-chain').textContent = info.chain || 'mainnet';
-                    document.getElementById('info-network-quick').textContent = info.chain || 'mainnet';
 
                     // Update peer count if available
                     if (info.connections !== undefined) {
                         const peerCount = info.connections;
                         document.getElementById('peer-count').textContent = peerCount;
                         document.getElementById('info-network-nodes').textContent = peerCount;
-
-                        // Update network status
-                        const networkStatusEl = document.getElementById('info-network-status');
-                        if (peerCount > 0) {
-                            networkStatusEl.innerHTML = '<span class="icon icon-link" style="color: var(--status-success);"></span> Connected';
-                        } else {
-                            networkStatusEl.innerHTML = '<span class="icon icon-link" style="opacity: 0.3;"></span> Off';
-                        }
                     }
 
                     // Calculate sync progress
+                    const syncPercent = document.getElementById('sync-percent');
+                    const progressBar = document.getElementById('sync-progress-sidebar');
                     if (info.headers && info.height) {
                         const progress = Math.min(100, (info.height / info.headers) * 100).toFixed(1);
-                        document.getElementById('sync-percent').textContent = `${progress}%`;
-                        const progressBar = document.getElementById('sync-progress-sidebar');
+                        syncPercent.textContent = `${progress}%`;
                         if (progressBar) progressBar.style.width = `${progress}%`;
+
+                        // Color based on sync status
+                        if (progress >= 99.9) {
+                            syncPercent.style.color = 'var(--status-success)';
+                        } else if (progress > 0) {
+                            syncPercent.style.color = 'var(--status-warning)';
+                        }
                     }
                 }
 
                 const nodeStatus = await window.invoke('get_node_status');
+                const networkStatusEl = document.getElementById('info-network-status');
                 if (nodeStatus && nodeStatus.running) {
                     document.getElementById('node-status').innerHTML = '<span class="icon icon-link" style="color: var(--status-success);"></span> Running';
                     document.getElementById('start-node-btn').style.display = 'none';
                     document.getElementById('stop-node-btn').style.display = 'inline-flex';
+                    // Update Blockchain Info tab network status
+                    networkStatusEl.innerHTML = '<span class="icon icon-link" style="color: var(--status-success);"></span> Online';
+                    networkStatusEl.style.color = 'var(--status-success)';
+                    // Resume uptime tracking (uses stored start time if available)
+                    if (!nodeStartTime) resumeUptimeTracking();
+                    // If no stored time, start fresh
+                    if (!nodeStartTime) startUptimeTracking();
                 } else {
                     document.getElementById('node-status').innerHTML = '<span class="icon icon-link" style="opacity: 0.3;"></span> Off';
                     document.getElementById('start-node-btn').style.display = 'inline-flex';
                     document.getElementById('stop-node-btn').style.display = 'none';
+                    // Update Blockchain Info tab network status
+                    networkStatusEl.innerHTML = '<span class="icon icon-link" style="opacity: 0.3;"></span> Off';
+                    networkStatusEl.style.color = 'var(--text-muted)';
+                    // Reset all status displays when node is off
+                    document.getElementById('sync-percent').textContent = '0%';
+                    document.getElementById('sync-percent').style.color = '';
+                    document.getElementById('peer-count').textContent = '0';
+                    const progressBar = document.getElementById('sync-progress-sidebar');
+                    if (progressBar) progressBar.style.width = '0%';
+                    // Reset Blockchain Info tab
+                    document.getElementById('info-chain').textContent = '-';
+                    document.getElementById('info-blocks').textContent = '-';
+                    document.getElementById('info-network-nodes').textContent = '0';
+                    document.getElementById('info-best-block').textContent = '-';
+                    // Stop uptime tracking
+                    if (nodeStartTime) stopUptimeTracking();
                 }
             } catch (e) {
                 console.log('Failed to get node status:', e);
@@ -539,41 +624,73 @@
             window.nodePageSubscribed = true;
             updateManager.subscribe((type, data, fullState) => {
                 if (type === 'node') {
+                    const networkStatusEl = document.getElementById('info-network-status');
                     if (data.running) {
                         document.getElementById('node-status').innerHTML = '<span class="icon icon-link" style="color: var(--status-success);"></span> Running';
                         document.getElementById('start-node-btn').style.display = 'none';
                         document.getElementById('stop-node-btn').style.display = 'inline-flex';
+                        // Update Blockchain Info tab network status
+                        networkStatusEl.innerHTML = '<span class="icon icon-link" style="color: var(--status-success);"></span> Online';
+                        networkStatusEl.style.color = 'var(--status-success)';
+                        // Resume uptime tracking (uses stored start time if available)
+                        if (!nodeStartTime) resumeUptimeTracking();
+                        // If no stored time, start fresh
+                        if (!nodeStartTime) startUptimeTracking();
                     } else {
                         document.getElementById('node-status').innerHTML = '<span class="icon icon-link" style="opacity: 0.3;"></span> Off';
                         document.getElementById('start-node-btn').style.display = 'inline-flex';
                         document.getElementById('stop-node-btn').style.display = 'none';
+                        // Update Blockchain Info tab network status
+                        networkStatusEl.innerHTML = '<span class="icon icon-link" style="opacity: 0.3;"></span> Off';
+                        networkStatusEl.style.color = 'var(--text-muted)';
+                        // Reset all status displays when node is off
+                        document.getElementById('sync-percent').textContent = '0%';
+                        document.getElementById('sync-percent').style.color = '';
+                        document.getElementById('peer-count').textContent = '0';
+                        const progressBar = document.getElementById('sync-progress-sidebar');
+                        if (progressBar) progressBar.style.width = '0%';
+                        // Reset Blockchain Info tab
+                        document.getElementById('info-chain').textContent = '-';
+                        document.getElementById('info-blocks').textContent = '-';
+                        document.getElementById('info-network-nodes').textContent = '0';
+                        document.getElementById('info-best-block').textContent = '-';
+                        // Stop uptime tracking
+                        if (nodeStartTime) stopUptimeTracking();
                     }
                 } else if (type === 'blockchain') {
                     const height = data.height || 0;
-                    document.getElementById('block-height-quick').textContent = height.toLocaleString();
                     document.getElementById('info-blocks').textContent = height.toLocaleString();
-                    document.getElementById('info-headers').textContent = (data.headers || 0).toLocaleString();
-                    document.getElementById('info-difficulty').textContent = data.difficulty || '-';
-                    document.getElementById('info-difficulty-quick').textContent = data.difficulty || '-';
                     document.getElementById('info-best-block').textContent = data.best_block_hash || data.bestblockhash || '-';
                     document.getElementById('info-chain').textContent = data.chain || 'mainnet';
-                    document.getElementById('info-network-quick').textContent = data.chain || 'mainnet';
 
-                    // Update peer count and network status if available
+                    // Update peer count
                     if (data.connections !== undefined) {
                         const peerCount = data.connections;
                         document.getElementById('peer-count').textContent = peerCount;
                         document.getElementById('info-network-nodes').textContent = peerCount;
+                    }
 
-                        // Update network status
-                        const networkStatusEl = document.getElementById('info-network-status');
-                        if (peerCount > 0) {
-                            networkStatusEl.innerHTML = '<span class="icon icon-link" style="color: var(--status-success);"></span> Connected';
-                            networkStatusEl.style.color = 'var(--status-success)';
+                    // Update sync progress
+                    const syncPercent = document.getElementById('sync-percent');
+                    const syncProgressBar = document.getElementById('sync-progress-sidebar');
+                    if (data.sync_progress !== undefined) {
+                        const progress = data.sync_progress.toFixed(1);
+                        syncPercent.textContent = `${progress}%`;
+                        if (syncProgressBar) syncProgressBar.style.width = `${progress}%`;
+
+                        // Update color based on sync status
+                        if (data.is_synced) {
+                            syncPercent.style.color = 'var(--status-success)';
+                        } else if (data.sync_progress > 0) {
+                            syncPercent.style.color = 'var(--status-warning)';
                         } else {
-                            networkStatusEl.innerHTML = '<span class="icon icon-link" style="opacity: 0.3;"></span> Off';
-                            networkStatusEl.style.color = 'var(--text-muted)';
+                            syncPercent.style.color = '';
                         }
+                    } else if (data.headers && height) {
+                        // Fallback calculation
+                        const progress = Math.min(100, (height / data.headers) * 100).toFixed(1);
+                        syncPercent.textContent = `${progress}%`;
+                        if (syncProgressBar) syncProgressBar.style.width = `${progress}%`;
                     }
                 } else if (type === 'wallet') {
                     document.getElementById('wallet-balance').textContent = (data.balance || 0).toFixed(8);
@@ -615,14 +732,8 @@
                         document.getElementById('stop-node-btn').style.display = 'inline-flex';
 
                         // Update additional fields if available
-                        if (nodeStatus.block_height) {
-                            document.getElementById('block-height-quick').textContent = nodeStatus.block_height.toLocaleString();
-                        }
                         if (nodeStatus.peer_count !== undefined) {
                             document.getElementById('peer-count').textContent = nodeStatus.peer_count;
-                        }
-                        if (nodeStatus.network) {
-                            document.getElementById('info-network-quick').textContent = nodeStatus.network;
                         }
                     } else {
                         document.getElementById('node-status').innerHTML =

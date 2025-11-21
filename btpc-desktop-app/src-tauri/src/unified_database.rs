@@ -717,6 +717,15 @@ impl UnifiedDatabase {
             let path = entry.path();
 
             if path.is_dir() {
+                // Get directory name as backup name
+                let name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| format!("backup-{}", backup_id));
+
+                // Get full path as string
+                let path_str = path.to_string_lossy().to_string();
+
                 // Get directory metadata for timestamp
                 let metadata = std::fs::metadata(&path)?;
                 let timestamp = metadata
@@ -731,6 +740,9 @@ impl UnifiedDatabase {
                     backup_id,
                     timestamp,
                     size_bytes,
+                    name,
+                    path: path_str,
+                    created_at: timestamp,
                 });
 
                 backup_id += 1;
@@ -750,6 +762,9 @@ pub struct BackupInfo {
     pub backup_id: u32,
     pub timestamp: i64,
     pub size_bytes: u64,
+    pub name: String,
+    pub path: String,
+    pub created_at: i64,
 }
 
 // ============================================================================

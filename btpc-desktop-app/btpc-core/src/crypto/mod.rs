@@ -8,9 +8,11 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 pub mod address;
+pub mod bip39;
 pub mod hash;
 pub mod keys;
 pub mod script;
+pub mod shake256_derivation;
 pub mod signatures;
 pub mod wallet_serde;
 

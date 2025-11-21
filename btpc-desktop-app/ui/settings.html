@@ -260,7 +260,7 @@
                         </p>
                         <div style="display: flex; gap: 12px; align-items: flex-end;">
                             <div style="flex: 1;">
-                                <input type="text" class="form-input" id="backup-name" placeholder="backup-2025-11-19" value="backup-<?php echo date('Y-m-d'); ?>">
+                                <input type="text" class="form-input" id="backup-name" placeholder="backup-2025-11-19" value="">
                                 <small style="color: var(--text-muted); font-size: 0.8125rem;">Saved to ~/.btpc/backups/</small>
                             </div>
                             <button class="btn btn-primary" onclick="createDatabaseBackup()">
@@ -869,6 +869,13 @@
 
             // Load settings after TabManager is initialized
             loadSettings();
+
+            // Set default backup name with today's date
+            const backupNameInput = document.getElementById('backup-name');
+            if (backupNameInput) {
+                const today = new Date().toISOString().split('T')[0];
+                backupNameInput.value = `backup-${today}`;
+            }
 
             // Add event listener to network type dropdown
             const networkTypeSelect = document.getElementById('network-type');

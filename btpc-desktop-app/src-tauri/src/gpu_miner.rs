@@ -271,12 +271,14 @@ impl GpuMiner {
             ((NONCES_PER_BATCH as usize + local_work_size - 1) / local_work_size) * local_work_size;
 
         // Set kernel arguments and execute
+        // Note: kernel expects u32 timestamp (Bitcoin-compatible)
+        let timestamp_u32 = header.timestamp as u32;
         let kernel_event = unsafe {
             ExecuteKernel::new(&self.kernel)
                 .set_arg(&header.version)
                 .set_arg(&self.prev_hash_buffer)
                 .set_arg(&self.merkle_root_buffer)
-                .set_arg(&header.timestamp)
+                .set_arg(&timestamp_u32)
                 .set_arg(&header.bits)
                 .set_arg(&nonce_start)
                 .set_arg(&self.target_buffer)

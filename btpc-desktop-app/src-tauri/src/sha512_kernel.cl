@@ -46,23 +46,23 @@ __constant ulong H0[8] = {
 /**
  * Serialize BlockHeader to bytes for hashing
  *
- * BlockHeader structure:
+ * BlockHeader structure (Bitcoin-compatible):
  * - version: u32 (4 bytes)
  * - prev_hash: [u8; 64] (64 bytes)
  * - merkle_root: [u8; 64] (64 bytes)
- * - timestamp: u64 (8 bytes)
+ * - timestamp: u32 (4 bytes) - Bitcoin uses 32-bit timestamp
  * - bits: u32 (4 bytes)
  * - nonce: u32 (4 bytes)
- * Total: 148 bytes
+ * Total: 144 bytes
  */
 void serialize_header(
     uint version,
     __global const uchar *prev_hash,     // 64 bytes
     __global const uchar *merkle_root,   // 64 bytes
-    ulong timestamp,
+    uint timestamp,                       // Changed to uint (u32)
     uint bits,
     uint nonce,
-    uchar *output                        // 148 bytes output
+    uchar *output                        // 144 bytes output
 ) {
     int offset = 0;
 
@@ -82,15 +82,11 @@ void serialize_header(
         output[offset++] = merkle_root[i];
     }
 
-    // timestamp (8 bytes, little-endian)
+    // timestamp (4 bytes, little-endian) - Bitcoin uses 32-bit
     output[offset++] = (uchar)(timestamp);
     output[offset++] = (uchar)(timestamp >> 8);
     output[offset++] = (uchar)(timestamp >> 16);
     output[offset++] = (uchar)(timestamp >> 24);
-    output[offset++] = (uchar)(timestamp >> 32);
-    output[offset++] = (uchar)(timestamp >> 40);
-    output[offset++] = (uchar)(timestamp >> 48);
-    output[offset++] = (uchar)(timestamp >> 56);
 
     // bits (4 bytes, little-endian)
     output[offset++] = (uchar)(bits);
@@ -253,7 +249,7 @@ int hash_meets_target(const uchar *hash, __global const uchar *target) {
  * @param version      Block version
  * @param prev_hash    Previous block hash (64 bytes)
  * @param merkle_root  Merkle root (64 bytes)
- * @param timestamp    Block timestamp
+ * @param timestamp    Block timestamp (32-bit, Bitcoin-compatible)
  * @param bits         Difficulty bits
  * @param nonce_start  Starting nonce for this batch
  * @param target       Target hash (64 bytes)
@@ -263,7 +259,7 @@ __kernel void mine_block(
     uint version,
     __global const uchar *prev_hash,
     __global const uchar *merkle_root,
-    ulong timestamp,
+    uint timestamp,                       // Changed to uint (u32)
     uint bits,
     uint nonce_start,
     __global const uchar *target,
@@ -273,12 +269,15 @@ __kernel void mine_block(
     uint nonce = nonce_start + global_id;
 
     // Serialize header with this nonce
-    uchar header[148];
+    uchar header[144];  // 144 bytes for Bitcoin-compatible header
     serialize_header(version, prev_hash, merkle_root, timestamp, bits, nonce, header);
 
-    // Compute SHA-512 hash
+    // Compute DOUBLE SHA-512 hash (Bitcoin-compatible)
+    uchar hash1[64];
+    sha512_hash(header, 144, hash1);
+
     uchar hash[64];
-    sha512_hash(header, 148, hash);
+    sha512_hash(hash1, 64, hash);  // Second SHA-512 pass
 
     // Check if hash meets target
     if (hash_meets_target(hash, target)) {

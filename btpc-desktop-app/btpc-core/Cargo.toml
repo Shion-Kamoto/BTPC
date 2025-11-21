@@ -26,6 +26,8 @@ aes-gcm = { workspace = true }
 argon2 = { workspace = true }
 subtle = { workspace = true }
 base64 = "0.21"  # HTTP Basic Auth for RPC (Issue #1)
+bip39 = "2.0"    # BIP39 mnemonic generation
+sha3 = "0.10"    # SHAKE256 for key derivation
 
 # TLS Support for RPC (Issue #2)
 tokio-rustls = "0.25"

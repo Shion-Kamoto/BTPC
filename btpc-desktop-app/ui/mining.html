@@ -546,12 +546,18 @@
 
                 if (status) {
                     const blocksFound = status.blocks_found || 0;
-                    const rewardPerBlock = 32.375; // BTPC reward per block
-                    const estimatedReward = blocksFound * rewardPerBlock;
+
+                    // Linear decay block reward calculation (Constitution Article III)
+                    const current_height = status.current_height || 0;
+                    const initial_reward = 32.375;
+                    const tail_emission = 0.5;
+                    const total_decay_blocks = 1261440;
+                    const reward = initial_reward - (initial_reward - tail_emission) * (current_height / total_decay_blocks);
+                    const rewardPerBlock = Math.max(reward, tail_emission);
 
                     document.getElementById('hashrate').textContent = `${currentHashrate.toLocaleString()} H/s`;
                     document.getElementById('blocks-found').textContent = blocksFound;
-                    document.getElementById('est-reward').textContent = `${estimatedReward.toFixed(8)} BTPC`;
+                    document.getElementById('est-reward').textContent = `${rewardPerBlock.toFixed(8)} BTPC/block`;
                 }
 
                 // Fetch and display mining logs
@@ -814,21 +820,27 @@
             updateManager.subscribe((type, data, fullState) => {
                 if (type === 'mining') {
                     const blocksFound = data.blocks_found || 0;
-                    const rewardPerBlock = 32.375;
-                    const estimatedReward = blocksFound * rewardPerBlock;
-    
+
+                    // Linear decay block reward calculation (Constitution Article III)
+                    const current_height = data.current_height || 0;
+                    const initial_reward = 32.375;
+                    const tail_emission = 0.5;
+                    const total_decay_blocks = 1261440;
+                    const reward = initial_reward - (initial_reward - tail_emission) * (current_height / total_decay_blocks);
+                    const rewardPerBlock = Math.max(reward, tail_emission);
+
                     if (data.is_mining) {
                         document.getElementById('mining-status').innerHTML = '<span class="icon icon-pickaxe" style="color: var(--status-success);"></span> Running';
                         document.getElementById('hashrate').textContent = `${(data.hashrate || 0).toLocaleString()} H/s`;
                         document.getElementById('blocks-found').textContent = blocksFound;
-                        document.getElementById('est-reward').textContent = `${estimatedReward.toFixed(8)} BTPC`;
+                        document.getElementById('est-reward').textContent = `${rewardPerBlock.toFixed(8)} BTPC/block`;
                         document.getElementById('start-mining-btn').style.display = 'none';
                         document.getElementById('stop-mining-btn').style.display = 'inline-flex';
                     } else {
                         document.getElementById('mining-status').innerHTML = '<span class="icon icon-pickaxe" style="opacity: 0.3;"></span> Stopped';
                         document.getElementById('hashrate').textContent = '0 H/s';
                         document.getElementById('blocks-found').textContent = blocksFound;
-                        document.getElementById('est-reward').textContent = `${estimatedReward.toFixed(8)} BTPC`;
+                        document.getElementById('est-reward').textContent = `${rewardPerBlock.toFixed(8)} BTPC/block`;
                         document.getElementById('start-mining-btn').style.display = 'inline-flex';
                         document.getElementById('stop-mining-btn').style.display = 'none';
                     }
@@ -907,10 +919,19 @@
 
                         // Update blocks mined if available
                         if (miningStatus.blocks_mined !== undefined) {
-                            const rewardPerBlock = 32.375;
-                            const estimatedReward = miningStatus.blocks_mined * rewardPerBlock;
+                            // Linear decay block reward calculation (Constitution Article III)
+                            // Reward decreases linearly from 32.375 BTPC to 0.5 BTPC over 1,261,440 blocks
+                            const current_height = miningStatus.current_height || 0;
+                            const initial_reward = 32.375;
+                            const tail_emission = 0.5;
+                            const total_decay_blocks = 1261440;
+
+                            // Calculate per-block reward at current height using linear decay
+                            const reward = initial_reward - (initial_reward - tail_emission) * (current_height / total_decay_blocks);
+                            const rewardPerBlock = Math.max(reward, tail_emission); // Clamp to tail emission
+
                             document.getElementById('blocks-found').textContent = miningStatus.blocks_mined;
-                            document.getElementById('est-reward').textContent = `${estimatedReward.toFixed(8)} BTPC`;
+                            document.getElementById('est-reward').textContent = `${rewardPerBlock.toFixed(8)} BTPC/block`;
                         }
 
                         // Update difficulty if available

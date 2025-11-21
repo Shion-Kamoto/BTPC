@@ -725,7 +725,7 @@ impl MiningThreadPool {
                             if let Some(logger) = get_debug_logger() {
                                 logger.log_complete_block(
                                     Some(device_index),
-                                    0, // height unknown at mining time
+                                    block_template.height, // Height from block template
                                     &hex::encode(block_hash.as_slice()),
                                     &hex::encode(prev_hash.as_slice()),
                                     &hex::encode(merkle_root.as_slice()),
@@ -792,6 +792,13 @@ impl MiningThreadPool {
                                             nonce: nonce as u64,
                                         });
                                     }
+
+                                    // 🔥 CRITICAL FIX: Invalidate cached template to force fresh fetch
+                                    // Without this, mining continues on stale template with old prev_hash
+                                    // This causes all subsequent blocks to be rejected (wrong height/prev_hash)
+                                    eprintln!("[GPU MINING] 🔄 Block accepted! Invalidating template cache to fetch fresh template...");
+                                    cached_template = None;
+                                    current_template = None;
                                 }
                                 Err(e) => {
                                     eprintln!("[GPU MINING] ❌ Block submission failed: {}", e);

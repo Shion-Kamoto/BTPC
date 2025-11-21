@@ -12,7 +12,7 @@ use std::sync::Arc;
 use tracing::{debug, info, instrument, warn};
 
 // Re-export structures from utxo_manager
-use btpc_desktop_app::utxo_manager::{Transaction, TxInput, UTXO};
+use crate::utxo_manager::{Transaction, TxInput, UTXO};
 
 /// Column family names
 const CF_TRANSACTIONS: &str = "transactions"; // txid -> Transaction

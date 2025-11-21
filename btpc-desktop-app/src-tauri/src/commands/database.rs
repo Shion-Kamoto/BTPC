@@ -5,8 +5,9 @@
 use btpc_desktop_app::unified_database::{BackupInfo, UnifiedDatabase};
 use serde::Serialize;
 use std::path::PathBuf;
-use std::sync::Arc;
 use tauri::State;
+
+use crate::AppState;
 
 /// Response for database integrity check
 #[derive(Debug, Clone, Serialize)]
@@ -51,9 +52,12 @@ pub struct ListBackupsResponse {
 /// IntegrityCheckResponse with validation results
 #[tauri::command]
 pub async fn check_database_integrity(
-    db: State<'_, Arc<UnifiedDatabase>>,
+    state: State<'_, AppState>,
 ) -> Result<IntegrityCheckResponse, String> {
     eprintln!("🔍 Frontend requested database integrity check");
+
+    let node = state.embedded_node.read().await;
+    let db = node.get_database();
 
     match db.check_integrity() {
         Ok(result) => Ok(IntegrityCheckResponse {
@@ -88,7 +92,7 @@ pub async fn check_database_integrity(
 /// CreateBackupResponse with backup path
 #[tauri::command]
 pub async fn create_database_backup(
-    db: State<'_, Arc<UnifiedDatabase>>,
+    state: State<'_, AppState>,
     backup_name: String,
 ) -> Result<CreateBackupResponse, String> {
     eprintln!("📦 Frontend requested database backup: {}", backup_name);
@@ -107,6 +111,9 @@ pub async fn create_database_backup(
 
     let backups_root = home_dir.join(".btpc").join("backups");
     let backup_path = backups_root.join(&backup_name);
+
+    let node = state.embedded_node.read().await;
+    let db = node.get_database();
 
     match db.create_backup(&backup_path) {
         Ok(path) => {

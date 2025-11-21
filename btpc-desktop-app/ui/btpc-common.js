@@ -235,13 +235,22 @@ function updateNetworkFooter(blockchainData) {
             }
         }
 
-        // Update block height (current / total)
+        // Update block height
+        // For embedded node, headers always equal blocks (self-contained blockchain)
+        // Only show sync progress if actually syncing from network (height < headers)
         const blockHeightEls = document.querySelectorAll('#chain-height, #chain-height-sidebar, .chain-height-display');
         blockHeightEls.forEach(el => {
             if (el) {
-                const height = (blockchainData.height || 0).toLocaleString();
-                const headers = (blockchainData.headers || 0).toLocaleString();
-                el.textContent = `${height} / ${headers}`;
+                const height = blockchainData.height || 0;
+                const headers = blockchainData.headers || 0;
+
+                // Show "height / headers" only when syncing (height < headers)
+                // Otherwise just show height for cleaner display
+                if (height < headers) {
+                    el.textContent = `${height.toLocaleString()} / ${headers.toLocaleString()}`;
+                } else {
+                    el.textContent = height.toLocaleString();
+                }
             }
         });
 
