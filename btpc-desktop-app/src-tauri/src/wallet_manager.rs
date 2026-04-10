@@ -1159,7 +1159,3 @@ impl WalletManager {
 
 // NOTE: Original comprehensive tests temporarily disabled due to API refactoring
 // All tests need to be updated for new password-based wallet creation API
-// See wallet_manager/tests.rs for full test suite (needs updating)
-// Encrypted wallet tests are now in tests_simple.rs (working tests)
-#[cfg(test)]
-mod tests_simple;

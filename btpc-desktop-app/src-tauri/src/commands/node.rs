@@ -6,7 +6,6 @@ use std::fs;
 use std::io::Write;
 use tauri::State;
 
-use crate::config::NetworkType;
 use crate::error::BtpcError;
 use crate::sync_service::{BlockchainSyncService, SyncConfig, SyncStats};
 use crate::AppState;

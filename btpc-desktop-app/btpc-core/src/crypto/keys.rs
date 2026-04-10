@@ -584,6 +584,7 @@ impl<'de> Deserialize<'de> for PublicKey {
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
 

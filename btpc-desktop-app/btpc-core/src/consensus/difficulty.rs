@@ -600,8 +600,8 @@ mod tests {
         let easy_target = DifficultyTarget::from_bits(0x207fffff);
         let hard_target = DifficultyTarget::from_bits(0x1d00ffff);
 
-        let easy_work = easy_target.work();
-        let hard_work = hard_target.work();
+        let easy_work = easy_target.work_integer();
+        let hard_work = hard_target.work_integer();
 
         // Harder target should require more work
         assert!(hard_work > easy_work);
@@ -629,8 +629,8 @@ mod tests {
         assert!(target2.is_valid());
 
         // Targets should be very close (within 1% of each other)
-        let work1 = target1.work();
-        let work2 = target2.work();
+        let work1 = target1.work_integer() as f64;
+        let work2 = target2.work_integer() as f64;
         let work_ratio = if work1 > work2 {
             work1 / work2
         } else {
@@ -897,8 +897,8 @@ mod tests {
         );
 
         // Verify work difference between mainnet and regtest is reasonable
-        let mainnet_work = mainnet_difficulty.work();
-        let regtest_work = regtest_difficulty.work();
+        let mainnet_work = mainnet_difficulty.work_integer();
+        let regtest_work = regtest_difficulty.work_integer();
 
         // Mainnet should require more work than regtest
         assert!(

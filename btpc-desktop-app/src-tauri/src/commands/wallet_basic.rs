@@ -6,12 +6,10 @@
 //! - Wallet creation
 //! - BTPC sending
 
-use std::sync::{Arc, Mutex};
 use tauri::State;
 
 use crate::error::BtpcError;
 use crate::AppState;
-use crate::utxo_manager::UTXOManager;
 
 #[tauri::command]
 pub async fn get_total_balance(state: State<'_, AppState>) -> Result<f64, String> {

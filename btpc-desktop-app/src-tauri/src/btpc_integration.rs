@@ -382,5 +382,3 @@ fn get_platform_info() -> String {
     format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH)
 }
 
-#[cfg(test)]
-mod tests;

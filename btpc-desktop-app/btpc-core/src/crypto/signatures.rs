@@ -261,6 +261,7 @@ impl<'de> Deserialize<'de> for Signature {
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
     use crate::crypto::{PrivateKey, PublicKey};
