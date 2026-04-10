@@ -2,17 +2,20 @@
 //!
 //! Background service that monitors broadcast transactions for confirmations
 //! and automatically releases UTXO reservations when transactions are confirmed.
+//!
+//! FIX 2025-11-27: Uses embedded node instead of external RPC for transaction queries
 
+use btpc_desktop_app::embedded_node::{EmbeddedNode, TransactionInfo};
 use crate::events::{ReleaseReason, TransactionEvent, UTXOEvent};
 use crate::utxo_manager::UTXOManager;
 use crate::AppState;
-use btpc_desktop_app::rpc_client::RpcClient;
 use btpc_desktop_app::transaction_state::{
     TransactionState, TransactionStateManager, TransactionStatus,
 };
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
+use tokio::sync::RwLock;
 use tokio::time::sleep;
 
 /// Transaction monitoring service that runs in the background
@@ -21,8 +24,8 @@ pub struct TransactionMonitor {
     tx_state_manager: Arc<TransactionStateManager>,
     /// Reference to UTXO manager for releasing reservations
     utxo_manager: Arc<Mutex<UTXOManager>>,
-    /// RPC client for checking transaction status
-    rpc_port: u16,
+    /// Embedded node for checking transaction status (replaces RPC)
+    embedded_node: Arc<RwLock<EmbeddedNode>>,
     /// App handle for emitting events
     app: AppHandle,
     /// Polling interval (seconds)
@@ -31,13 +34,12 @@ pub struct TransactionMonitor {
 
 impl TransactionMonitor {
     /// Create a new transaction monitor
+    /// FIX 2025-11-27: Now uses embedded node instead of RPC
     pub async fn new(app_state: &AppState, app: AppHandle, poll_interval: u64) -> Self {
-        let rpc_port = *app_state.active_rpc_port.read().await;
-
         Self {
             tx_state_manager: app_state.tx_state_manager.clone(),
             utxo_manager: app_state.utxo_manager.clone(),
-            rpc_port,
+            embedded_node: app_state.embedded_node.clone(),
             app,
             poll_interval,
         }
@@ -46,7 +48,7 @@ impl TransactionMonitor {
     /// Start the monitoring service in the background
     pub async fn start(self) {
         println!(
-            "🔎 Starting transaction monitor (polling every {}s)",
+            "🔎 Starting transaction monitor (polling every {}s, using embedded node)",
             self.poll_interval
         );
 
@@ -62,6 +64,7 @@ impl TransactionMonitor {
     }
 
     /// Check all pending transactions for confirmations
+    /// FIX 2025-11-27: Uses embedded node instead of RPC
     async fn check_pending_transactions(&self) {
         // Get all transactions in Broadcast or Confirming state
         let pending_txs = self.tx_state_manager.get_pending_transactions();
@@ -70,32 +73,25 @@ impl TransactionMonitor {
             return;
         }
 
-        println!("🔎 Checking {} pending transactions", pending_txs.len());
+        println!("🔎 Checking {} pending transactions (via embedded node)", pending_txs.len());
 
-        // Connect to RPC node
-        let rpc_client = RpcClient::new("127.0.0.1", self.rpc_port);
-
-        // Check if node is available
-        if !rpc_client.ping().await.unwrap_or(false) {
-            println!("⚠️  Cannot connect to RPC node for transaction monitoring");
-            return;
-        }
-
-        // Check each transaction
+        // Check each transaction using embedded node
         for tx_state in pending_txs {
-            self.check_transaction_status(&rpc_client, &tx_state).await;
+            self.check_transaction_status(&tx_state).await;
         }
     }
 
     /// Check the status of a single transaction
-    async fn check_transaction_status(&self, rpc_client: &RpcClient, tx_state: &TransactionState) {
+    /// FIX 2025-11-27: Uses embedded node get_transaction_info() instead of RPC
+    async fn check_transaction_status(&self, tx_state: &TransactionState) {
         let tx_id = &tx_state.transaction_id;
 
-        // Query RPC for transaction info
-        match rpc_client.get_transaction(tx_id).await {
-            Ok(tx_info) => {
+        // Query embedded node for transaction info
+        let node = self.embedded_node.read().await;
+        match node.get_transaction_info(tx_id).await {
+            Ok(Some(tx_info)) => {
                 // Check confirmations
-                let confirmations = tx_info.confirmations.unwrap_or(0);
+                let confirmations = tx_info.confirmations as u64;
 
                 if confirmations >= 1 {
                     // Transaction is confirmed!
@@ -108,25 +104,30 @@ impl TransactionMonitor {
                         TransactionStatus::Confirming,
                         None,
                     );
-                    println!("⏳ Transaction {} is confirming (0 confirmations)", tx_id);
+                    println!("⏳ Transaction {} is confirming (0 confirmations)", &tx_id[..16.min(tx_id.len())]);
+                }
+            }
+            Ok(None) => {
+                // Transaction not found in mempool or blockchain
+                if tx_state.status == TransactionStatus::Broadcast {
+                    println!("⚠️  Transaction {} not found in embedded node (may be pending)", &tx_id[..16.min(tx_id.len())]);
+                    // Don't mark as failed immediately - might just be propagating
                 }
             }
             Err(e) => {
-                // Transaction not found in node (might have been dropped)
-                if tx_state.status == TransactionStatus::Broadcast {
-                    println!("⚠️  Transaction {} not found in node: {}", tx_id, e);
-                    // Don't mark as failed immediately - might just be propagating
-                }
+                // Error querying node
+                println!("⚠️  Error checking transaction {}: {}", &tx_id[..16.min(tx_id.len())], e);
             }
         }
     }
 
     /// Handle a confirmed transaction
+    /// FIX 2025-11-27: Updated to use embedded node TransactionInfo
     async fn handle_confirmation(
         &self,
         tx_state: &TransactionState,
         confirmations: u64,
-        tx_info: &btpc_desktop_app::rpc_client::TransactionInfo,
+        tx_info: &TransactionInfo,
     ) {
         let tx_id = &tx_state.transaction_id;
 
@@ -137,7 +138,7 @@ impl TransactionMonitor {
 
         println!(
             "✅ Transaction {} confirmed ({} confirmations)",
-            tx_id, confirmations
+            &tx_id[..16.min(tx_id.len())], confirmations
         );
 
         // Update state to confirmed
@@ -150,9 +151,9 @@ impl TransactionMonitor {
             TransactionEvent::TransactionConfirmed {
                 transaction_id: tx_id.clone(),
                 confirmations: confirmations as u32,
-                block_height: tx_info.blockheight.unwrap_or(0),
+                block_height: tx_info.block_height.unwrap_or(0),
                 block_hash: tx_info
-                    .blockhash
+                    .block_hash
                     .clone()
                     .unwrap_or_else(|| "unknown".to_string()),
             },
@@ -161,7 +162,7 @@ impl TransactionMonitor {
         // Release UTXO reservations
         self.release_utxo_reservation(tx_state).await;
 
-        println!("✅ Transaction {} fully processed and confirmed", tx_id);
+        println!("✅ Transaction {} fully processed and confirmed", &tx_id[..16.min(tx_id.len())]);
     }
 
     /// Release UTXO reservations for a confirmed transaction

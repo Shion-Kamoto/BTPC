@@ -56,7 +56,7 @@ impl std::fmt::Display for TransactionError {
                 required,
             } => write!(
                 f,
-                "Insufficient funds: have {} satoshis, need {} satoshis",
+                "Insufficient funds: have {} credits, need {} credits",
                 available, required
             ),
             Self::UTXOSelectionFailed(e) => write!(f, "UTXO selection failed: {}", e),
@@ -103,8 +103,8 @@ pub struct TransactionCreationResult {
 /// * `utxos` - Available UTXOs for the from_address
 /// * `from_address` - Sender address (validated)
 /// * `to_address` - Recipient address (validated)
-/// * `amount` - Amount to send (satoshis)
-/// * `fee` - Transaction fee (satoshis)
+/// * `amount` - Amount to send (credits)
+/// * `fee` - Transaction fee (credits)
 ///
 /// # Returns
 /// * `TransactionCreationResult` with unsigned transaction and metadata
@@ -156,7 +156,7 @@ pub fn create_transaction_core(
     let builder = TransactionBuilder::new()
         .add_recipient(to_address, amount)
         .select_utxos(&utxos)
-        .set_fee_rate(100) // Use default, actual fee passed separately
+        .set_fee_rate_per_kb(10) // 10 crd/KB default
         .set_change_address(from_address);
 
     // Build transaction
@@ -200,11 +200,11 @@ pub fn create_transaction_core(
 /// Result of fee estimation
 #[derive(Debug, Clone)]
 pub struct EstimateFeeResult {
-    /// Estimated fee in satoshis
+    /// Estimated fee in credits
     pub estimated_fee: u64,
     /// Estimated transaction size in bytes
     pub estimated_size: usize,
-    /// Fee rate used (satoshis per byte)
+    /// Fee rate used (credits per byte)
     pub fee_rate: u64,
     /// Number of inputs required
     pub inputs_count: usize,
@@ -221,8 +221,8 @@ pub struct EstimateFeeResult {
 /// * `utxos` - Available UTXOs for the from_address
 /// * `from_address` - Sender address (for change output)
 /// * `to_address` - Recipient address
-/// * `amount` - Amount to send (satoshis)
-/// * `fee_rate` - Fee rate in satoshis per byte (optional, defaults to 100)
+/// * `amount` - Amount to send (credits)
+/// * `fee_rate` - Fee rate in credits per byte (optional, defaults to 100)
 ///
 /// # Returns
 /// * `EstimateFeeResult` with fee breakdown
@@ -253,14 +253,14 @@ pub fn estimate_fee_core(
         ));
     }
 
-    // Use provided fee rate or default to 100 satoshis/byte
-    let fee_rate = fee_rate.unwrap_or(100);
+    // Use provided fee rate or default to 10 crd/KB
+    let fee_rate = fee_rate.unwrap_or(10);
 
     // Build transaction using TransactionBuilder to get estimate
     let builder = TransactionBuilder::new()
         .add_recipient(to_address, amount)
         .select_utxos(&utxos)
-        .set_fee_rate(fee_rate)
+        .set_fee_rate_per_kb(fee_rate)
         .set_change_address(from_address);
 
     // Get summary (this calculates fee without actually building)
@@ -710,8 +710,8 @@ fn validate_wallet_integrity(
 
     // Check 4: Validate each key entry structure
     for (i, key_entry) in wallet_data.keys.iter().enumerate() {
-        // Check private key bytes size (ML-DSA-65 = 4000 bytes)
-        const EXPECTED_PRIVATE_KEY_SIZE: usize = 4000;
+        // Check private key bytes size (ML-DSA-87 = 4864 bytes)
+        const EXPECTED_PRIVATE_KEY_SIZE: usize = 4864;
         if key_entry.private_key_bytes.len() != EXPECTED_PRIVATE_KEY_SIZE {
             return Err(TransactionError::Other(format!(
                 "Wallet corruption detected: key {} has invalid private key size (expected {}, got {}). File may be truncated.",
@@ -721,8 +721,8 @@ fn validate_wallet_integrity(
             )));
         }
 
-        // Check public key bytes size (ML-DSA-65 = 1952 bytes)
-        const EXPECTED_PUBLIC_KEY_SIZE: usize = 1952;
+        // Check public key bytes size (ML-DSA-87 = 2592 bytes)
+        const EXPECTED_PUBLIC_KEY_SIZE: usize = 2592;
         if key_entry.public_key_bytes.len() != EXPECTED_PUBLIC_KEY_SIZE {
             return Err(TransactionError::Other(format!(
                 "Wallet corruption detected: key {} has invalid public key size (expected {}, got {}). File may be truncated.",
@@ -811,7 +811,6 @@ fn validate_wallet_integrity(
 mod tests {
     use super::*;
     use crate::utxo_manager::{TxInput, TxOutput};
-    use chrono::Utc;
 
     // ============================================================================
     // Test Helpers
@@ -840,6 +839,7 @@ mod tests {
             block_height: None,
             confirmed_at: None,
             is_coinbase: false,
+            sender_address: Some("test_sender_address".to_string()),
         }
     }
 

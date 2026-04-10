@@ -193,14 +193,8 @@ async function syncWithBackend() {
     }
 
     try {
-        // TODO: Implement get_all_settings command in src-tauri/src/main.rs
-        // Command not yet registered in Rust backend (discovered 2025-11-01)
-        // Once implemented, this will sync backend settings to localStorage per Article XI
-
-        // Temporary: Skip settings sync until backend command is implemented
-        console.log('[Backend-First] Settings sync skipped (get_all_settings not yet implemented)');
-
-        /* COMMENTED OUT UNTIL BACKEND IMPLEMENTATION:
+        // Sync localStorage with backend settings (Backend-First Architecture per Article XI)
+        // Command implemented in src-tauri/src/commands/system.rs (2025-11-28)
         const backendSettings = await window.invoke('get_all_settings');
 
         if (backendSettings.success) {
@@ -208,10 +202,12 @@ async function syncWithBackend() {
             for (const [key, value] of Object.entries(backendSettings.data)) {
                 localStorage.setItem(key, value);
             }
+            console.log('[Backend-First] Settings synced from backend:', Object.keys(backendSettings.data).length, 'keys');
+        } else {
+            console.warn('[Backend-First] Backend returned unsuccessful response');
         }
-        */
     } catch (error) {
-        console.error('Failed to sync with backend:', error);
+        console.error('[Backend-First] Failed to sync with backend:', error);
     }
 }
 

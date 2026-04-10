@@ -125,7 +125,7 @@ impl DebugLogger {
     ) {
         let timestamp = Utc::now().format("%Y-%m-%d %H:%M:%S%.3f");
         let log_line = format!(
-            "[{}] [BLOCK_TEMPLATE] Height: {}, Prev Hash: {}..., Coinbase: {} sats, Target: {}...\n",
+            "[{}] [BLOCK_TEMPLATE] Height: {}, Prev Hash: {}..., Coinbase: {} credits, Target: {}...\n",
             timestamp, height, &prev_hash[..16], coinbase_value, &target[..16]
         );
 
@@ -137,6 +137,7 @@ impl DebugLogger {
     }
 
     /// Log complete block header details for mining
+    #[allow(clippy::too_many_arguments)]
     pub fn log_block_header(
         &self,
         gpu_id: Option<u32>,
@@ -223,6 +224,7 @@ impl DebugLogger {
     }
 
     /// Log full block details before submission
+    #[allow(clippy::too_many_arguments)]
     pub fn log_complete_block(
         &self,
         gpu_id: Option<u32>,
@@ -344,7 +346,7 @@ impl DebugLogger {
     ) {
         let timestamp = Utc::now().format("%Y-%m-%d %H:%M:%S%.3f");
         let log_line = format!(
-            "[{}] [TX] {} - ID: {}..., Inputs: {}, Outputs: {}, Total Output: {} sats\n",
+            "[{}] [TX] {} - ID: {}..., Inputs: {}, Outputs: {}, Total Output: {} credits\n",
             timestamp,
             tx_type,
             &tx_id[..16],

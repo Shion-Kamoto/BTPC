@@ -72,6 +72,207 @@
             font-weight: 600;
             font-family: 'SF Mono', monospace;
         }
+        /* Peer Disconnection Warning Banner */
+        .peer-warning-banner {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 16px;
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.4);
+            border-radius: 8px;
+            margin-bottom: 16px;
+            animation: pulse-border 2s ease-in-out infinite;
+        }
+        .peer-warning-banner.visible {
+            display: flex;
+        }
+        .peer-warning-banner .warning-icon {
+            font-size: 1.25rem;
+            flex-shrink: 0;
+        }
+        .peer-warning-banner .warning-text {
+            flex: 1;
+            font-size: 0.875rem;
+            color: #f87171;
+            font-weight: 500;
+        }
+        .peer-warning-banner .warning-detail {
+            font-size: 0.8rem;
+            color: #fca5a5;
+            font-weight: 400;
+        }
+        .peer-warning-banner .warning-dismiss {
+            background: none;
+            border: 1px solid rgba(239, 68, 68, 0.4);
+            color: #f87171;
+            padding: 4px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            flex-shrink: 0;
+        }
+        .peer-warning-banner .warning-dismiss:hover {
+            background: rgba(239, 68, 68, 0.2);
+        }
+        @keyframes pulse-border {
+            0%, 100% { border-color: rgba(239, 68, 68, 0.4); }
+            50% { border-color: rgba(239, 68, 68, 0.8); }
+        }
+        /* Wallet Dropdown Button */
+        .wallet-dropdown-container {
+            position: relative;
+            display: inline-block;
+        }
+        .wallet-dropdown-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 16px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 200ms ease;
+        }
+        .wallet-dropdown-btn:hover {
+            background: var(--bg-hover);
+            border-color: var(--btpc-primary);
+        }
+        .wallet-dropdown-btn .icon {
+            width: 16px;
+            height: 16px;
+            filter: brightness(0) saturate(100%) invert(58%) sepia(69%) saturate(456%) hue-rotate(107deg) brightness(95%) contrast(92%);
+        }
+        .wallet-dropdown-btn .chevron {
+            margin-left: 4px;
+            transition: transform 200ms ease;
+        }
+        .wallet-dropdown-btn.open .chevron {
+            transform: rotate(180deg);
+        }
+        .wallet-dropdown-menu {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            margin-top: 4px;
+            min-width: 280px;
+            max-height: 200px;
+            overflow-y: auto;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+            z-index: 100;
+            display: none;
+        }
+        .wallet-dropdown-menu.show {
+            display: block;
+        }
+        .wallet-dropdown-item {
+            padding: 10px 14px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            color: var(--text-primary);
+            transition: background 150ms ease;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .wallet-dropdown-item:last-child {
+            border-bottom: none;
+        }
+        .wallet-dropdown-item:hover {
+            background: var(--bg-hover);
+        }
+        .wallet-dropdown-item.selected {
+            background: rgba(139, 92, 246, 0.15);
+            /* FIX 2025-12-30: Don't override wallet color border - use background highlight only */
+        }
+        .wallet-dropdown-item .wallet-name {
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+        .wallet-dropdown-item .wallet-addr {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-family: 'SF Mono', monospace;
+            margin-top: 2px;
+        }
+        /* Console Controls Bar */
+        .console-controls {
+            display: flex;
+            gap: 12px;
+            padding: 12px 16px;
+            background: rgba(139, 92, 246, 0.1);
+            border-bottom: 1px solid var(--border-color);
+            align-items: center;
+            justify-content: center;
+        }
+        /* Mining Mode Toggle */
+        .mode-toggle {
+            display: flex;
+            gap: 8px;
+        }
+        .mode-toggle-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 16px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--bg-card);
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 200ms ease;
+        }
+        .mode-toggle-btn:hover {
+            background: var(--bg-hover);
+            border-color: var(--btpc-primary);
+        }
+        .mode-toggle-btn .mode-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            transition: all 0.3s ease;
+        }
+        .mode-toggle-btn.active .mode-dot {
+            background: var(--status-success);
+            box-shadow: 0 0 6px var(--status-success);
+            animation: pulse-dot 2s infinite;
+        }
+        /* Pool Config Row */
+        .pool-config-row {
+            display: none;
+            gap: 10px;
+            padding: 10px 16px;
+            background: var(--bg-primary);
+            border-bottom: 1px solid var(--border-color);
+            align-items: center;
+        }
+        .pool-config-row.show { display: flex; }
+        .pool-config-row input {
+            padding: 7px 12px;
+            font-size: 0.8rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-family: 'SF Mono', monospace;
+        }
+        .pool-config-row input:focus {
+            outline: none;
+            border-color: var(--btpc-primary);
+        }
+        .pool-config-row input::placeholder { color: var(--text-muted); }
+        .pool-config-row label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
     </style>
 </head>
 <body>
@@ -102,6 +303,13 @@
                     <div class="balance-amount">
                         <span id="wallet-balance">0.00000000</span>
                         <span class="balance-unit">BTPC</span>
+                    </div>
+                    <div class="spendable-row">
+                        <div class="spendable-label">Spendable</div>
+                        <div class="spendable-amount">
+                            <span id="spendable-balance">0.00000000</span>
+                            <span class="balance-unit">BTPC</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -167,197 +375,140 @@
             <!-- Tab Navigation -->
             <div class="tab-nav" role="tablist" aria-label="Mining Sections">
                 <button class="tab-btn active" role="tab" id="tab-btn-overview" data-tab="overview" aria-selected="true" aria-controls="tab-panel-overview" tabindex="0">Overview</button>
-                <button class="tab-btn" role="tab" id="tab-btn-configure" data-tab="configure" aria-selected="false" aria-controls="tab-panel-configure" tabindex="-1">Configure</button>
-                <button class="tab-btn" role="tab" id="tab-btn-gpu-mining" data-tab="gpu-mining" aria-selected="false" aria-controls="tab-panel-gpu-mining" tabindex="-1">GPU Mining</button>
-                <button class="tab-btn" role="tab" id="tab-btn-history" data-tab="history" aria-selected="false" aria-controls="tab-panel-history" tabindex="-1">History</button>
+                <button class="tab-btn" role="tab" id="tab-btn-gpu-mining" data-tab="gpu-mining" aria-selected="false" aria-controls="tab-panel-gpu-mining" tabindex="-1" style="display:none;">GPU Settings</button>
             </div>
 
             <!-- Overview Tab -->
             <div id="tab-panel-overview" class="tab-content active" role="tabpanel" aria-labelledby="tab-btn-overview" tabindex="0">
-                <!-- Mining Status Summary -->
-                <div class="card mb-4">
-                    <div class="card-header">Mining Status</div>
-                    <div class="status-grid">
-                        <div class="status-item">
-                            <span class="status-item-label">Status</span>
-                            <span class="status-item-value" id="mining-status"><span class="icon icon-pickaxe" style="opacity: 0.3;"></span> Stopped</span>
-                        </div>
-                        <div class="status-item">
-                            <span class="status-item-label">Hashrate</span>
-                            <span class="status-item-value" id="hashrate">0 H/s</span>
-                        </div>
-                        <div class="status-item">
-                            <span class="status-item-label">Blocks Found</span>
-                            <span class="status-item-value" id="blocks-found">0</span>
-                        </div>
-                        <div class="status-item">
-                            <span class="status-item-label">Est. Reward</span>
-                            <span class="status-item-value" id="est-reward">0.00 BTPC</span>
-                        </div>
+                <!-- Hidden elements for updateManager compatibility -->
+                <span id="hashrate" style="display:none;">0 H/s</span>
+                <span id="blocks-found" style="display:none;">0</span>
+                <!-- Hidden select for backwards compatibility -->
+                <select id="mining-address" style="display:none;">
+                    <option value="">Select a wallet address...</option>
+                </select>
+
+                <!-- Peer Disconnection Warning Banner -->
+                <div class="peer-warning-banner" id="peer-warning-banner">
+                    <span class="warning-icon">&#9888;</span>
+                    <div>
+                        <div class="warning-text" id="peer-warning-text">Internet connection lost - Mining paused</div>
+                        <div class="warning-detail">Blocks mined offline will be orphaned when the network produces a longer chain. Mining will resume automatically when connection is restored.</div>
                     </div>
+                    <button class="warning-dismiss" onclick="dismissPeerWarningAndResume()">Resume Mining</button>
                 </div>
 
-                <!-- Quick Controls -->
-                <div class="card mb-4">
-                    <div class="card-header">Quick Controls</div>
-                    <div style="display: flex; gap: 12px;">
-                        <button class="btn btn-success" id="start-mining-btn" onclick="quickStartMining()">
-                            <span class="icon icon-pickaxe"></span> Start Mining
-                        </button>
-                        <button class="btn btn-danger" id="stop-mining-btn" onclick="stopMining()" style="display: none;">
-                            <span class="icon icon-stop"></span> Stop Mining
-                        </button>
-                        <button class="btn btn-secondary" data-switch-to-tab="configure">
-                            <span class="icon icon-settings"></span> Configure
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Mining Log -->
+                <!-- Mining Console with integrated controls and status -->
                 <div class="card">
-                    <div class="card-header">Recent Activity</div>
-                    <div id="mining-log" style="max-height: 320px; overflow-y: auto;">
+                    <div class="card-header">Mining Console</div>
+                    <!-- Console Controls Bar -->
+                    <div class="console-controls">
+                        <!-- Mining Mode Toggle (Solo/Pool) — first in row -->
+                        <div class="mode-toggle" id="mining-mode-toggle">
+                            <button class="mode-toggle-btn active" onclick="setMiningMode('solo')" id="mode-solo-btn"><span class="mode-dot"></span> Solo</button>
+                            <button class="mode-toggle-btn" onclick="setMiningMode('pool')" id="mode-pool-btn"><span class="mode-dot"></span> Pool</button>
+                        </div>
+                        <button class="btn btn-toggle" id="mining-toggle-btn" onclick="toggleMining()">
+                            <span class="status-dot"></span>
+                            <span class="icon icon-pickaxe"></span>
+                            <span class="toggle-text">Start Mining</span>
+                        </button>
+                        <!-- Wallet Dropdown Button -->
+                        <div class="wallet-dropdown-container">
+                            <button class="wallet-dropdown-btn" id="wallet-dropdown-btn" onclick="toggleWalletDropdown()">
+                                <span class="icon icon-wallet"></span>
+                                <span>Mining Wallet</span>
+                                <span class="chevron">▼</span>
+                            </button>
+                            <div class="wallet-dropdown-menu" id="wallet-dropdown-menu">
+                                <!-- Populated by JS -->
+                            </div>
+                        </div>
+                        <button class="btn btn-secondary" data-switch-to-tab="gpu-mining">
+                            <span class="icon icon-settings"></span> GPU Settings
+                        </button>
+                    </div>
+                    <!-- Pool Configuration Row (hidden by default, shown when Pool mode selected) -->
+                    <div class="pool-config-row" id="pool-config-row">
+                        <label>Pool:</label>
+                        <input type="text" id="pool-url" placeholder="pool.btpc.org:3333" style="flex: 2;" />
+                        <label>Worker:</label>
+                        <input type="text" id="pool-worker" placeholder="worker1" style="flex: 1;" />
+                        <label>Pass:</label>
+                        <input type="text" id="pool-password" placeholder="x" style="width: 60px;" />
+                    </div>
+                    <!-- Status Bar (moved from separate Mining Status card) -->
+                    <div style="display: flex; gap: 16px; padding: 12px 16px; background: var(--bg-primary); border-bottom: 1px solid var(--border-color);">
+                        <div style="display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: var(--bg-card); border-radius: 8px; flex: 1;">
+                            <span style="font-size: 0.8rem; color: var(--text-muted);">Status</span>
+                            <span style="font-size: 0.9rem; font-weight: 600; font-family: 'SF Mono', monospace;" id="mining-status"><span class="icon icon-pickaxe" id="mining-status-icon" style="filter: brightness(0.3);"></span> <span style="color: white;">Stopped</span></span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: var(--bg-card); border-radius: 8px; flex: 1;">
+                            <span style="font-size: 0.8rem; color: var(--text-muted);">Est. Reward</span>
+                            <span style="font-size: 0.9rem; font-weight: 600; font-family: 'SF Mono', monospace;" id="est-reward"><span style="color: var(--status-success);">0.00</span> <span style="color: white;">BTPC/block</span></span>
+                        </div>
+                    </div>
+                    <div id="mining-log" style="height: 460px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
                         <div style="color: var(--text-muted); text-align: center; padding: 40px 20px;">No mining activity yet...</div>
                     </div>
                 </div>
             </div>
 
-            <!-- Configure Tab -->
-            <div id="tab-panel-configure" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-configure" tabindex="0">
-                <div class="card mb-4">
-                    <div class="card-header">Mining Configuration</div>
-                    <div class="form-group">
-                        <label class="form-label">Mining Address</label>
-                        <select class="form-input" id="mining-address">
-                            <option value="">Select a wallet address...</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Number of Blocks to Mine</label>
-                        <input type="number" class="form-input" id="block-count" value="100" min="1" max="10000">
-                    </div>
-                    <div style="display: flex; gap: 12px;">
-                        <button class="btn btn-primary" onclick="startMiningWithConfig()">
-                            <span class="icon icon-pickaxe"></span> Start Mining
-                        </button>
-                        <button class="btn btn-secondary" data-switch-to-tab="overview">
-                            ← Back to Overview
-                        </button>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <div class="card-header">Mining Information</div>
-                    <div style="color: var(--text-secondary); line-height: 1.6;">
-                        <p><strong>Current Network Difficulty:</strong> <span id="network-difficulty">Loading...</span></p>
-                        <p><strong>Estimated Time per Block:</strong> <span id="est-time">~10 minutes</span></p>
-                        <p><strong>Block Reward:</strong> <span id="block-reward">32.375 BTPC</span></p>
-                        <p style="margin-top: 16px; color: var(--text-muted); font-size: 0.875rem;">
-                            Mining uses SHA-512 proof-of-work algorithm.
-                            Rewards decrease linearly over 21M supply.
-                            Permanent tail rewards.
-                            0.5 BTPC per block after 24th year of mining.
-                        </p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- GPU Mining Tab -->
+            <!-- GPU Settings Tab -->
             <div id="tab-panel-gpu-mining" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-gpu-mining" tabindex="0">
-                <!-- GPU Overview Card -->
-                <div class="card mb-4">
-                    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-                        <span>GPU Mining Dashboard</span>
-                        <button class="btn btn-secondary" onclick="refreshGpuStats()" style="padding: 6px 16px;">
-                            <span class="icon icon-refresh"></span> Refresh
-                        </button>
-                    </div>
-                    <!-- GPU Dashboard Loading State -->
-                    <div id="gpu-dashboard-loading" style="text-align: center; padding: 40px 20px; color: var(--text-muted);">
-                        <div style="font-size: 2rem; margin-bottom: 12px;">⚙️</div>
-                        <div>Loading GPU devices...</div>
-                    </div>
-
-                    <!-- GPU Dashboard No GPUs State -->
-                    <div id="gpu-dashboard-no-gpus" style="display: none; text-align: center; padding: 40px 20px; color: var(--text-muted);">
-                        <div style="font-size: 2rem; margin-bottom: 12px;">🚫</div>
-                        <div>No GPU devices detected</div>
-                        <div style="font-size: 0.875rem; margin-top: 8px;">OpenCL drivers may not be installed or no GPUs available</div>
-                    </div>
-
-                    <!-- GPU Cards Container (dynamically populated) -->
-                    <div id="gpu-cards-container" style="display: none;">
-                        <!-- GPU device cards will be dynamically inserted here by mining-gpu-dashboard.js -->
-                    </div>
-                </div>
-
-                <!-- Temperature Threshold Configuration -->
-                <div class="card mb-4">
-                    <div class="card-header">Thermal Management</div>
-                    <div class="form-group">
-                        <label class="form-label">Temperature Warning Threshold (°C)</label>
-                        <div style="display: flex; gap: 12px; align-items: center;">
-                            <input type="number" class="form-input" id="temp-threshold-input" value="85" min="60" max="95" step="0.5" style="max-width: 150px;">
-                            <button class="btn btn-primary" id="save-temp-threshold-btn">Update Threshold</button>
-                            <span style="color: var(--text-muted); font-size: 0.875rem;">Range: 60-95°C</span>
+                <!-- GPU Summary Header Bar (HiveOS Style) -->
+                <div class="card mb-4" style="padding: 0; overflow: hidden;">
+                    <!-- Top Stats Row -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: #1a1d21; border-bottom: 1px solid #2d3339;">
+                        <div style="display: flex; align-items: center; gap: 16px;">
+                            <span style="color: var(--btpc-primary); font-weight: 600;">BTPC Miner</span>
+                            <span style="color: #6b7280; font-size: 0.8rem;">v1.0</span>
+                            <span style="color: #6b7280; font-size: 0.8rem;">--</span>
+                            <span style="color: #6b7280; font-size: 0.8rem;">A</span>
+                            <span style="color: #4ade80; font-family: 'SF Mono', monospace;" id="gpu-accepted">0</span>
+                            <span style="color: #6b7280; font-size: 0.8rem; margin-left: 8px;">R</span>
+                            <span style="color: #f87171; font-family: 'SF Mono', monospace;" id="gpu-rejected">0</span>
                         </div>
-                        <div id="temp-threshold-feedback" style="margin-top: 8px; font-size: 0.875rem;"></div>
-                    </div>
-                    <div style="color: var(--text-secondary); font-size: 0.875rem; margin-top: 8px;">
-                        GPUs exceeding this temperature will be thermally throttled to reduce heat. Default: 85°C.
-                    </div>
-                </div>
-
-                <!-- GPU Mining Information -->
-                <div class="card">
-                    <div class="card-header">GPU Mining Information</div>
-                    <div style="color: var(--text-secondary); line-height: 1.6;">
-                        <p><strong>OpenCL Status:</strong> <span id="opencl-status">Checking...</span></p>
-                        <p><strong>Detected GPUs:</strong> <span id="gpu-count">0</span></p>
-                        <p style="margin-top: 16px; color: var(--text-muted); font-size: 0.875rem;">
-                            GPU mining uses OpenCL for cross-vendor compatibility (AMD, NVIDIA, Intel).
-                            Expected performance: 50-100x faster than CPU mining on modern GPUs.
-                        </p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- History Tab -->
-            <div id="tab-panel-history" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-history" tabindex="0">
-                <div class="card">
-                    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-                        <span>Mining History</span>
-                        <div style="display: flex; gap: 8px;">
-                            <select id="history-filter" class="form-input" style="padding: 6px 12px; font-size: 0.875rem;" onchange="filterHistory()">
-                                <option value="all">All Events</option>
-                                <option value="SUCCESS">Blocks Found</option>
-                                <option value="ERROR">Errors Only</option>
-                                <option value="INFO">Info Only</option>
-                            </select>
-                            <button class="btn btn-secondary" onclick="refreshHistory()" style="padding: 6px 16px;"><span class="icon icon-refresh"></span> Refresh</button>
-                            <button class="btn btn-secondary" onclick="clearHistory()" style="padding: 6px 16px;">Clear</button>
+                        <div style="display: flex; align-items: center; gap: 16px;">
+                            <div style="background: rgba(99, 102, 241, 0.15); border: 1px solid var(--btpc-primary); padding: 4px 12px; border-radius: 4px;">
+                                <span style="color: var(--btpc-primary); font-weight: 600; font-size: 0.85rem;">SHA-512</span>
+                            </div>
+                            <span style="color: #22d3ee; font-size: 1.25rem; font-weight: 700; font-family: 'SF Mono', monospace;" id="gpu-total-hashrate">0 H/s</span>
+                            <button class="btn btn-secondary" onclick="refreshGpuDashboard()" style="padding: 4px 12px;">
+                                <span class="icon icon-refresh"></span>
+                            </button>
                         </div>
                     </div>
-
-                    <div id="mining-history-table-container" style="max-height: 500px; overflow-y: auto;">
-                        <table class="data-table">
-                            <thead>
-                                <tr>
-                                    <th style="width: 200px;">Time</th>
-                                    <th style="width: 120px;">Type</th>
-                                    <th>Event</th>
-                                </tr>
-                            </thead>
-                            <tbody id="history-tbody">
-                                <!-- Mining history rows will be populated here -->
-                            </tbody>
-                        </table>
+                    <!-- Mini GPU Stats Boxes Row -->
+                    <div id="gpu-mini-stats" style="display: flex; gap: 6px; padding: 10px 16px; background: #0d1117; flex-wrap: wrap; min-height: 60px;">
+                        <!-- Populated by JS - compact stat boxes per GPU showing temp/load%/hashrate -->
                     </div>
+                    <!-- Info Bar -->
+                    <div style="display: flex; gap: 24px; padding: 8px 16px; background: #1a1d21; border-top: 1px solid #2d3339; font-size: 0.75rem;">
+                        <span><span style="color: #6b7280;">MINER UPTIME</span> <span style="color: #e5e7eb; font-family: 'SF Mono', monospace; margin-left: 4px;" id="gpu-uptime">0h 0m</span></span>
+                        <span><span style="color: #6b7280;">GPUs</span> <span style="color: #e5e7eb; font-family: 'SF Mono', monospace; margin-left: 4px;" id="gpu-count">0</span></span>
+                        <span><span style="color: #6b7280;">OpenCL</span> <span style="color: #4ade80; font-family: 'SF Mono', monospace; margin-left: 4px;" id="opencl-status">Ready</span></span>
+                    </div>
+                </div>
 
-                    <div id="mining-history-empty" style="display: none; padding: 60px 20px; text-align: center;">
-                        <div style="font-size: 3rem; margin-bottom: 16px;"><span class="icon icon-pickaxe" style="width: 48px; height: 48px;"></span></div>
-                        <div style="font-size: 1.125rem; color: var(--text-primary); margin-bottom: 8px;">No mining history</div>
-                        <div style="color: var(--text-muted);">Start mining to see your activity log</div>
+                <!-- GPU Devices Table (HiveOS Style) -->
+                <div class="card mb-4" style="padding: 0; overflow: hidden; background: #0d1117;">
+                    <!-- Table Header -->
+                    <div style="display: grid; grid-template-columns: 70px 1fr 90px 50px 130px 60px 60px 50px; gap: 8px; padding: 10px 16px; background: #1a1d21; border-bottom: 1px solid #2d3339; font-size: 0.7rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px;">
+                        <div></div>
+                        <div></div>
+                        <div style="text-align: center;">TEMP</div>
+                        <div style="text-align: center;">FAN</div>
+                        <div style="text-align: center;">THROTTLE</div>
+                        <div style="text-align: center;">CORE</div>
+                        <div style="text-align: center;">MEM</div>
+                        <div style="text-align: center;">⚡</div>
+                    </div>
+                    <!-- GPU Rows -->
+                    <div id="gpu-devices-container">
+                        <div style="text-align: center; padding: 40px 20px; color: #6b7280;">
+                            Loading GPU devices...
+                        </div>
                     </div>
                 </div>
             </div>
@@ -368,7 +519,9 @@
     <script src="btpc-event-listeners.js"></script>
     <script src="btpc-navigation-guard.js"></script>
     <script src="btpc-event-manager.js"></script>
+    <script src="btpc-storage.js"></script>
     <script src="btpc-common.js"></script>
+    <script src="btpc-corruption-check.js"></script>
     <script src="btpc-update-manager.js"></script>
     <script src="password-modal.js"></script>
     <script src="btpc-tab-manager.js"></script>
@@ -397,6 +550,102 @@
             });
         });
 
+        // Wallet dropdown functions
+        let walletDropdownOpen = false;
+        let loadedWallets = [];
+
+        function toggleWalletDropdown() {
+            const btn = document.getElementById('wallet-dropdown-btn');
+            const menu = document.getElementById('wallet-dropdown-menu');
+            walletDropdownOpen = !walletDropdownOpen;
+
+            if (walletDropdownOpen) {
+                btn.classList.add('open');
+                menu.classList.add('show');
+            } else {
+                btn.classList.remove('open');
+                menu.classList.remove('show');
+            }
+        }
+
+        function selectWallet(address, nickname) {
+            // Update hidden select for backwards compatibility
+            document.getElementById('mining-address').value = address;
+
+            // Save to btpcStorage for auto-start mining feature
+            if (window.btpcStorage) {
+                window.btpcStorage.updateMiningConfig({ address: address });
+                console.log('Mining address saved for auto-start:', address.substring(0, 16) + '...');
+            }
+
+            // Button text stays as "Mining Wallet" - no update needed
+
+            // Update selected state in dropdown
+            document.querySelectorAll('.wallet-dropdown-item').forEach(item => {
+                item.classList.remove('selected');
+                if (item.dataset.address === address) {
+                    item.classList.add('selected');
+                }
+            });
+
+            // Close dropdown only if it's open (prevents opening on page load auto-select)
+            if (walletDropdownOpen) {
+                toggleWalletDropdown();
+            }
+        }
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            const container = document.querySelector('.wallet-dropdown-container');
+            if (container && !container.contains(e.target) && walletDropdownOpen) {
+                toggleWalletDropdown();
+            }
+        });
+
+        // Mining mode (solo/pool) functions
+        let currentMiningMode = 'solo';
+
+        function setMiningMode(mode) {
+            currentMiningMode = mode;
+            document.getElementById('mode-solo-btn').classList.toggle('active', mode === 'solo');
+            document.getElementById('mode-pool-btn').classList.toggle('active', mode === 'pool');
+            document.getElementById('pool-config-row').classList.toggle('show', mode === 'pool');
+
+            // Persist selection
+            if (window.btpcStorage) {
+                window.btpcStorage.updateMiningConfig({ mining_mode: mode });
+            }
+        }
+
+        // Restore saved pool config on load
+        function restorePoolConfig() {
+            if (!window.btpcStorage) return;
+            const cfg = window.btpcStorage.getMiningConfig();
+            if (cfg.mining_mode === 'pool') setMiningMode('pool');
+            if (cfg.pool_url) document.getElementById('pool-url').value = cfg.pool_url;
+            if (cfg.pool_worker) document.getElementById('pool-worker').value = cfg.pool_worker;
+            if (cfg.pool_password) document.getElementById('pool-password').value = cfg.pool_password;
+        }
+
+        // Save pool inputs on change
+        document.addEventListener('DOMContentLoaded', () => {
+            ['pool-url', 'pool-worker', 'pool-password'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.addEventListener('change', () => {
+                        if (window.btpcStorage) {
+                            window.btpcStorage.updateMiningConfig({
+                                pool_url: document.getElementById('pool-url').value,
+                                pool_worker: document.getElementById('pool-worker').value,
+                                pool_password: document.getElementById('pool-password').value,
+                            });
+                        }
+                    });
+                }
+            });
+            restorePoolConfig();
+        });
+
         async function loadMiningAddresses() {
             if (!window.invoke) {
                 console.log('Tauri API not ready, will retry...');
@@ -406,17 +655,77 @@
 
             try {
                 const wallets = await window.invoke('list_wallets');
+                loadedWallets = wallets;
+
+                // Update hidden select for backwards compatibility
                 const select = document.getElementById('mining-address');
                 select.innerHTML = '<option value="">Select a wallet address...</option>';
 
+                // Update dropdown menu
+                const menu = document.getElementById('wallet-dropdown-menu');
+                menu.innerHTML = '';
+
+                if (!wallets || wallets.length === 0) {
+                    menu.innerHTML = '<div class="wallet-dropdown-item" style="color: var(--text-muted); cursor: default;">No wallets available</div>';
+                    return;
+                }
+
                 wallets.forEach(wallet => {
+                    // Hidden select option
                     const option = document.createElement('option');
                     option.value = wallet.address;
                     option.textContent = `${wallet.nickname} - ${wallet.address.substring(0, 16)}...`;
                     select.appendChild(option);
+
+                    // FIX 2025-12-30: Apply wallet color as left border
+                    const walletColor = wallet.metadata?.color || '#6366f1';
+
+                    // Dropdown menu item
+                    const item = document.createElement('div');
+                    item.className = 'wallet-dropdown-item';
+                    item.dataset.address = wallet.address;
+                    item.style.borderLeft = `4px solid ${walletColor}`;
+                    item.onclick = () => selectWallet(wallet.address, wallet.nickname);
+                    // FIX 2026-02-21 (H8): Escape wallet nickname to prevent XSS
+                    item.innerHTML = `
+                        <div class="wallet-name">${escapeHtml(wallet.nickname)}${wallet.is_default ? ' (Default)' : ''}</div>
+                        <div class="wallet-addr">${escapeHtml(wallet.address.substring(0, 20))}...${escapeHtml(wallet.address.slice(-8))}</div>
+                    `;
+                    menu.appendChild(item);
                 });
+
+                // Auto-select default wallet
+                const defaultWallet = wallets.find(w => w.is_default) || wallets[0];
+                if (defaultWallet) {
+                    selectWallet(defaultWallet.address, defaultWallet.nickname);
+                }
             } catch (e) {
                 console.log('Failed to load wallets:', e);
+            }
+        }
+
+        // Toggle mining on/off with single button
+        let isMiningActive = false;
+
+        async function toggleMining() {
+            if (isMiningActive) {
+                await stopMining();
+            } else {
+                await quickStartMining();
+            }
+        }
+
+        function updateMiningToggleButton(isActive) {
+            isMiningActive = isActive;
+            const btn = document.getElementById('mining-toggle-btn');
+            const textEl = btn.querySelector('.toggle-text');
+
+            if (isActive) {
+                btn.classList.add('active');
+                textEl.textContent = 'Stop Mining';
+            } else {
+                btn.classList.remove('active');
+                textEl.textContent = 'Start Mining';
             }
         }
 
@@ -429,6 +738,16 @@
             console.log('🔍 Quick Start Mining clicked');
 
             try {
+                // First check if user selected an address from dropdown
+                const selectedAddress = document.getElementById('mining-address').value;
+
+                if (selectedAddress) {
+                    console.log('Using selected address:', selectedAddress.substring(0, 16) + '...');
+                    await startMining(selectedAddress);
+                    return;
+                }
+
+                // No selection - fall back to default wallet
                 const wallets = await window.invoke('list_wallets');
                 console.log('📋 Wallets loaded:', wallets);
 
@@ -440,9 +759,12 @@
 
                 // Use default wallet or first wallet
                 const defaultWallet = wallets.find(w => w.is_default) || wallets[0];
-                console.log('Using wallet:', defaultWallet.nickname, defaultWallet.address.substring(0, 16) + '...');
+                console.log('Using default wallet:', defaultWallet.nickname, defaultWallet.address.substring(0, 16) + '...');
 
-                await startMining(defaultWallet.address, 100);
+                // Also select it in the dropdown for user visibility
+                document.getElementById('mining-address').value = defaultWallet.address;
+
+                await startMining(defaultWallet.address);
             } catch (error) {
                 console.error('Quick start mining error:', error);
                 alert(`Failed to start mining: ${error}`);
@@ -451,14 +773,13 @@
 
         async function startMiningWithConfig() {
             const address = document.getElementById('mining-address').value;
-            const blockCount = parseInt(document.getElementById('block-count').value);
 
             if (!address) {
                 alert('Please select a mining address');
                 return;
             }
 
-            await startMining(address, blockCount);
+            await startMining(address);
             // Switch to overview tab
             const overviewTabBtn = document.querySelector('[data-tab="overview"]');
             if (overviewTabBtn) {
@@ -466,7 +787,7 @@
             }
         }
 
-        async function startMining(address, blocks) {
+        async function startMining(address) {
             if (!window.invoke) {
                 toast.error('Tauri API not ready. Please wait a moment and try again.');
                 return;
@@ -475,25 +796,45 @@
             showLoading('Starting miner...', 'Initializing GPU mining');
 
             try {
-                // GPU-ONLY Mining (Feature 012)
-                await window.invoke('start_mining', {
-                    config: {
-                        enable_cpu: false,  // CPU mining disabled
-                        enable_gpu: true,   // GPU-only mining
-                        cpu_threads: null,
-                        mining_address: address
+                // Build mining config with mode and optional pool settings
+                const miningConfig = {
+                    enable_cpu: false,  // CPU mining disabled
+                    enable_gpu: true,   // GPU-only mining
+                    cpu_threads: null,
+                    mining_address: address,
+                    mining_mode: currentMiningMode,
+                    pool_config: null
+                };
+
+                if (currentMiningMode === 'pool') {
+                    const poolUrl = document.getElementById('pool-url').value.trim();
+                    const poolWorker = document.getElementById('pool-worker').value.trim() || 'default';
+                    const poolPassword = document.getElementById('pool-password').value || 'x';
+
+                    if (!poolUrl) {
+                        hideLoading();
+                        toast.error('Pool URL is required for pool mining');
+                        return;
                     }
-                });
+
+                    miningConfig.pool_config = {
+                        url: poolUrl,
+                        worker: poolWorker,
+                        password: poolPassword
+                    };
+                }
+
+                await window.invoke('start_mining', { config: miningConfig });
 
                 hideLoading();
 
-                document.getElementById('start-mining-btn').style.display = 'none';
-                document.getElementById('stop-mining-btn').style.display = 'inline-flex';
-                document.getElementById('mining-status').innerHTML = '<span class="icon icon-pickaxe" style="color: var(--status-success);"></span> Running';
+                updateMiningToggleButton(true);
+                document.getElementById('mining-status').innerHTML = '<span class="icon icon-pickaxe" style="filter: brightness(0) saturate(100%) invert(58%) sepia(69%) saturate(456%) hue-rotate(107deg) brightness(95%) contrast(92%);"></span> <span style="color: white;">Running</span>';
 
-                toast.success(`Mining started (target: ${blocks} blocks)`);
-                addLog(`Mining started with ${blocks} block target`);
-                startMiningUpdates();
+                toast.success('Mining started successfully');
+                addLog('Mining started - will continue indefinitely until stopped');
+                // Start hash fetch for live hash attempts display
+                startHashFetch();
             } catch (e) {
                 hideLoading();
                 toast.error(`Failed to start mining: ${e}`);
@@ -514,13 +855,18 @@
 
                 hideLoading();
 
-                document.getElementById('start-mining-btn').style.display = 'inline-flex';
-                document.getElementById('stop-mining-btn').style.display = 'none';
-                document.getElementById('mining-status').innerHTML = '<span class="icon icon-pickaxe" style="opacity: 0.3;"></span> Stopped';
+                updateMiningToggleButton(false);
+                document.getElementById('mining-status').innerHTML = '<span class="icon icon-pickaxe" style="filter: brightness(0.3);"></span> <span style="color: white;">Stopped</span>';
+
+                // Clear peer warning if it was showing
+                isMiningPausedByPeers = false;
+                const banner = document.getElementById('peer-warning-banner');
+                if (banner) banner.classList.remove('visible');
 
                 toast.success('Mining stopped successfully');
                 addLog('Mining stopped');
-                stopMiningUpdates();
+                // Stop hash fetch when mining stops
+                stopHashFetch();
             } catch (e) {
                 hideLoading();
                 toast.error(`Failed to stop mining: ${e}`);
@@ -528,149 +874,9 @@
             }
         }
 
-        function startMiningUpdates() {
-            miningInterval = setInterval(updateMiningStats, 2000);
-        }
-
-        function stopMiningUpdates() {
-            if (miningInterval) {
-                clearInterval(miningInterval);
-                miningInterval = null;
-            }
-        }
-
-        async function updateMiningStats() {
-            try {
-                const status = await window.invoke('get_mining_status');
-                const currentHashrate = status ? (status.hashrate || 0) : 0;
-
-                if (status) {
-                    const blocksFound = status.blocks_found || 0;
-
-                    // Linear decay block reward calculation (Constitution Article III)
-                    const current_height = status.current_height || 0;
-                    const initial_reward = 32.375;
-                    const tail_emission = 0.5;
-                    const total_decay_blocks = 1261440;
-                    const reward = initial_reward - (initial_reward - tail_emission) * (current_height / total_decay_blocks);
-                    const rewardPerBlock = Math.max(reward, tail_emission);
-
-                    document.getElementById('hashrate').textContent = `${currentHashrate.toLocaleString()} H/s`;
-                    document.getElementById('blocks-found').textContent = blocksFound;
-                    document.getElementById('est-reward').textContent = `${rewardPerBlock.toFixed(8)} BTPC/block`;
-                }
-
-                // Fetch and display mining logs
-                const logs = await window.invoke('get_mining_logs');
-                if (logs && logs.length > 0) {
-                    const logContainer = document.getElementById('mining-log');
-                    // Clear placeholder if exists
-                    if (logContainer.children.length === 1 && logContainer.children[0].textContent.includes('No mining activity')) {
-                        logContainer.innerHTML = '';
-                    }
-
-                    // Show last 10 log entries in compact card format
-                    const recentLogs = logs.slice(-10);
-
-                    logContainer.innerHTML = recentLogs.map((entry, index) => {
-                        // Extract just the time portion from timestamp "YYYY-MM-DD HH:MM:SS"
-                        const timeOnly = entry.timestamp.split(' ')[1] || entry.timestamp;
-
-                        // Duino-Coin style: Simple line format with colored badges
-                        const levelConfig = {
-                            'ERROR': { badge: 'error', color: '#ef4444' },
-                            'WARN': { badge: 'wrn', color: '#f59e0b' },
-                            'INFO': { badge: 'sys', color: '#3b82f6' },
-                            'SUCCESS': { badge: 'ok', color: '#10b981' }
-                        };
-
-                        const config = levelConfig[entry.level] || levelConfig['INFO'];
-
-                        // Check if this is a block mined message for special formatting
-                        const isBlockMined = entry.level === 'SUCCESS' && (entry.message.includes('Block') || entry.message.includes('Accepted'));
-                        if (isBlockMined) {
-                            config.badge = 'BLOCK FOUND';
-                        }
-
-                        // Add hashrate display line before mining status messages (like "Mining...")
-                        const isMiningStatus = entry.message.includes('Mining...') || entry.message.includes('Mining started');
-                        const hashrateKH = currentHashrate > 0 ? (currentHashrate / 1000).toFixed(2) : '0.00';
-                        const hashrateMH = currentHashrate > 0 ? (currentHashrate / 1000000).toFixed(2) : '0.00';
-
-                        let output = '';
-                        let displayMessage = entry.message;
-                        let displayBadge = config.badge;
-
-                        // Reformat [BLOCK] messages
-                        if (isBlockMined) {
-                            // Parse: "Accepted 1760108663 (100%) · 32.37500000 BTPC · height 1760108663 [+3237500000 credits...]"
-                            const rewardMatch = entry.message.match(/(\d+\.\d+)\s+BTPC/);
-                            const heightMatch = entry.message.match(/height\s+(\d+)/);
-                            const percentMatch = entry.message.match(/\((\d+)%\)/);
-                            // Extract actual block hash if present (look for hex string after "block" or in message)
-                            const hashMatch = entry.message.match(/(?:block|hash)[:\s]+([0-9a-fA-F]{64})/i) ||
-                                             entry.message.match(/\b([0-9a-fA-F]{64})\b/);
-
-                            if (rewardMatch && heightMatch) {
-                                const reward = rewardMatch[1];
-                                const height = heightMatch[1];
-                                const percent = percentMatch ? percentMatch[1] : '100';
-                                const blockHash = hashMatch ? hashMatch[1] : 'pending...';
-
-                                // Color bracketed tags green (same as [BLOCK FOUND] badge)
-                                displayMessage = `Accepted (${percent}%) · <span style="color: #10b981;">[REWARD]</span> ${reward} BTPC · <span style="color: #00FFFF;">[HEIGHT]</span> ${height} · <span style="color: #f59e0b;">[HASH]</span> ${blockHash}`;
-                            }
-                        }
-
-                        // Reformat [sys] hash messages to [SYSTEM]
-                        if (config.badge === 'sys' && entry.message.includes('hash')) {
-                            displayBadge = 'SYSTEM';
-                            // Parse: "hash 023747a8fefafae4"
-                            const hashMatch = entry.message.match(/hash\s+([a-fA-F0-9]+)/);
-                            if (hashMatch) {
-                                const hash = hashMatch[1];
-                                // Color bracketed tags blue (same as [SYSTEM] badge)
-                                displayMessage = `Mining (100%) · <span style="color: #3b82f6;">[NODE]</span> Online · <span style="color: #f59e0b;">[HASHING]</span> ${hash}`;
-                            }
-                        }
-
-                        // Show hashrate periodically (every 3rd entry) or when mining starts
-                        if (isMiningStatus && currentHashrate > 0) {
-                            output += `<div style="font-family: 'Courier New', 'Consolas', monospace; font-size: 13px; padding: 3px 8px; line-height: 1.4; color: #e0e0e0;">
-                                <span style="color: #888;">${timeOnly}</span>
-                                <span style="color: #6366f1; margin: 0 6px; font-weight: bold;">[MINING]</span>
-                                <span style="color: #6366f1;">${hashrateMH} MH/s (${hashrateKH} KH/s)</span>
-                            </div>`;
-                        }
-
-                        // Simple terminal line: timestamp [badge] message
-                        output += `<div style="font-family: 'Courier New', 'Consolas', monospace; font-size: 13px; padding: 3px 8px; line-height: 1.4; color: #e0e0e0; background: transparent;">
-                            <span style="color: #888;">${timeOnly}</span>
-                            <span style="color: ${config.color}; margin: 0 6px; font-weight: bold;">[${displayBadge}]</span>
-                            <span style="color: #e0e0e0;">${displayMessage}</span>
-                        </div>`;
-
-                        return output;
-                    }).join('');
-
-                    // Add live hashrate display at the top if mining is active - ASCII terminal style
-                    if (status && status.is_mining && currentHashrate > 0) {
-                        const hashrateMH = (currentHashrate / 1000000).toFixed(2);
-                        const hashrateKH = (currentHashrate / 1000).toFixed(2);
-                        const hashrateDisplay = `<div style="font-family: 'SF Mono', 'Courier New', monospace; font-size: 0.8125rem; padding: 10px 12px; margin-bottom: 4px; background: rgba(99, 102, 241, 0.15); border-left: 3px solid #6366f1; border-radius: 4px; line-height: 1.5;">
-                            <span style="background: #6366f1; color: #fff; padding: 2px 8px; font-weight: 600; font-size: 0.75rem; margin-right: 8px; border-radius: 3px;">MINING</span>
-                            <span style="color: #6366f1; font-weight: 600;">${hashrateMH} MH/s</span>
-                            <span style="color: #a5b4fc; margin-left: 4px; font-size: 0.75rem;">(${hashrateKH} KH/s · ${currentHashrate.toLocaleString()} H/s)</span>
-                        </div>`;
-                        logContainer.innerHTML = hashrateDisplay + logContainer.innerHTML;
-                    }
-
-                    logContainer.scrollTop = logContainer.scrollHeight;
-                }
-            } catch (e) {
-                console.log('Failed to get mining status:', e);
-            }
-        }
+        // REMOVED: startMiningUpdates() and stopMiningUpdates() - Duplicate of updateManager subscription
+        // REMOVED: updateMiningStats() - Duplicate polling (lines 531-673)
+        // All mining status updates now handled by centralized updateManager (lines 818-889)
 
         function addLog(message) {
             const log = document.getElementById('mining-log');
@@ -688,130 +894,12 @@
             log.scrollTop = log.scrollHeight;
         }
 
-        // Mining history management
-        let allMiningLogs = [];
-        let currentFilter = 'all';
-
-        async function refreshHistory() {
-            if (!window.invoke) {
-                console.log('Tauri API not ready');
-                return;
-            }
-
-            try {
-                // Fetch persistent mining history from RocksDB (coinbase transactions)
-                const persistentHistory = await window.invoke('get_mining_history_from_storage');
-
-                // Convert coinbase transactions to log format for display
-                const coinbaseLogs = persistentHistory.map(tx => ({
-                    timestamp: tx.confirmed_at || new Date(tx.block_height * 1000).toISOString(),
-                    level: 'SUCCESS',
-                    message: `Block mined at height ${tx.block_height} · Reward: ${(tx.outputs[0].value / 100000000).toFixed(8)} BTPC · TxID: ${tx.txid}`
-                }));
-
-                // Also fetch recent in-memory logs for non-block events
-                const logs = await window.invoke('get_mining_logs');
-
-                // Combine persistent block history with recent logs
-                allMiningLogs = [...coinbaseLogs, ...logs];
-
-                // Update blocks found counter with persistent data
-                const blocksFound = persistentHistory.length;
-                document.getElementById('blocks-found').textContent = blocksFound;
-
-                renderHistory();
-            } catch (e) {
-                console.error('Failed to fetch mining history:', e);
-                // Fallback to in-memory logs only
-                try {
-                    const logs = await window.invoke('get_mining_logs');
-                    allMiningLogs = logs;
-                    renderHistory();
-                } catch (fallbackError) {
-                    console.error('Fallback also failed:', fallbackError);
-                }
-            }
-        }
-
-        function filterHistory() {
-            currentFilter = document.getElementById('history-filter').value;
-            renderHistory();
-        }
-
-        function renderHistory() {
-            const tbody = document.getElementById('history-tbody');
-            const emptyState = document.getElementById('mining-history-empty');
-            const tableContainer = document.getElementById('mining-history-table-container');
-
-            // Apply filter
-            let filteredLogs = allMiningLogs;
-            if (currentFilter !== 'all') {
-                filteredLogs = allMiningLogs.filter(log => log.level === currentFilter);
-            }
-
-            // Show empty state or table
-            if (filteredLogs.length === 0) {
-                tableContainer.style.display = 'none';
-                emptyState.style.display = 'block';
-                return;
-            }
-
-            tableContainer.style.display = 'block';
-            emptyState.style.display = 'none';
-
-            // Render logs (most recent first)
-            tbody.innerHTML = '';
-            const reversedLogs = [...filteredLogs].reverse();
-
-            reversedLogs.forEach(log => {
-                const row = document.createElement('tr');
-
-                // Determine badge style based on level
-                let badgeClass = 'badge';
-                let badgeText = '';
-                switch (log.level) {
-                    case 'SUCCESS':
-                        badgeClass += ' badge-success';
-                        badgeText = 'OK';
-                        break;
-                    case 'ERROR':
-                        badgeClass += ' badge-error';
-                        badgeText = 'ERR';
-                        break;
-                    case 'WARN':
-                        badgeClass += ' badge-warning';
-                        badgeText = 'WRN';
-                        break;
-                    default:
-                        badgeClass += ' badge-info';
-                        badgeText = 'INFO';
-                }
-
-                // Format timestamp
-                const timestamp = new Date(log.timestamp);
-                const timeStr = timestamp.toLocaleString();
-
-                row.innerHTML = `
-                    <td class="mono" style="font-size: 0.8125rem;">${timeStr}</td>
-                    <td><span class="${badgeClass}">${badgeText}</span></td>
-                    <td style="font-size: 0.875rem;">${log.message}</td>
-                `;
-
-                tbody.appendChild(row);
-            });
-        }
-
-        async function clearHistory() {
-            if (!confirm('Are you sure you want to clear mining history? This cannot be undone.')) {
-                return;
-            }
-
-            // Note: This just clears the UI display.
-            // Backend logs will persist unless there's a clear command
-            allMiningLogs = [];
-            renderHistory();
-            addLog('Mining history display cleared');
-        }
+        // REMOVED: Mining history management functions (refreshHistory, filterHistory, renderHistory, clearHistory)
+        // Mining History tab has been removed to improve performance and eliminate freezing issues
+        // Mining activity is now tracked via:
+        // 1. Recent Activity terminal display (Overview tab) - real-time mining logs
+        // 2. Transaction History page - persistent record of all mined blocks with rewards
+        // 3. GPU Mining tab - per-GPU statistics and blocks found
 
         // Subscribe to updates
         // Subscribe to updates (one-time only - prevent duplicate subscriptions causing stack overflow)
@@ -825,27 +913,27 @@
                     const current_height = data.current_height || 0;
                     const initial_reward = 32.375;
                     const tail_emission = 0.5;
-                    const total_decay_blocks = 1261440;
+                    const total_decay_blocks = 1262304;
                     const reward = initial_reward - (initial_reward - tail_emission) * (current_height / total_decay_blocks);
                     const rewardPerBlock = Math.max(reward, tail_emission);
 
                     if (data.is_mining) {
-                        document.getElementById('mining-status').innerHTML = '<span class="icon icon-pickaxe" style="color: var(--status-success);"></span> Running';
+                        document.getElementById('mining-status').innerHTML = '<span class="icon icon-pickaxe" style="filter: brightness(0) saturate(100%) invert(58%) sepia(69%) saturate(456%) hue-rotate(107deg) brightness(95%) contrast(92%);"></span> <span style="color: white;">Running</span>';
                         document.getElementById('hashrate').textContent = `${(data.hashrate || 0).toLocaleString()} H/s`;
                         document.getElementById('blocks-found').textContent = blocksFound;
-                        document.getElementById('est-reward').textContent = `${rewardPerBlock.toFixed(8)} BTPC/block`;
-                        document.getElementById('start-mining-btn').style.display = 'none';
-                        document.getElementById('stop-mining-btn').style.display = 'inline-flex';
+                        document.getElementById('est-reward').innerHTML = `<span style="color: var(--status-success);">${rewardPerBlock.toFixed(8)}</span> <span style="color: white;">BTPC/block</span>`;
+                        updateMiningToggleButton(true);
                     } else {
-                        document.getElementById('mining-status').innerHTML = '<span class="icon icon-pickaxe" style="opacity: 0.3;"></span> Stopped';
+                        document.getElementById('mining-status').innerHTML = '<span class="icon icon-pickaxe" style="filter: brightness(0.3);"></span> <span style="color: white;">Stopped</span>';
                         document.getElementById('hashrate').textContent = '0 H/s';
                         document.getElementById('blocks-found').textContent = blocksFound;
-                        document.getElementById('est-reward').textContent = `${rewardPerBlock.toFixed(8)} BTPC/block`;
-                        document.getElementById('start-mining-btn').style.display = 'inline-flex';
-                        document.getElementById('stop-mining-btn').style.display = 'none';
+                        document.getElementById('est-reward').innerHTML = `<span style="color: var(--status-success);">${rewardPerBlock.toFixed(8)}</span> <span style="color: white;">BTPC/block</span>`;
+                        updateMiningToggleButton(false);
                     }
                 } else if (type === 'wallet') {
                     document.getElementById('wallet-balance').textContent = (data.balance || 0).toFixed(8);
+                    const spendableEl = document.getElementById('spendable-balance');
+                    if (spendableEl) spendableEl.textContent = (data.spendable_balance || 0).toFixed(8);
                 } else if (type === 'blockchain') {
                     // Update sync status and progress
                     if (data && data.sync_progress !== undefined) {
@@ -888,119 +976,660 @@
             });
         }
 
-        // Load mining addresses and history on page load
-        loadMiningAddresses();
-        refreshHistory();
+        // Track state for mining display
+        let lastBlockFound = 0;
+        let lastNonce = 0;
+        let lastTarget = '';
+        let gpuTemp = 0;
+        let hashAttempts = []; // Store real hash attempts from backend logs
+        let blockFoundEvents = []; // Store recent block found notifications
+        let isPageVisible = true; // Track page visibility to pause updates when hidden
 
-        // Setup StateManager event listeners (Article XI - automatic event emission)
-        async function setupStateManagerEvents() {
-            if (!window.__TAURI__ || !window.__TAURI__.event) {
-                console.warn('Tauri event API not available');
-                return;
-            }
+        // FIX 2025-01-25: Network-isolated block timing stats
+        // Each network (mainnet/testnet/regtest) gets its own localStorage keys
+        // This prevents timing data from one network bleeding into another
+        let currentNetwork = 'regtest'; // Default, will be updated from backend
+        let lastBlockFoundTimestamp = null;
+        let blockTimestamps = [];
 
+        // Load network-specific timing data from localStorage
+        async function loadNetworkTimingData() {
             try {
-                // Listen for mining_status_changed events from backend StateManager
-                await window.__TAURI__.event.listen('mining_status_changed', (event) => {
-                    const miningStatus = event.payload;
-                    console.log('📡 Received mining_status_changed event:', miningStatus);
-
-                    // Update UI based on StateManager event
-                    if (miningStatus.active) {
-                        document.getElementById('mining-status').innerHTML =
-                            '<span class="icon icon-pickaxe" style="color: var(--status-success);"></span> Running';
-                        document.getElementById('start-mining-btn').style.display = 'none';
-                        document.getElementById('stop-mining-btn').style.display = 'inline-flex';
-
-                        // Update hashrate if available
-                        if (miningStatus.hashrate !== undefined) {
-                            document.getElementById('hashrate').textContent = `${miningStatus.hashrate.toLocaleString()} H/s`;
-                        }
-
-                        // Update blocks mined if available
-                        if (miningStatus.blocks_mined !== undefined) {
-                            // Linear decay block reward calculation (Constitution Article III)
-                            // Reward decreases linearly from 32.375 BTPC to 0.5 BTPC over 1,261,440 blocks
-                            const current_height = miningStatus.current_height || 0;
-                            const initial_reward = 32.375;
-                            const tail_emission = 0.5;
-                            const total_decay_blocks = 1261440;
-
-                            // Calculate per-block reward at current height using linear decay
-                            const reward = initial_reward - (initial_reward - tail_emission) * (current_height / total_decay_blocks);
-                            const rewardPerBlock = Math.max(reward, tail_emission); // Clamp to tail emission
-
-                            document.getElementById('blocks-found').textContent = miningStatus.blocks_mined;
-                            document.getElementById('est-reward').textContent = `${rewardPerBlock.toFixed(8)} BTPC/block`;
-                        }
-
-                        // Update difficulty if available
-                        if (miningStatus.current_difficulty) {
-                            const difficultyEl = document.getElementById('network-difficulty');
-                            if (difficultyEl) {
-                                difficultyEl.textContent = miningStatus.current_difficulty;
-                            }
-                        }
-                    } else {
-                        document.getElementById('mining-status').innerHTML =
-                            '<span class="icon icon-pickaxe" style="opacity: 0.3;"></span> Stopped';
-                        document.getElementById('hashrate').textContent = '0 H/s';
-                        document.getElementById('start-mining-btn').style.display = 'inline-flex';
-                        document.getElementById('stop-mining-btn').style.display = 'none';
-                    }
-                });
-
-                console.log('✅ StateManager event listeners registered for mining page');
-            } catch (error) {
-                console.error('Failed to setup StateManager event listeners:', error);
-            }
-        }
-
-        // Initialize event listeners
-        setupStateManagerEvents();
-
-        // Refresh history when switching to history tab
-        document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                if (btn.textContent.trim() === 'History') {
-                    refreshHistory();
-                }
-            });
-        });
-
-        // Check if mining is active on page load and start updates
-        async function checkMiningOnLoad() {
-            if (!window.invoke) {
-                setTimeout(checkMiningOnLoad, 500);
-                return;
-            }
-
-            try {
-                const status = await window.invoke('get_mining_status');
-                if (status && status.is_mining) {
-                    console.log('Mining is active, starting updates...');
-                    document.getElementById('start-mining-btn').style.display = 'none';
-                    document.getElementById('stop-mining-btn').style.display = 'inline-flex';
-                    document.getElementById('mining-status').innerHTML = '<span class="icon icon-pickaxe" style="color: var(--status-success);"></span> Running';
-                    startMiningUpdates();
-                } else {
-                    // Update once to show any existing logs
-                    await updateMiningStats();
+                const networkConfig = await window.invoke('get_network_config');
+                if (networkConfig && networkConfig.network) {
+                    currentNetwork = networkConfig.network.toLowerCase();
                 }
             } catch (e) {
-                console.log('Failed to check mining status on load:', e);
+                console.warn('[Mining] Could not get network config, using default:', e);
+            }
+
+            // Load timing data for THIS network only
+            const lastTsKey = `btpc_${currentNetwork}_last_block_timestamp`;
+            const timestampsKey = `btpc_${currentNetwork}_block_timestamps`;
+
+            lastBlockFoundTimestamp = localStorage.getItem(lastTsKey)
+                ? parseInt(localStorage.getItem(lastTsKey))
+                : null;
+            blockTimestamps = localStorage.getItem(timestampsKey)
+                ? JSON.parse(localStorage.getItem(timestampsKey))
+                : [];
+
+            // FIX 2026-02-23: Cross-check with actual blockchain height.
+            // If chain was wiped/reset, localStorage timing data is stale — clear it.
+            try {
+                const status = await window.invoke('get_mining_status');
+                const chainHeight = status?.current_height || 0;
+                if (blockTimestamps.length > 0 && chainHeight < blockTimestamps.length) {
+                    console.log(`[Mining] Chain height (${chainHeight}) < stored timestamps (${blockTimestamps.length}) — chain was reset, clearing stale timing data`);
+                    blockTimestamps = [];
+                    lastBlockFoundTimestamp = null;
+                    localStorage.removeItem(lastTsKey);
+                    localStorage.removeItem(timestampsKey);
+                }
+            } catch (e) {
+                console.debug('[Mining] Could not cross-check chain height for timing data:', e);
+            }
+
+            console.log(`[Mining] Loaded timing data for network '${currentNetwork}': lastBlock=${lastBlockFoundTimestamp}, timestamps=${blockTimestamps.length}`);
+        }
+
+        // Save network-specific timing data to localStorage
+        function saveNetworkTimingData() {
+            const lastTsKey = `btpc_${currentNetwork}_last_block_timestamp`;
+            const timestampsKey = `btpc_${currentNetwork}_block_timestamps`;
+
+            if (lastBlockFoundTimestamp) {
+                localStorage.setItem(lastTsKey, lastBlockFoundTimestamp.toString());
+            }
+            localStorage.setItem(timestampsKey, JSON.stringify(blockTimestamps));
+        }
+
+        // FIX 2025-12-08: Event-driven mining display (replaces polling)
+        // Listen for real-time mining_activity events pushed from backend
+        // This is the XMRig-style architecture - events are pushed, not polled
+        let lastActivityEvent = null; // Cache last event for display
+        let activityEventUnlisten = null; // Cleanup handler
+        let blockMinedUnlisten = null; // Block mined event handler
+        let lastConsoleRender = 0; // FIX 2025-02-20: Throttle DOM updates to prevent freeze
+        const CONSOLE_RENDER_INTERVAL = 200; // Max 5 renders/sec (200ms)
+
+        // Initialize Tauri event listeners for mining events
+        async function initMiningActivityListener() {
+            // Wait for Tauri API to be fully loaded
+            // Tauri 2.0 uses window.__TAURI__.event.listen
+            const listen = window.__TAURI__?.event?.listen;
+            if (!listen) {
+                console.log('[Mining] Tauri event API not ready, retrying in 500ms...');
+                setTimeout(() => initMiningActivityListener(), 500);
+                return;
+            }
+            console.log('[Mining] Tauri event API found:', typeof listen);
+
+            try {
+                // Listen for mining_activity events pushed from backend every 500ms
+                activityEventUnlisten = await window.__TAURI__.event.listen('mining_activity', (event) => {
+                    // FIX 2025-12-10: Handle both possible payload structures
+                    // Tagged enum: { type: "MiningActivity", data: {...} }
+                    // Direct data: { device_id: ..., hashrate: ..., ... }
+                    let data = event.payload?.data || event.payload;
+
+                    if (data && (data.hashrate !== undefined || data.device_id !== undefined)) {
+                        // FIX 2025-12-11: Add timestamp for freshness tracking
+                        data._timestamp = Date.now();
+                        lastActivityEvent = data;
+
+                        // FIX 2025-02-20: Throttle DOM updates to prevent WebView freeze
+                        // Backend emits at 10ms (100/sec) but DOM only needs ~5 updates/sec
+                        const now = Date.now();
+                        if (now - lastConsoleRender >= CONSOLE_RENDER_INTERVAL) {
+                            lastConsoleRender = now;
+                            try {
+                                updateMiningConsoleFromEvent(data);
+                            } catch (err) {
+                                console.error('[Mining] ERROR in updateMiningConsoleFromEvent:', err);
+                            }
+                        }
+                    }
+                });
+                console.log('[Mining] ✅ Real-time mining activity listener initialized');
+
+                // Listen for block_mined events for notifications
+                blockMinedUnlisten = await window.__TAURI__.event.listen('block_mined', (event) => {
+                    const data = event.payload?.data || event.payload;
+                    if (data) {
+                        // Calculate block reward using linear decay
+                        const blockHeight = data.block_height || 0;
+                        const initialReward = 32.375;
+                        const tailEmission = 0.5;
+                        const totalDecayBlocks = 1262304;
+                        const reward = Math.max(tailEmission, initialReward - (initialReward - tailEmission) * (blockHeight / totalDecayBlocks));
+
+                        // Store block found event with timestamp
+                        const now = Date.now();
+                        blockFoundEvents.push({
+                            height: blockHeight,
+                            hash: data.block_hash ? data.block_hash.substring(0, 16) : '',
+                            reward: reward,
+                            time: new Date().toLocaleTimeString(),
+                            nonce: data.nonce || 0
+                        });
+                        // Keep only last 5 block found events
+                        if (blockFoundEvents.length > 5) {
+                            blockFoundEvents.shift();
+                        }
+
+                        // FIX 2025-01-25: Network-isolated block timestamps for timing display
+                        blockTimestamps.push(now);
+                        lastBlockFoundTimestamp = now;
+                        // Keep last 100 timestamps for average calculation
+                        if (blockTimestamps.length > 100) {
+                            blockTimestamps.shift();
+                        }
+                        // Persist to network-specific localStorage keys
+                        saveNetworkTimingData();
+                        console.log(`[Mining] 🎉 Block mined on ${currentNetwork}!`, data);
+
+                        // FIX 2025-12-11: Update console with block_mined event when mining_activity events are sparse
+                        // Use actual blocks_found from lastActivityEvent (backend counter), NOT blockFoundEvents.length (capped at 5)
+                        // blockFoundEvents is just a display cache for recent notifications, not the true count
+                        const fallbackData = {
+                            hashrate: lastActivityEvent?.hashrate || 0,
+                            blocks_found: lastActivityEvent?.blocks_found || 0,
+                            uptime_seconds: lastActivityEvent?.uptime_seconds || 0,
+                            block_height: blockHeight,
+                            difficulty: data.difficulty || lastActivityEvent?.difficulty || '1d00ffff',
+                            current_nonce: data.nonce || 0
+                        };
+                        updateMiningConsoleFromEvent(fallbackData);
+                    }
+                });
+                console.log('[Mining] ✅ Block mined event listener initialized');
+
+                // FIX 2025-12-08: Listen for block_construction events (COINBASE, MERKLE, HEADER)
+                // Replaces polling-based log fetch with event-driven updates from backend
+                // Note: MiningEvent uses #[serde(tag = "type", content = "data")] so payload is { type, data }
+                blockConstructionUnlisten = await window.__TAURI__.event.listen('block_construction', (event) => {
+                    const payload = event.payload?.data || event.payload; // Handle tagged enum structure
+                    if (payload && payload.log_type && payload.message) {
+                        const time = new Date().toLocaleTimeString('en-US', { hour12: false });
+                        const logType = payload.log_type;
+                        const msg = payload.message;
+
+                        if (logType === 'COINBASE') {
+                            // Parse: "[TX] COINBASE - ID: a437e070fe3bec46"
+                            const txidMatch = msg.match(/ID: ([a-f0-9]+)/i);
+                            miningActivityLogs.push({
+                                type: 'coinbase',
+                                time: time,
+                                txid: txidMatch ? txidMatch[1] : '',
+                                raw: msg // Store raw message for display
+                            });
+                        } else if (logType === 'MERKLE') {
+                            // Parse: "[MERKLE] Calculated from 1 txs"
+                            const txCountMatch = msg.match(/from (\d+) txs/);
+                            miningActivityLogs.push({
+                                type: 'merkle',
+                                time: time,
+                                txCount: txCountMatch ? parseInt(txCountMatch[1]) : 0,
+                                raw: msg // Store raw message for display
+                            });
+                        } else if (logType === 'HEADER') {
+                            // Parse: "[BLOCK_HEADER] GPU 0 - Version: 1 - Prev Hash: ... - Merkle Root: ... - Timestamp: ... - Bits: 0x... - Nonce Start: ..."
+                            const gpuMatch = msg.match(/GPU (\d+)/);
+                            const versionMatch = msg.match(/Version: (\d+)/);
+                            const prevHashMatch = msg.match(/Prev Hash: ([a-f0-9]+)/i);
+                            const merkleMatch = msg.match(/Merkle Root: ([a-f0-9]+)/i);
+                            const timestampMatch = msg.match(/Timestamp: (\d+)/);
+                            const bitsMatch = msg.match(/Bits: (0x[a-f0-9]+)/i);
+                            const nonceMatch = msg.match(/Nonce Start: ([0-9,]+)/);
+                            miningActivityLogs.push({
+                                type: 'header',
+                                time: time,
+                                gpu: gpuMatch ? parseInt(gpuMatch[1]) : 0,
+                                version: versionMatch ? parseInt(versionMatch[1]) : 1,
+                                prevHash: prevHashMatch ? prevHashMatch[1] : '',
+                                merkleRoot: merkleMatch ? merkleMatch[1] : '',
+                                timestamp: timestampMatch ? parseInt(timestampMatch[1]) : 0,
+                                bits: bitsMatch ? bitsMatch[1] : '',
+                                nonce: nonceMatch ? parseInt(nonceMatch[1].replace(/,/g, '')) : 0,
+                                raw: msg // Store raw message for display
+                            });
+                        }
+                        // Keep only last 10 entries
+                        if (miningActivityLogs.length > 10) {
+                            miningActivityLogs = miningActivityLogs.slice(-10);
+                        }
+                    }
+                });
+                console.log('[Mining] ✅ Block construction event listener initialized');
+
+                // Peer connectivity monitor events (mainnet/testnet only)
+                // Auto-pause mining when no peers connected to prevent orphaned blocks
+                peerPausedUnlisten = await window.__TAURI__.event.listen('mining_paused', (event) => {
+                    const data = event.payload || {};
+                    console.log('[Mining] Mining paused due to peer loss:', data);
+
+                    // Show warning banner
+                    const banner = document.getElementById('peer-warning-banner');
+                    if (banner) banner.classList.add('visible');
+
+                    // Update mining UI to paused state
+                    updateMiningToggleButton(false);
+                    document.getElementById('mining-status').innerHTML =
+                        '<span class="icon icon-pickaxe" style="filter: brightness(0.3);"></span> <span style="color: #f87171;">Paused (No Internet)</span>';
+
+                    isMiningPausedByPeers = true;
+                });
+
+                peerResumedUnlisten = await window.__TAURI__.event.listen('mining_resumed', (event) => {
+                    const data = event.payload || {};
+                    console.log('[Mining] Peers reconnected, auto-resuming mining:', data);
+
+                    // Hide warning banner
+                    const banner = document.getElementById('peer-warning-banner');
+                    if (banner) banner.classList.remove('visible');
+
+                    isMiningPausedByPeers = false;
+
+                    // Auto-restart mining with the previously selected address
+                    const savedAddress = document.getElementById('mining-address').value;
+                    if (savedAddress) {
+                        console.log('[Mining] Auto-resuming with address:', savedAddress.substring(0, 16) + '...');
+                        startMining(savedAddress);
+                    } else {
+                        console.log('[Mining] Auto-resuming with default wallet');
+                        quickStartMining();
+                    }
+                });
+                console.log('[Mining] ✅ Peer connectivity event listeners initialized');
+            } catch (e) {
+                console.error('[Mining] Failed to setup event listener:', e);
             }
         }
+
+        let isMiningPausedByPeers = false;
+        let peerPausedUnlisten = null;
+        let peerResumedUnlisten = null;
+
+        async function dismissPeerWarningAndResume() {
+            const banner = document.getElementById('peer-warning-banner');
+            if (banner) banner.classList.remove('visible');
+            isMiningPausedByPeers = false;
+
+            // Tell backend to stop pausing mining for no peers (until peers reconnect and disconnect again)
+            try {
+                await window.invoke('override_network_pause');
+            } catch (e) {
+                console.warn('[Mining] Failed to set peer pause override:', e);
+            }
+
+            // Resume mining despite no peers (user acknowledges orphan risk)
+            const savedAddress = document.getElementById('mining-address').value;
+            if (savedAddress) {
+                startMining(savedAddress);
+            } else {
+                quickStartMining();
+            }
+        }
+
+        // FIX 2025-12-08: Event-driven mining activity (replaces polling)
+        let miningActivityLogs = []; // Store recent mining activity entries from block_construction events
+        let blockConstructionUnlisten = null; // Cleanup handler for block_construction events
+
+        // Deprecated: polling functions removed - now using event-driven approach
+        function startHashFetch() {
+            // No longer needed - block_construction events are pushed from backend
+        }
+
+        function stopHashFetch() {
+            // No longer needed - cleanup is handled by blockConstructionUnlisten
+        }
+
+        // Calculate terminal width based on container size
+        function calculateTerminalWidth() {
+            const container = document.getElementById('mining-log');
+            if (!container) return 100;
+
+            // Get container width minus padding (14px * 2 = 28px) and border (1px * 2 = 2px)
+            const containerWidth = container.clientWidth - 36;
+
+            // Font size is 11.5px, monospace chars are ~0.6 of font size width
+            // JetBrains Mono is slightly wider, use 0.65
+            const charWidth = 11.5 * 0.6;
+
+            // Calculate chars that fit, with some margin for the pre padding (18px * 2)
+            const availableWidth = containerWidth - 36;
+            const chars = Math.floor(availableWidth / charWidth);
+
+            // Clamp between 80 and 140 chars for readability
+            return Math.max(80, Math.min(140, chars));
+        }
+
+        // Update ASCII console from event data (no backend calls needed!)
+        // FIX 2025-12-08: This is the ONLY display updater - removed polling function to stop flashing
+        function updateMiningConsoleFromEvent(data) {
+            const logElement = document.getElementById('mining-log');
+            if (!logElement) return;
+
+            const W = calculateTerminalWidth();
+
+            // Format stats from event
+            const hashrate = data.hashrate || 0;
+            const blocksFound = data.blocks_found || 0;
+            const uptimeSeconds = data.uptime_seconds || 0;
+            const currentHeight = data.block_height || 0;
+            const difficulty = data.difficulty || '1d00ffff';
+            const currentNonce = data.current_nonce || 0;
+            const currentExtraNonce = data.extra_nonce || 0;
+
+            // GPU info - use cached data from gpuDashboard (updates every 2 seconds)
+            const gpuCount = window.gpuDashboard?.cachedDevices?.length || 1;
+            const gpuName = window.gpuDashboard?.cachedDevices?.[0]?.model_name || 'GPU';
+            // Get GPU temperature from cached health data
+            const cachedHealth = window.gpuDashboard?.cachedHealth || {};
+            const gpu0Health = cachedHealth[0] || {};
+            gpuTemp = gpu0Health.temperature || 0;
+
+            // Color helpers
+            const c = {
+                cyan: (s) => `<span style="color:#22d3ee">${s}</span>`,
+                green: (s) => `<span style="color:#4ade80">${s}</span>`,
+                yellow: (s) => `<span style="color:#fbbf24">${s}</span>`,
+                red: (s) => `<span style="color:#f87171">${s}</span>`,
+                purple: (s) => `<span style="color:#a78bfa">${s}</span>`,
+                blue: (s) => `<span style="color:#60a5fa">${s}</span>`,
+                dim: (s) => `<span style="color:#6b7280">${s}</span>`,
+                white: (s) => `<span style="color:#e5e7eb">${s}</span>`,
+                bold: (s) => `<span style="font-weight:600">${s}</span>`,
+            };
+
+            // Helper: strip HTML tags to get plain text length
+            const stripHtml = (s) => s.replace(/<[^>]*>/g, '');
+
+            // Helper: pad content to exact width W (accounts for HTML tags)
+            const makeLine = (content) => {
+                const plainLen = stripHtml(content).length;
+                const padding = Math.max(0, W - plainLen);
+                return c.dim('│') + content + ' '.repeat(padding) + c.dim('│');
+            };
+
+            // Helper functions
+            const pad = (str, len) => {
+                str = String(str);
+                return str.length > len ? str.substring(0, len) : str + ' '.repeat(len - str.length);
+            };
+            const padLeft = (str, len) => {
+                str = String(str);
+                return str.length > len ? str.substring(0, len) : ' '.repeat(len - str.length) + str;
+            };
+            const formatHashrate = (h) => {
+                if (h >= 1000000000) return `${(h / 1000000000).toFixed(2)} GH/s`;
+                if (h >= 1000000) return `${(h / 1000000).toFixed(2)} MH/s`;
+                if (h >= 1000) return `${(h / 1000).toFixed(2)} KH/s`;
+                return `${h.toFixed(0)} H/s`;
+            };
+            const formatUptime = (secs) => {
+                const h = Math.floor(secs / 3600);
+                const m = Math.floor((secs % 3600) / 60);
+                const s = secs % 60;
+                return `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+            };
+            const formatNonce = (n) => n.toLocaleString();
+
+            // Hashrate bar with color gradient
+            const maxHash = 100000000;
+            const barLen = Math.min(25, Math.floor((hashrate / maxHash) * 25));
+
+            // Temperature color
+            const tempC = gpuTemp > 80 ? c.red : gpuTemp > 70 ? c.yellow : c.green;
+
+            let o = [];
+
+            // Header
+            o.push(c.dim('┌' + '─'.repeat(W) + '┐'));
+            const statusBadge = c.green('● MINING');
+            const headerContent = `  ${c.bold(c.purple('BTPC MINER'))} ${c.dim('v1.0')}  ${c.dim('│')}  ${c.cyan('SHA-512')} ${c.dim('PoW')}  ${c.dim('│')}  ${statusBadge}  ${c.dim('│')}  ${c.yellow('GPU×' + gpuCount)}`;
+            o.push(makeLine(headerContent));
+            o.push(c.dim('├') + c.purple('═'.repeat(W)) + c.dim('┤'));
+
+            // Hashrate section
+            // FIX 2025-12-30: Changed display to show Chain Height vs Total Mined more clearly
+            // - "Chain: X" shows current blockchain height (what we're mining)
+            // - "X mined" shows total blocks found by this miner (lifetime counter)
+            const hrStr = formatHashrate(hashrate);
+            const chainStr = 'BTPC Chain: ' + currentHeight.toLocaleString();
+            const hrLine = `  ${c.dim('HASHRATE')}   ${c.bold(c.cyan(pad(hrStr, 12)))}  ${c.cyan('█'.repeat(barLen))}${c.dim('░'.repeat(25 - barLen))}  ${c.green(chainStr)}`;
+            o.push(makeLine(hrLine));
+            const minedStr = blocksFound.toLocaleString() + ' mined';
+            const uptimeStr = pad(formatUptime(uptimeSeconds), 12); // Pad to match hashrate width
+            const uptimeLine = `  ${c.dim('UPTIME')}     ${c.white(uptimeStr)}  ${c.dim('─'.repeat(25))}  ${c.white(minedStr)}`;
+            o.push(makeLine(uptimeLine));
+            o.push(c.dim('├' + '─'.repeat(W) + '┤'));
+
+            // SHA-512 Live Hashing Section
+            o.push(makeLine(`  ${c.bold(c.cyan('SHA-512 LIVE HASHING'))}`));
+            const heightStr = currentHeight.toLocaleString();
+            // FIX 2025-12-11: Changed "Target" to "Bits" for accuracy
+            // The "difficulty" value is compact bits (e.g., 3dffffc0), not the full 64-byte target
+            // Bits change every 2016 blocks per Constitution Article IV
+            const targetLine = `  ${c.dim('Bits:')} ${c.red(difficulty.substring(0, 8))}  ${c.dim('Height:')} ${c.green(heightStr)}`;
+            o.push(makeLine(targetLine));
+
+            // FIX 2025-12-30: Add time since last block and average block time
+            let timeSinceLastBlock = '-';
+            let avgBlockTime = '-';
+            if (lastBlockFoundTimestamp) {
+                const secondsSinceLastBlock = Math.floor((Date.now() - lastBlockFoundTimestamp) / 1000);
+                if (secondsSinceLastBlock < 60) {
+                    timeSinceLastBlock = secondsSinceLastBlock + 's';
+                } else if (secondsSinceLastBlock < 3600) {
+                    const mins = Math.floor(secondsSinceLastBlock / 60);
+                    const secs = secondsSinceLastBlock % 60;
+                    timeSinceLastBlock = mins + 'm ' + secs + 's';
+                } else {
+                    const hours = Math.floor(secondsSinceLastBlock / 3600);
+                    const mins = Math.floor((secondsSinceLastBlock % 3600) / 60);
+                    timeSinceLastBlock = hours + 'h ' + mins + 'm';
+                }
+            }
+            if (blockTimestamps.length >= 2) {
+                // Calculate average time between blocks
+                const timeSpan = blockTimestamps[blockTimestamps.length - 1] - blockTimestamps[0];
+                const avgMs = timeSpan / (blockTimestamps.length - 1);
+                const avgSec = Math.round(avgMs / 1000);
+                if (avgSec < 60) {
+                    avgBlockTime = avgSec + 's';
+                } else {
+                    const mins = Math.floor(avgSec / 60);
+                    const secs = avgSec % 60;
+                    avgBlockTime = mins + 'm ' + secs + 's';
+                }
+            }
+            const timingLine = `  ${c.dim('Last Block:')} ${c.yellow(timeSinceLastBlock)}  ${c.dim('Avg:')} ${c.cyan(avgBlockTime)}`;
+            o.push(makeLine(timingLine));
+
+            o.push(c.dim('├' + '─'.repeat(W) + '┤'));
+
+            // Mining Activity Section (from log fetch - coinbase, merkle, block header)
+            o.push(makeLine(`  ${c.bold(c.yellow('MINING ACTIVITY'))} ${c.dim('(block construction)')}`));
+            if (miningActivityLogs.length > 0) {
+                // Get the most recent entry of each type for display
+                const lastCoinbase = [...miningActivityLogs].reverse().find(a => a.type === 'coinbase');
+                const lastMerkle = [...miningActivityLogs].reverse().find(a => a.type === 'merkle');
+                const lastHeader = [...miningActivityLogs].reverse().find(a => a.type === 'header');
+
+                // Line 1: [TX] COINBASE - ID: ...
+                if (lastCoinbase) {
+                    o.push(makeLine(`  ${c.dim('[' + lastCoinbase.time + ']')} ${c.green('[TX] COINBASE')} ${c.dim('- ID:')} ${c.purple(lastCoinbase.txid)}`));
+                } else {
+                    o.push(makeLine(`  ${c.dim('Waiting for coinbase...')}`));
+                }
+
+                // Line 2: [MERKLE] Calculated from X txs
+                if (lastMerkle) {
+                    o.push(makeLine(`  ${c.dim('[' + lastMerkle.time + ']')} ${c.cyan('[MERKLE]')} ${c.dim('Calculated from')} ${c.white(lastMerkle.txCount)} ${c.dim('txs')}`));
+                } else {
+                    o.push(makeLine(`  ${c.dim('Waiting for merkle...')}`));
+                }
+
+                // Lines 3-6: [BLOCK_HEADER] details (multiple lines)
+                // Use live currentNonce from MiningActivity event (updates every 500ms) for real-time display
+                if (lastHeader) {
+                    const prevHashShort = lastHeader.prevHash ? lastHeader.prevHash.substring(0, 32) : '';
+                    const merkleShort = lastHeader.merkleRoot ? lastHeader.merkleRoot.substring(0, 32) : '';
+                    const liveNonce = currentNonce || lastHeader.nonce; // Use live nonce from MiningActivity event
+                    o.push(makeLine(`  ${c.dim('[' + lastHeader.time + ']')} ${c.blue('[BLOCK_HEADER]')} ${c.dim('GPU')} ${c.yellow(lastHeader.gpu)} ${c.dim('- Version:')} ${c.white(lastHeader.version)}`));
+                    o.push(makeLine(`  ${c.dim('Prev Hash:')} ${c.purple(prevHashShort)}${c.dim('...')}`));
+                    o.push(makeLine(`  ${c.dim('Merkle Root:')} ${c.purple(merkleShort)}${c.dim('...')}`));
+                    const extraNonceStr = currentExtraNonce > 0 ? ` ${c.dim('- extraNonce:')} ${c.yellow(currentExtraNonce.toLocaleString())}` : '';
+                    o.push(makeLine(`  ${c.dim('Timestamp:')} ${c.white(lastHeader.timestamp)} ${c.dim('- Bits:')} ${c.red(lastHeader.bits)} ${c.dim('- Nonce:')} ${c.cyan(liveNonce.toLocaleString())}${extraNonceStr}`));
+                } else {
+                    o.push(makeLine(`  ${c.dim('Waiting for block header...')}`));
+                    o.push(makeLine(''));
+                    o.push(makeLine(''));
+                    o.push(makeLine(''));
+                }
+            } else {
+                o.push(makeLine(`  ${c.dim('Waiting for block construction...')}`));
+                o.push(makeLine(''));
+                o.push(makeLine(''));
+                o.push(makeLine(''));
+                o.push(makeLine(''));
+                o.push(makeLine(''));
+            }
+            o.push(c.dim('├' + '─'.repeat(W) + '┤'));
+
+            // Block Found Notifications Section
+            o.push(makeLine(`  ${c.bold(c.green('BLOCKS FOUND'))}`));
+            if (blockFoundEvents.length > 0) {
+                // Show last 3 block found events (most recent first)
+                const recentBlocks = blockFoundEvents.slice(-3).reverse();
+                recentBlocks.forEach((block) => {
+                    const rewardStr = block.reward.toFixed(8);
+                    o.push(makeLine(`  ${c.green('✓')} ${c.dim('[' + block.time + ']')} ${c.bold(c.green('BLOCK #' + block.height))} ${c.yellow('+' + rewardStr + ' BTPC')} ${c.dim('hash:')} ${c.purple(block.hash)}${c.dim('...')}`));
+                });
+                // Pad remaining lines
+                for (let i = recentBlocks.length; i < 3; i++) {
+                    o.push(makeLine(''));
+                }
+            } else {
+                o.push(makeLine(`  ${c.dim('No blocks found yet...')}`));
+                o.push(makeLine(''));
+                o.push(makeLine(''));
+            }
+            o.push(c.dim('└' + '─'.repeat(W) + '┘'));
+
+            // Render with terminal styling
+            const htmlContent = `<pre style="margin: 0; padding: 14px 18px; font-family: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Consolas', monospace; font-size: 11.5px; line-height: 1.55; color: #e6edf3; background: linear-gradient(180deg, #0d1117 0%, #0d1117 50%, #161b22 100%); white-space: pre; overflow: hidden; width: 100%; height: 100%; box-sizing: border-box; border-radius: 8px; border: 1px solid #30363d;">${o.join('\n')}</pre>`;
+
+            logElement.innerHTML = htmlContent;
+        }
+
+        // Cleanup event listeners when page unloads
+        window.addEventListener('beforeunload', () => {
+            if (activityEventUnlisten) {
+                activityEventUnlisten();
+            }
+            if (blockMinedUnlisten) {
+                blockMinedUnlisten();
+            }
+            if (blockConstructionUnlisten) {
+                blockConstructionUnlisten();
+            }
+            if (peerPausedUnlisten) {
+                peerPausedUnlisten();
+            }
+            if (peerResumedUnlisten) {
+                peerResumedUnlisten();
+            }
+        });
+
+        // FIX 2025-12-11: REMOVED separate polling fallback - causes duplicate API calls
+        // The mining console is now updated by:
+        // 1. Real-time mining_activity events (10ms) - primary source for live display
+        // 2. updateManager subscription (5s) - fallback for console updates when events are sparse
+        //
+        // Previously had a 1-second polling interval calling get_mining_status which:
+        // - Duplicated the updateManager's polling
+        // - Created race conditions with event-driven updates
+        // - Was the root cause of blocks_found flickering (16525 ↔ 5)
+
+        // Subscribe to updateManager for console fallback updates (single source of truth)
+        // This replaces the redundant 1-second polling with updateManager's 5-second cycle
+        let consoleUpdateSubscribed = false;
+        function subscribeConsoleToUpdateManager() {
+            if (consoleUpdateSubscribed) return;
+            if (!window.btpcUpdateManager) {
+                console.warn('[Mining] updateManager not available for console fallback');
+                return;
+            }
+
+            window.btpcUpdateManager.subscribe((type, data) => {
+                if (type === 'mining' && data.is_mining) {
+                    // Only update console if we haven't received a mining_activity event recently
+                    // This prevents overwriting real-time event data with slower polling data
+                    const now = Date.now();
+                    if (!lastActivityEvent || (now - (lastActivityEvent._timestamp || 0)) > 2000) {
+                        const consoleData = {
+                            hashrate: data.hashrate || 0,
+                            blocks_found: data.blocks_found || 0,
+                            uptime_seconds: data.uptime_seconds || 0,
+                            block_height: data.current_height || 0,
+                            difficulty: '1d00ffff',
+                            current_nonce: 0
+                        };
+                        updateMiningConsoleFromEvent(consoleData);
+                    }
+                }
+            });
+            consoleUpdateSubscribed = true;
+            console.log('[Mining] Console subscribed to updateManager (single source of truth fallback)');
+        }
+
+        // Initialize listeners and check mining status on page load
+        document.addEventListener('DOMContentLoaded', async () => {
+            // FIX 2025-01-25: Load network-specific timing data FIRST
+            // This ensures block timing stats are isolated per network
+            await loadNetworkTimingData();
+
+            initMiningActivityListener();
+            subscribeConsoleToUpdateManager();
+
+            // If mining is already running, start hash fetch
+            try {
+                if (window.invoke) {
+                    const status = await window.invoke('get_mining_status');
+                    if (status && status.is_mining) {
+                        startHashFetch();
+                    }
+                }
+            } catch (e) {
+                console.debug('[Mining] Could not check mining status on load:', e);
+            }
+        });
+
+        // FIX 2025-12-09: Expose loadMiningAddresses to global scope for network change reload
+        // When network changes, btpc-common.js calls this to refresh mining wallet options
+        window.loadMiningAddresses = loadMiningAddresses;
+
+        // Load mining addresses on page load
+        loadMiningAddresses();
+
+        // REMOVED: setupStateManagerEvents() - Duplicate of updateManager subscription
+        // The StateManager event listener was competing with updateManager polling (lines 678-749)
+        // causing buttons to toggle back and forth. All mining status updates now handled
+        // exclusively by updateManager subscription to prevent race conditions.
+
+        // REMOVED: checkMiningOnLoad() - No longer needed
+        // updateManager subscription (lines 678-749) handles mining status updates automatically
+        // Button states are updated by the subscription based on backend status
 
         // Start manager updates if not already started
         // Note: startAutoUpdate called globally in btpc-common.js (Article XI compliance)
         // Removed duplicate call to prevent race condition
 
-        // Check mining status on page load
-        checkMiningOnLoad();
-
         // GPU Dashboard helper functions
-        async function refreshGpuStats() {
+        async function refreshGpuDashboard() {
             if (window.gpuDashboard && window.gpuDashboard.loadDashboardData) {
                 await window.gpuDashboard.loadDashboardData();
             } else {

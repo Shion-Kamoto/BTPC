@@ -16,6 +16,7 @@ pub fn add_mining_reward_utxo(
     address: &str,
     amount_credits: u64,
     block_height: u64,
+    fork_id: u8,
 ) -> Result<(), String> {
     let txid = format!(
         "coinbase_{}_{}",
@@ -33,6 +34,7 @@ pub fn add_mining_reward_utxo(
             amount_credits,
             address.to_string(),
             block_height,
+            fork_id,
         )
         .map_err(|e| format!("Failed to add mining UTXO: {}", e))?;
 
@@ -101,11 +103,16 @@ pub async fn get_spendable_utxos(state: State<'_, AppState>) -> Result<Vec<UTXO>
         Err(e) => return Err(format!("Failed to get wallet address: {}", e)),
     };
 
+    // Get actual blockchain height for coinbase maturity check
+    let current_height = {
+        let node = state.embedded_node.read().await;
+        node.get_height()
+    };
+
     let utxo_manager = state
         .utxo_manager
         .lock()
         .map_err(|_| BtpcError::mutex_poison("utxo_manager", "get_spendable_utxos").to_string())?;
-    let current_height = chrono::Utc::now().timestamp() as u64; // Simplified height calculation
 
     let spendable_utxos: Vec<UTXO> = utxo_manager
         .get_unspent_utxos(&address)
@@ -124,7 +131,8 @@ pub async fn add_mining_utxo(
     amount_credits: u64,
     block_height: u64,
 ) -> Result<String, String> {
-    add_mining_reward_utxo(&state.utxo_manager, &address, amount_credits, block_height).map(|_| {
+    let fork_id = state.active_network.read().await.fork_id();
+    add_mining_reward_utxo(&state.utxo_manager, &address, amount_credits, block_height, fork_id).map(|_| {
         format!(
             "Added mining UTXO: {} credits at block {}",
             amount_credits, block_height

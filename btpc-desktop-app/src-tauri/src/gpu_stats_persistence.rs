@@ -100,6 +100,7 @@ impl GpuStatsPersistence {
     ///
     /// # Errors
     /// Returns error if write or rename fails
+    #[allow(dead_code)] // Reserved for GPU stats persistence
     pub fn save(&self, stats: &GpuStatsFile) -> Result<()> {
         // Create parent directory if needed
         if let Some(parent) = self.file_path.parent() {
@@ -127,6 +128,7 @@ impl GpuStatsPersistence {
     /// * `blocks_found` - Lifetime blocks found (cumulative)
     /// * `total_hashes` - Lifetime total hashes (cumulative)
     /// * `total_uptime` - Lifetime uptime in seconds (cumulative)
+    #[allow(dead_code)] // Reserved for GPU stats persistence
     pub fn update_gpu_stats(
         &self,
         device_index: u32,
@@ -167,6 +169,7 @@ impl GpuStatsPersistence {
     }
 
     /// Get stats for a specific GPU
+    #[allow(dead_code)] // Reserved for GPU stats persistence
     pub fn get_gpu_stats(&self, device_index: u32) -> Option<PersistentGpuStats> {
         let stats_file = self.load();
         stats_file.gpus.get(&device_index).cloned()

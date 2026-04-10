@@ -1072,7 +1072,7 @@ mod tests {
         let mut handles = vec![];
         for _ in 0..10 {
             let blockchain_db = validator.blockchain_db.clone();
-            let block_hash_clone = block_hash.clone();
+            let block_hash_clone = block_hash;
 
             let handle = tokio::spawn(async move {
                 // Each task reads the same block multiple times
@@ -1106,7 +1106,7 @@ mod tests {
         };
 
         let test_utxo = crate::blockchain::UTXO {
-            outpoint: test_outpoint.clone(),
+            outpoint: test_outpoint,
             output: crate::blockchain::TransactionOutput {
                 value: 1000,
                 script_pubkey: crate::crypto::Script::from_bytes(vec![1, 2, 3]),
@@ -1125,7 +1125,7 @@ mod tests {
         let mut handles = vec![];
         for _ in 0..10 {
             let utxo_db = validator.utxo_db.clone();
-            let outpoint_clone = test_outpoint.clone();
+            let outpoint_clone = test_outpoint;
 
             let handle = tokio::spawn(async move {
                 // Each task reads the same UTXO multiple times
@@ -1161,7 +1161,7 @@ mod tests {
             };
 
             let utxo = crate::blockchain::UTXO {
-                outpoint: outpoint.clone(),
+                outpoint,
                 output: crate::blockchain::TransactionOutput {
                     value: 1000 + i as u64,
                     script_pubkey: crate::crypto::Script::from_bytes(vec![1, 2, 3]),
@@ -1190,10 +1190,10 @@ mod tests {
         }
 
         // Reader tasks (reading the first UTXO)
-        let first_outpoint = utxos[0].0.clone();
+        let first_outpoint = utxos[0].0;
         for _ in 0..5 {
             let utxo_db = validator.utxo_db.clone();
-            let outpoint_clone = first_outpoint.clone();
+            let outpoint_clone = first_outpoint;
 
             let handle = tokio::spawn(async move {
                 let db = utxo_db.read().unwrap();
@@ -1239,7 +1239,7 @@ mod tests {
 
         for i in 1..=3 {
             let mut block = Block::create_test_block();
-            block.header.prev_hash = prev_hash.clone();
+            block.header.prev_hash = prev_hash;
             block.header.timestamp = 1000 + (i * 100);
 
             if let Ok(proof) = ProofOfWork::mine(&block.header, &target) {
@@ -1327,7 +1327,7 @@ mod tests {
         };
 
         let utxo = crate::blockchain::UTXO {
-            outpoint: utxo_outpoint.clone(),
+            outpoint: utxo_outpoint,
             output: crate::blockchain::TransactionOutput {
                 value: 5000,
                 script_pubkey: Script::pay_to_pubkey_hash(pubkey_hash),
@@ -1346,7 +1346,7 @@ mod tests {
         let mut transaction = Transaction {
             version: 1,
             inputs: vec![crate::blockchain::TransactionInput {
-                previous_output: utxo_outpoint.clone(),
+                previous_output: utxo_outpoint,
                 script_sig: Script::new(), // Will be replaced with proper signature
                 sequence: 0xffffffff,
             }],
@@ -1394,7 +1394,7 @@ mod tests {
         };
 
         let utxo = crate::blockchain::UTXO {
-            outpoint: utxo_outpoint.clone(),
+            outpoint: utxo_outpoint,
             output: crate::blockchain::TransactionOutput {
                 value: 5000,
                 script_pubkey: Script::pay_to_pubkey_hash(pubkey_hash),
@@ -1413,7 +1413,7 @@ mod tests {
         let mut transaction = Transaction {
             version: 1,
             inputs: vec![crate::blockchain::TransactionInput {
-                previous_output: utxo_outpoint.clone(),
+                previous_output: utxo_outpoint,
                 script_sig: Script::new(),
                 sequence: 0xffffffff,
             }],
@@ -1464,7 +1464,7 @@ mod tests {
         };
 
         let utxo = crate::blockchain::UTXO {
-            outpoint: utxo_outpoint.clone(),
+            outpoint: utxo_outpoint,
             output: crate::blockchain::TransactionOutput {
                 value: 5000,
                 script_pubkey: Script::pay_to_pubkey_hash(pubkey_hash),
@@ -1483,7 +1483,7 @@ mod tests {
         let mut transaction = Transaction {
             version: 1,
             inputs: vec![crate::blockchain::TransactionInput {
-                previous_output: utxo_outpoint.clone(),
+                previous_output: utxo_outpoint,
                 script_sig: Script::new(),
                 sequence: 0xffffffff,
             }],
@@ -1529,7 +1529,7 @@ mod tests {
         };
 
         let utxo = crate::blockchain::UTXO {
-            outpoint: utxo_outpoint.clone(),
+            outpoint: utxo_outpoint,
             output: crate::blockchain::TransactionOutput {
                 value: 5000,
                 script_pubkey: Script::pay_to_pubkey_hash(pubkey_hash),
@@ -1548,7 +1548,7 @@ mod tests {
         let mut transaction = Transaction {
             version: 1,
             inputs: vec![crate::blockchain::TransactionInput {
-                previous_output: utxo_outpoint.clone(),
+                previous_output: utxo_outpoint,
                 script_sig: Script::new(),
                 sequence: 0xffffffff,
             }],
@@ -1599,7 +1599,7 @@ mod tests {
         };
 
         let utxo = crate::blockchain::UTXO {
-            outpoint: utxo_outpoint.clone(),
+            outpoint: utxo_outpoint,
             output: crate::blockchain::TransactionOutput {
                 value: 5000,
                 script_pubkey: Script::pay_to_pubkey_hash(pubkey_hash),
@@ -1618,7 +1618,7 @@ mod tests {
         let transaction = Transaction {
             version: 1,
             inputs: vec![crate::blockchain::TransactionInput {
-                previous_output: utxo_outpoint.clone(),
+                previous_output: utxo_outpoint,
                 script_sig: Script::new(), // Empty script - no signature
                 sequence: 0xffffffff,
             }],

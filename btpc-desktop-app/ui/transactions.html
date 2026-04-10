@@ -76,6 +76,13 @@
                         <span id="wallet-balance">0.00000000</span>
                         <span class="balance-unit">BTPC</span>
                     </div>
+                    <div class="spendable-row">
+                        <div class="spendable-label">Spendable</div>
+                        <div class="spendable-amount">
+                            <span id="spendable-balance">0.00000000</span>
+                            <span class="balance-unit">BTPC</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -171,7 +178,24 @@
                             <input type="number" class="form-input" id="send-amount" placeholder="0.00000000" step="0.00000001">
                         </div>
                     </div>
-                    <div style="display: flex; gap: 12px;">
+                    <!-- Fee Estimate Display -->
+                    <div id="fee-estimate-row" style="display: none; padding: 12px 16px; background: rgba(139, 92, 246, 0.05); border: 1px solid rgba(139, 92, 246, 0.2); border-radius: 6px; margin-bottom: 12px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="color: var(--btpc-primary); font-size: 14px;">Estimated Fee</span>
+                                <span id="fee-estimate-value" style="color: var(--status-success); font-weight: 600; font-size: 14px;">—</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 16px; font-size: 12px; color: var(--text-muted);">
+                                <span>Rate: <span id="fee-estimate-rate">—</span> crd/KB</span>
+                                <span>Size: <span id="fee-estimate-size">—</span> bytes</span>
+                            </div>
+                        </div>
+                        <div style="margin-top: 6px; display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 12px; color: var(--text-muted);">Total deducted: <span id="fee-estimate-total" style="color: var(--text-primary); font-weight: 500;">—</span></span>
+                        </div>
+                    </div>
+
+                    <div style="padding: 16px; background: rgba(139, 92, 246, 0.1); border-left: 3px solid var(--btpc-primary); border-radius: 6px; display: flex; gap: 12px; justify-content: center;">
                         <button class="btn btn-primary" onclick="sendTransaction()"><span class="icon icon-send"></span> Send BTPC</button>
                         <button class="btn btn-secondary" onclick="switchTab('history')"><span class="icon icon-chart"></span> View History</button>
                         <button class="btn btn-secondary" onclick="saveCurrentAddressToBook()" title="Save current recipient address to Address Book"><span class="icon icon-bookmark"></span> Save Address</button>
@@ -227,7 +251,28 @@
                 <div class="card">
                     <div class="card-header">
                         <span>Transaction History</span>
-                        <button class="btn btn-secondary" onclick="refreshTransactions()" style="padding: 6px 16px;"><span class="icon icon-refresh"></span> Refresh</button>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="btn btn-secondary" onclick="runTxDiagnostic()" style="padding: 6px 12px; font-size: 0.75rem;" title="Debug: Show RocksDB index entries">DB Debug</button>
+                            <button class="btn btn-secondary" onclick="refreshTransactions()" style="padding: 6px 16px;"><span class="icon icon-refresh"></span> Refresh</button>
+                        </div>
+                    </div>
+
+                    <!-- Per-Wallet Filter (Option A: Per-Wallet Transaction Database) -->
+                    <div style="margin-bottom: 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                        <label style="color: var(--text-secondary); font-size: 0.875rem; white-space: nowrap;">Wallet:</label>
+                        <select class="form-input" id="history-wallet-filter" onchange="onWalletFilterChange()" style="max-width: 300px;">
+                            <!-- Populated dynamically by loadWalletFilter() - shows specific wallets only -->
+                        </select>
+                        <span id="history-wallet-balance" style="color: var(--text-muted); font-size: 0.8125rem;"></span>
+
+                        <!-- Transaction Type Filter -->
+                        <label style="color: var(--text-secondary); font-size: 0.875rem; white-space: nowrap; margin-left: 16px;">Type:</label>
+                        <select class="form-input" id="history-type-filter" onchange="onTypeFilterChange()" style="max-width: 150px;">
+                            <option value="">All Types</option>
+                            <option value="SENT">Sent</option>
+                            <option value="RECEIVED">Received</option>
+                            <option value="MINING">Mining</option>
+                        </select>
                     </div>
 
                     <div id="transactions-container">
@@ -332,7 +377,9 @@
     <script src="btpc-event-listeners.js"></script>
     <script src="btpc-navigation-guard.js"></script>
     <script src="btpc-event-manager.js"></script>
+    <script src="btpc-storage.js"></script>
     <script src="btpc-common.js"></script>
+    <script src="btpc-corruption-check.js"></script>
     <script src="btpc-update-manager.js"></script>
     <script src="password-modal.js"></script>
     <script src="btpc-tab-manager.js"></script>
@@ -343,11 +390,22 @@
         let allAddressBookEntries = [];
         const updateManager = window.btpcUpdateManager;
 
+        // FIX 2025-12-30: Helper to get wallet color by address
+        // Returns the wallet's color if address matches a wallet, otherwise returns default
+        function getWalletColorByAddress(address) {
+            const wallet = allWallets.find(w => w.address === address);
+            return wallet?.metadata?.color || '#6366f1';
+        }
+
         // Pagination variables (using RocksDB backend pagination)
         let currentPage = 1;
         const transactionsPerPage = 50; // Limit to 50 transactions per page
         let totalTransactionCount = 0; // Total count from backend
         let hasMoreTransactions = false; // Flag from backend
+
+        // Per-Wallet Filter State (Option A: Per-Wallet Transaction Database)
+        let selectedWalletId = null; // null = default wallet, string = specific wallet ID
+        let selectedTxType = null; // null = all types, 'SENT' | 'RECEIVED' | 'MINING'
 
         // ============================================================================
         // Address Cleaning Utility (matches Rust backend implementation)
@@ -398,28 +456,248 @@
                     const cleanAddr = cleanAddress(wallet.address);
                     console.log('🔧 DEBUG (loadWallets): Wallet', wallet.nickname, '-> Raw:', wallet.address, '-> Cleaned:', cleanAddr);
 
+                    // FIX 2025-12-30: Store wallet color for dropdown styling
+                    const walletColor = wallet.metadata?.color || '#6366f1';
+
                     const sendOption = document.createElement('option');
                     sendOption.value = wallet.id; // Use wallet ID for reliable lookup
                     sendOption.textContent = `${wallet.nickname} - ${(wallet.cached_balance_btp || 0).toFixed(8)} BTPC`;
+                    sendOption.dataset.color = walletColor;
                     sendSelect.appendChild(sendOption);
 
                     const receiveOption = document.createElement('option');
                     receiveOption.value = cleanAddr; // Use cleaned address
                     receiveOption.textContent = `${wallet.nickname}`;
+                    receiveOption.dataset.color = walletColor;
                     receiveSelect.appendChild(receiveOption);
                 });
+
+                // Populate wallet filter dropdown (Option A: Per-Wallet TX Database)
+                loadWalletFilter();
             } catch (e) {
                 console.log('Failed to load wallets:', e);
             }
         }
 
+        // ============================================================================
+        // Per-Wallet Transaction Filter Functions (Option A)
+        // ============================================================================
+
+        // Populate wallet filter dropdown (called after loadWallets)
+        // FIX 2025-12-11: Removed "All Wallets (Default)" option for clearer transaction visibility
+        // Now auto-selects first wallet (or default wallet if flagged) to always show a specific wallet's transactions
+        function loadWalletFilter() {
+            const filterSelect = document.getElementById('history-wallet-filter');
+            if (!filterSelect) return;
+
+            // FIX 2025-12-11: Preserve current wallet selection if it still exists
+            // Previously, loadWallets() after sendTransaction() would reset to default wallet,
+            // causing the sent TX to "disappear" (because we switched to viewing a different wallet)
+            const previouslySelectedId = selectedWalletId;
+            const previousWalletStillExists = previouslySelectedId &&
+                allWallets.some(w => w.id === previouslySelectedId);
+
+            // Clear dropdown - no "All Wallets" option anymore
+            filterSelect.innerHTML = '';
+
+            // Find wallet to auto-select: preserve previous selection, or fall back to default
+            let walletToSelect = null;
+            if (previousWalletStillExists) {
+                // Keep viewing the same wallet user was already looking at
+                walletToSelect = allWallets.find(w => w.id === previouslySelectedId);
+                console.log(`🔍 Preserving wallet filter selection: ${walletToSelect?.nickname}`);
+            } else {
+                // First load or previous wallet was deleted - use default
+                walletToSelect = allWallets.find(w => w.is_default) || allWallets[0];
+                console.log(`🔍 Auto-selecting default wallet: ${walletToSelect?.nickname}`);
+            }
+
+            allWallets.forEach(wallet => {
+                const option = document.createElement('option');
+                option.value = wallet.id;
+                option.textContent = `${wallet.nickname} - ${(wallet.cached_balance_btp || 0).toFixed(4)} BTPC`;
+                // FIX 2025-12-30: Store wallet color for dropdown styling
+                option.dataset.color = wallet.metadata?.color || '#6366f1';
+                // Select the determined wallet
+                if (walletToSelect && wallet.id === walletToSelect.id) {
+                    option.selected = true;
+                }
+                filterSelect.appendChild(option);
+            });
+
+            // Set selectedWalletId to match the selected wallet
+            if (walletToSelect) {
+                selectedWalletId = walletToSelect.id;
+            }
+
+            console.log(`🔍 Wallet filter populated with ${allWallets.length} wallets (selected: ${walletToSelect?.nickname || 'none'})`);
+        }
+
+        // Handle wallet filter change
+        async function onWalletFilterChange() {
+            const filterSelect = document.getElementById('history-wallet-filter');
+            selectedWalletId = filterSelect.value || null;
+
+            // Reset to first page when filter changes
+            currentPage = 1;
+
+            console.log(`🔍 Wallet filter changed: ${selectedWalletId || 'All Wallets (Default)'}`);
+
+            // Reload transactions with new filter
+            await loadTransactions();
+
+            // Update balance display for selected wallet
+            updateWalletBalanceDisplay();
+        }
+
+        // Handle transaction type filter change
+        // FIX 2025-12-12: Changed from frontend filtering to backend filtering
+        // Backend filtering queries SQLite directly, finding SENT TXs even under thousands of mining TXs
+        async function onTypeFilterChange() {
+            const filterSelect = document.getElementById('history-type-filter');
+            selectedTxType = filterSelect.value || null;
+
+            console.log(`🔍 Type filter changed: ${selectedTxType || 'All Types'} - reloading from backend`);
+
+            // Reset to page 1 when filter changes
+            currentPage = 1;
+
+            // Reload from backend with new filter
+            await loadTransactions();
+        }
+
+        // Determine transaction type based on wallet address and transaction data
+        // Returns: 'MINING' | 'SENT' | 'RECEIVED'
+        // FIX 2025-12-10: Use sender_address field for reliable SENT/RECEIVED detection
+        // This replaces unreliable output amount analysis
+        function getTransactionType(tx, walletAddress) {
+            // Coinbase transactions are always MINING
+            if (tx.is_coinbase) {
+                return 'MINING';
+            }
+
+            // If no wallet address, default to RECEIVED
+            if (!walletAddress) {
+                console.log('🔍 getTransactionType: No wallet address, defaulting to RECEIVED');
+                return 'RECEIVED';
+            }
+
+            // Case-insensitive comparison for address matching
+            const cleanWalletAddr = cleanAddress(walletAddress).toLowerCase();
+
+            // FIX 2025-12-10: Use sender_address for reliable SENT/RECEIVED detection
+            // If sender_address matches wallet address -> SENT
+            // If sender_address differs from wallet address -> RECEIVED
+            if (tx.sender_address) {
+                const senderAddr = cleanAddress(tx.sender_address).toLowerCase();
+                if (senderAddr === cleanWalletAddr) {
+                    console.log(`🔍 TX ${tx.txid.substring(0, 16)}: SENT (sender_address matches wallet)`);
+                    return 'SENT';
+                } else {
+                    console.log(`🔍 TX ${tx.txid.substring(0, 16)}: RECEIVED (sender_address differs from wallet)`);
+                    return 'RECEIVED';
+                }
+            }
+
+            // Fallback for legacy transactions without sender_address field
+            // Analyze output distribution: what goes to wallet vs what goes elsewhere
+            console.log(`🔍 TX ${tx.txid.substring(0, 16)}: No sender_address, using fallback output analysis`);
+            let amountToWallet = 0;
+            let amountToOthers = 0;
+            let outputsToWallet = 0;
+            let outputsToOthers = 0;
+
+            for (const output of tx.outputs) {
+                const outputAddr = output.address ? cleanAddress(output.address).toLowerCase() : null;
+                if (outputAddr === cleanWalletAddr) {
+                    amountToWallet += output.value;
+                    outputsToWallet++;
+                } else if (outputAddr) {
+                    amountToOthers += output.value;
+                    outputsToOthers++;
+                }
+            }
+
+            // Decision logic for legacy transactions (no sender_address field):
+            // FIX 2025-12-11: Backend now derives sender_address from input UTXOs
+            // This fallback should rarely be hit, but kept for edge cases
+            //
+            // Simple heuristic: If NO outputs go to this wallet, it's a SENT transaction
+            // (the wallet spent everything, no change came back)
+            // Otherwise, default to RECEIVED since sender_address derivation failed
+            if (outputsToWallet === 0 && outputsToOthers > 0) {
+                console.log(`🔍 TX ${tx.txid.substring(0, 16)}: SENT (fallback - no outputs to wallet)`);
+                return 'SENT';
+            }
+            // Default to RECEIVED for ambiguous cases
+            console.log(`🔍 TX ${tx.txid.substring(0, 16)}: RECEIVED (fallback - has outputs to wallet)`);
+            return 'RECEIVED';
+        }
+
+        // Get the current wallet address for type detection
+        // Uses selected wallet, or falls back to default wallet (first in list)
+        function getCurrentWalletAddress() {
+            if (selectedWalletId) {
+                const wallet = allWallets.find(w => w.id === selectedWalletId);
+                return wallet ? cleanAddress(wallet.address) : null;
+            }
+            // FIX 2025-12-11: Use same default logic as backend (is_default flag)
+            // Previously used allWallets[0] (most recently accessed) which differs from backend's get_default_wallet()
+            // This mismatch caused sent transactions to "disappear" when different wallets were used
+            const defaultWallet = allWallets.find(w => w.is_default);
+            if (defaultWallet) {
+                console.log(`🔧 getCurrentWalletAddress: Using default wallet ${defaultWallet.nickname} (is_default=true)`);
+                return cleanAddress(defaultWallet.address);
+            }
+            // Fallback to first wallet if no default found
+            if (allWallets.length > 0) {
+                return cleanAddress(allWallets[0].address);
+            }
+            return null;
+        }
+
+        // Update balance display next to filter dropdown
+        // Uses wallet's cached balance from WalletManager (source of truth)
+        function updateWalletBalanceDisplay() {
+            const balanceSpan = document.getElementById('history-wallet-balance');
+            if (!balanceSpan) return;
+
+            if (!selectedWalletId) {
+                balanceSpan.textContent = '';
+                return;
+            }
+
+            // Find wallet in allWallets array (uses cached_balance_btp from WalletManager)
+            const wallet = allWallets.find(w => w.id === selectedWalletId);
+            if (wallet) {
+                balanceSpan.textContent = `Balance: ${(wallet.cached_balance_btp || 0).toFixed(8)} BTPC`;
+            } else {
+                balanceSpan.textContent = '';
+            }
+        }
+
         async function loadTransactions() {
             try {
-                //  Use RocksDB paginated API for efficient queries
+                // Use SQLite paginated API with backend type filtering
+                // FIX 2025-12-12: Pass tx_type to backend for server-side filtering
+                // This ensures SENT transactions are found even when buried under thousands of mining TXs
                 const offset = (currentPage - 1) * transactionsPerPage;
+
+                // Map frontend filter values to backend expected values (lowercase)
+                const txTypeMap = {
+                    'SENT': 'sent',
+                    'RECEIVED': 'received',
+                    'MINING': 'mining',
+                    '': null,
+                    null: null
+                };
+                const backendTxType = txTypeMap[selectedTxType] || null;
+
                 const paginatedResult = await window.invoke('get_paginated_transaction_history', {
                     offset: offset,
-                    limit: transactionsPerPage
+                    limit: transactionsPerPage,
+                    walletId: selectedWalletId,
+                    txType: backendTxType  // FIX 2025-12-12: Backend filtering
                 });
 
                 // Store paginated response
@@ -427,10 +705,30 @@
                 totalTransactionCount = paginatedResult.total_count || 0;
                 hasMoreTransactions = paginatedResult.has_more || false;
 
-                console.log(`📄 Loaded page ${currentPage}: ${allTransactions.length} transactions (${totalTransactionCount} total)`);
+                const walletLabel = selectedWalletId ? `wallet ${selectedWalletId.substring(0, 8)}...` : 'default wallet';
+                console.log(`📄 Loaded page ${currentPage} for ${walletLabel}: ${allTransactions.length} transactions (${totalTransactionCount} total)`);
+
+                // DEBUG 2025-12-11: Log FIRST TX to verify pending TXs are received
+                if (allTransactions.length > 0) {
+                    const firstTx = allTransactions[0];
+                    console.log(`📄 FIRST TX: txid=${firstTx.txid?.substring(0, 16)}, confirmed_at=${firstTx.confirmed_at}, is_coinbase=${firstTx.is_coinbase}, sender_address=${firstTx.sender_address?.substring(0, 16) || 'null'}`);
+                }
+
+                // DEBUG 2025-12-11: Log pending transactions to diagnose disappearing TX issue
+                const pendingTxs = allTransactions.filter(tx => !tx.confirmed_at);
+                if (pendingTxs.length > 0) {
+                    console.log(`⏳ PENDING transactions (${pendingTxs.length}):`, pendingTxs.map(tx => ({
+                        txid: tx.txid?.substring(0, 16),
+                        is_coinbase: tx.is_coinbase,
+                        block_height: tx.block_height
+                    })));
+                } else {
+                    console.log(`⚠️ NO pending transactions in response (total: ${allTransactions.length})`);
+                }
                 updateTransactionDisplay();
             } catch (e) {
-                console.log('Failed to load transactions:', e);
+                console.error('❌ CRITICAL: Failed to load transactions:', e);
+                console.error('❌ Stack trace:', e.stack);
                 // Fall back to empty state
                 allTransactions = [];
                 totalTransactionCount = 0;
@@ -454,32 +752,127 @@
             const tbody = document.getElementById('transaction-tbody');
             tbody.innerHTML = '';
 
+            // Get wallet address for type detection
+            const walletAddress = getCurrentWalletAddress();
+
+            // DEBUG 2025-12-11: Log pending TXs before filtering
+            const pendingBeforeFilter = allTransactions.filter(tx => !tx.confirmed_at);
+            if (pendingBeforeFilter.length > 0) {
+                console.log(`🔍 RENDER: ${pendingBeforeFilter.length} pending TXs in allTransactions:`,
+                    pendingBeforeFilter.map(tx => tx.txid?.substring(0, 16)));
+            }
+
+            // Filter transactions by type if filter is active
+            let filteredTxs = allTransactions;
+            if (selectedTxType) {
+                // DEBUG 2025-12-11: Log FIRST 5 TXs' classifications before filter
+                console.log(`🔍 TYPE FILTER: selectedTxType=${selectedTxType}, walletAddress=${walletAddress?.substring(0, 20) || 'null'}`);
+                allTransactions.slice(0, 5).forEach((tx, i) => {
+                    const txType = getTransactionType(tx, walletAddress);
+                    const match = txType === selectedTxType ? '✅' : '❌';
+                    console.log(`  ${match} TX[${i}] ${tx.txid?.substring(0, 16)}: type=${txType}, sender=${tx.sender_address?.substring(0, 16) || 'null'}, coinbase=${tx.is_coinbase}`);
+                });
+
+                filteredTxs = allTransactions.filter(tx => {
+                    const txType = getTransactionType(tx, walletAddress);
+                    return txType === selectedTxType;
+                });
+
+                // DEBUG: Log total count after filter
+                console.log(`🔍 RENDER: After type filter (${selectedTxType}): ${filteredTxs.length} TXs match out of ${allTransactions.length}`);
+            }
+
             // Use backend pagination data instead of frontend pagination
             const startIndex = (currentPage - 1) * transactionsPerPage + 1;
-            const endIndex = startIndex + allTransactions.length - 1;
-            const totalPages = Math.ceil(totalTransactionCount / transactionsPerPage);
+            const endIndex = startIndex + filteredTxs.length - 1;
+            const displayTotal = selectedTxType ? filteredTxs.length : totalTransactionCount;
 
             // Update pagination info using backend data
-            document.getElementById('tx-range-start').textContent = totalTransactionCount > 0 ? startIndex : 0;
-            document.getElementById('tx-range-end').textContent = totalTransactionCount > 0 ? endIndex : 0;
-            document.getElementById('tx-total').textContent = totalTransactionCount;
+            document.getElementById('tx-range-start').textContent = displayTotal > 0 ? startIndex : 0;
+            document.getElementById('tx-range-end').textContent = displayTotal > 0 ? endIndex : 0;
+            document.getElementById('tx-total').textContent = displayTotal;
             document.getElementById('current-page-num').textContent = currentPage;
 
             // Enable/disable pagination buttons based on backend flags
             document.getElementById('prev-page-btn').disabled = currentPage === 1;
             document.getElementById('next-page-btn').disabled = !hasMoreTransactions;
 
-            // Render all transactions (already paginated by backend)
-            allTransactions.forEach(tx => {
+            // DEBUG 2025-12-11: Log first 3 TXs being rendered
+            console.log(`🎨 RENDERING ${filteredTxs.length} transactions. First 3:`,
+                filteredTxs.slice(0, 3).map(tx => ({
+                    txid: tx.txid?.substring(0, 16),
+                    confirmed_at: tx.confirmed_at,
+                    confirmed_at_type: typeof tx.confirmed_at,
+                    block_height: tx.block_height
+                }))
+            );
+
+            // Render filtered transactions
+            let pendingRendered = 0;
+            filteredTxs.forEach((tx, index) => {
                 const row = document.createElement('tr');
 
-                // Calculate amount from outputs (in BTPC)
-                const totalAmount = tx.outputs.reduce((sum, output) => sum + (output.value / 100000000), 0);
+                // DEBUG: Track pending TX rendering
+                if (!tx.confirmed_at) {
+                    pendingRendered++;
+                    console.log(`🖊️ RENDERING PENDING TX at index ${index}: ${tx.txid?.substring(0, 16)}`);
+                }
 
-                // Determine transaction type
-                const isCoinbase = tx.is_coinbase || false;
-                const txType = isCoinbase ? 'MINING' : 'RECEIVE';
-                const typeSymbol = isCoinbase ? '[M]' : '[R]';
+                // Determine transaction type using helper
+                const txType = getTransactionType(tx, walletAddress);
+
+                // Calculate amount based on transaction type and wallet address
+                // FIX 2025-11-28: Show correct amount for the selected wallet perspective
+                // FIX 2025-12-09: Use case-insensitive comparison (same as getTransactionType)
+                let displayAmount = 0;
+                const walletAddrLower = walletAddress ? walletAddress.toLowerCase() : null;
+                if (txType === 'MINING') {
+                    // Mining: Show total coinbase reward (all outputs go to miner)
+                    displayAmount = tx.outputs.reduce((sum, output) => sum + (output.value / 100000000), 0);
+                } else if (txType === 'RECEIVED') {
+                    // Received: Show only outputs going TO the wallet address
+                    displayAmount = tx.outputs.reduce((sum, output) => {
+                        const outputAddr = output.address ? cleanAddress(output.address).toLowerCase() : null;
+                        if (outputAddr && walletAddrLower && outputAddr === walletAddrLower) {
+                            return sum + (output.value / 100000000);
+                        }
+                        return sum;
+                    }, 0);
+                } else if (txType === 'SENT') {
+                    // Sent: Show outputs NOT going to the wallet (what was sent away, excluding change)
+                    displayAmount = tx.outputs.reduce((sum, output) => {
+                        const outputAddr = output.address ? cleanAddress(output.address).toLowerCase() : null;
+                        // If output doesn't go back to sender's wallet, it's the sent amount
+                        if (!outputAddr || !walletAddrLower || outputAddr !== walletAddrLower) {
+                            return sum + (output.value / 100000000);
+                        }
+                        return sum;
+                    }, 0);
+                }
+
+                // Type symbols and styling with colors
+                let typeSymbol, amountPrefix, amountColor, typeColor;
+                switch (txType) {
+                    case 'MINING':
+                        typeSymbol = '[M]';
+                        amountPrefix = '+';
+                        amountColor = 'var(--status-success)';
+                        typeColor = 'var(--btpc-primary)'; // Purple for mining
+                        break;
+                    case 'SENT':
+                        typeSymbol = '[S]';
+                        amountPrefix = '-';
+                        amountColor = 'var(--status-error)';
+                        typeColor = 'var(--status-error)'; // Red for sent
+                        break;
+                    case 'RECEIVED':
+                    default:
+                        typeSymbol = '[R]';
+                        amountPrefix = '+';
+                        amountColor = 'var(--status-success)';
+                        typeColor = 'var(--status-success)'; // Green for received
+                        break;
+                }
 
                 // Format timestamp in ASCII style (YYYY-MM-DD HH:MM:SS)
                 let timestampDisplay = 'PENDING';
@@ -507,8 +900,8 @@
 
                 row.innerHTML = `
                     <td class="mono" style="font-size: 0.75rem;">${tx.txid.substring(0, 16)}...</td>
-                    <td class="mono" style="font-size: 0.75rem;">${typeSymbol} ${txType}</td>
-                    <td class="mono" style="color: var(--status-success); font-weight: 600; font-size: 0.75rem;">+${totalAmount.toFixed(8)} BTPC</td>
+                    <td class="mono" style="font-size: 0.75rem; color: ${typeColor}; font-weight: 600;">${typeSymbol} ${txType}</td>
+                    <td class="mono" style="color: ${amountColor}; font-weight: 600; font-size: 0.75rem;">${amountPrefix}${displayAmount.toFixed(8)} BTPC</td>
                     <td class="mono" style="font-size: 0.75rem;">${timestampDisplay}</td>
                     <td class="mono" style="color: ${statusColor}; font-size: 0.75rem;">${statusDisplay}</td>
                     <td>
@@ -576,11 +969,107 @@
             showPasswordModal(wallet.nickname);
         }
 
+        // Fee estimation - triggers when amount or wallet changes
+        let feeEstimateTimer = null;
+        function setupFeeEstimation() {
+            const amountInput = document.getElementById('send-amount');
+            const walletSelect = document.getElementById('send-from-wallet');
+
+            amountInput.addEventListener('input', () => {
+                clearTimeout(feeEstimateTimer);
+                feeEstimateTimer = setTimeout(updateFeeEstimate, 400);
+            });
+            walletSelect.addEventListener('change', () => {
+                clearTimeout(feeEstimateTimer);
+                feeEstimateTimer = setTimeout(updateFeeEstimate, 200);
+            });
+        }
+
+        async function updateFeeEstimate() {
+            const feeRow = document.getElementById('fee-estimate-row');
+            const walletId = document.getElementById('send-from-wallet').value;
+            const toAddress = document.getElementById('send-address').value.trim();
+            const amountStr = document.getElementById('send-amount').value;
+            const amount = parseFloat(amountStr);
+
+            if (!walletId || !amount || amount <= 0) {
+                feeRow.style.display = 'none';
+                return;
+            }
+
+            const wallet = allWallets.find(w => w.id === walletId);
+            if (!wallet) {
+                feeRow.style.display = 'none';
+                return;
+            }
+
+            const creditsAmount = Math.round(amount * 100_000_000);
+            const recipientAddr = toAddress || wallet.address; // Use wallet address as placeholder for estimation
+
+            try {
+                const estimate = await window.invoke('estimate_fee', {
+                    request: {
+                        from_address: wallet.address,
+                        to_address: recipientAddr,
+                        amount: creditsAmount,
+                        fee_rate: null
+                    }
+                });
+
+                const feeBtpc = (estimate.estimated_fee / 100_000_000).toFixed(8);
+                const totalBtpc = (amount + estimate.estimated_fee / 100_000_000).toFixed(8);
+
+                document.getElementById('fee-estimate-value').textContent = `${feeBtpc} BTPC`;
+                document.getElementById('fee-estimate-rate').textContent = estimate.fee_rate;
+                document.getElementById('fee-estimate-size').textContent = estimate.estimated_size.toLocaleString();
+                document.getElementById('fee-estimate-total').textContent = `${totalBtpc} BTPC`;
+                feeRow.style.display = 'block';
+            } catch (e) {
+                // Silently hide if estimation fails (e.g. insufficient UTXOs)
+                document.getElementById('fee-estimate-value').textContent = 'Unable to estimate';
+                document.getElementById('fee-estimate-rate').textContent = '—';
+                document.getElementById('fee-estimate-size').textContent = '—';
+                document.getElementById('fee-estimate-total').textContent = '—';
+                feeRow.style.display = 'block';
+            }
+        }
+
         function showPasswordModal(walletName) {
             document.getElementById('password-wallet-name').textContent = walletName;
             document.getElementById('wallet-password-input').value = '';
+
+            // Populate transaction summary
+            if (pendingTransaction) {
+                const addrEl = document.getElementById('tx-confirm-address');
+                const amtEl = document.getElementById('tx-confirm-amount');
+                if (addrEl) addrEl.textContent = pendingTransaction.toAddress;
+                if (amtEl) amtEl.textContent = pendingTransaction.amount;
+            }
+
+            // Show network badge with appropriate styling
+            const badge = document.getElementById('tx-network-badge');
+            if (badge) {
+                const networkName = document.getElementById('network-name')?.textContent || 'Mainnet';
+                const net = networkName.toLowerCase();
+                if (net === 'mainnet') {
+                    badge.textContent = 'MAINNET — Real funds will be sent';
+                    badge.style.background = 'rgba(239, 68, 68, 0.1)';
+                    badge.style.color = '#ef4444';
+                    badge.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+                } else if (net === 'testnet') {
+                    badge.textContent = 'TESTNET — Test coins only';
+                    badge.style.background = 'rgba(245, 158, 11, 0.1)';
+                    badge.style.color = '#f59e0b';
+                    badge.style.border = '1px solid rgba(245, 158, 11, 0.3)';
+                } else {
+                    badge.textContent = 'REGTEST — Local testing';
+                    badge.style.background = 'rgba(59, 130, 246, 0.1)';
+                    badge.style.color = '#3b82f6';
+                    badge.style.border = '1px solid rgba(59, 130, 246, 0.3)';
+                }
+            }
+
             document.getElementById('password-modal').style.display = 'flex';
-            // Focus on password input
             setTimeout(() => {
                 document.getElementById('wallet-password-input').focus();
             }, 100);
@@ -628,11 +1117,13 @@
                 console.log('📝 Step 1: Creating transaction...');
 
                 const createResult = await window.invoke('create_transaction', {
-                    wallet_id: txData.walletId,
-                    from_address: txData.fromAddress,
-                    to_address: txData.toAddress,
-                    amount: amountcredits,
-                    fee_rate: null  // Use default fee rate
+                    request: {
+                        wallet_id: txData.walletId,
+                        from_address: txData.fromAddress,
+                        to_address: txData.toAddress,
+                        amount: amountcredits,
+                        fee_rate: null  // Use default fee rate
+                    }
                 });
 
                 console.log('✅ Transaction created:', createResult);
@@ -645,9 +1136,11 @@
                 console.log('✍️ Step 2: Signing with ML-DSA...');
 
                 const signResult = await window.invoke('sign_transaction', {
-                    transaction_id: transactionId,
-                    wallet_id: txData.walletId,
-                    password: txData.password
+                    request: {
+                        transaction_id: transactionId,
+                        wallet_id: txData.walletId,
+                        password: txData.password
+                    }
                 });
 
                 console.log('✅ Transaction signed:', signResult);
@@ -657,23 +1150,34 @@
                 console.log('📡 Step 3: Broadcasting to network...');
 
                 const broadcastResult = await window.invoke('broadcast_transaction', {
-                    transaction_id: transactionId
+                    request: {
+                        transaction_id: transactionId
+                    }
                 });
 
                 console.log('✅ Transaction broadcast:', broadcastResult);
                 hideLoading();
 
-                // Success!
-                const txidShort = transactionId.substring(0, 16) + '...';
+                // Success! FIX 2025-11-27: Use REAL txid from broadcast response (not temp ID)
+                const realTxid = broadcastResult.transaction_id;
+                const txidShort = realTxid.substring(0, 16) + '...';
                 toast.success(`Transaction sent! ${txidShort}`, 7000, 'Success');
+                console.log('📝 Real txid:', realTxid, '(was temp:', transactionId, ')');
 
                 // Clear form
                 document.getElementById('send-address').value = '';
                 document.getElementById('send-amount').value = '';
+                document.getElementById('fee-estimate-row').style.display = 'none';
+
+                // FIX 2025-12-11: Set wallet filter to SENDER wallet before refreshing
+                // This ensures the user sees their sent TX in the history tab
+                // Previously, loadWallets() would reset to default wallet, hiding the sent TX
+                selectedWalletId = txData.walletId;
+                console.log(`📍 Set wallet filter to sender wallet: ${txData.walletId}`);
 
                 // Refresh data
-                await loadWallets(); // Refresh wallet balances
-                await loadTransactions(); // Refresh transaction history
+                await loadWallets(); // Refresh wallet balances (preserves selectedWalletId now)
+                await loadTransactions(); // Refresh transaction history for sender wallet
 
                 // Auto-switch to history tab
                 switchTab('history');
@@ -822,6 +1326,33 @@
             loadTransactions();
         }
 
+        // FIX 2025-12-11: Debug function to run transaction diagnostic
+        // Shows all RocksDB index entries for the selected wallet
+        async function runTxDiagnostic() {
+            if (!window.invoke) {
+                alert('Tauri API not ready');
+                return;
+            }
+
+            try {
+                const result = await window.invoke('debug_tx_diagnostic', {
+                    walletId: selectedWalletId || null
+                });
+
+                // Show result in a modal or alert
+                const modal = document.getElementById('transaction-details-modal');
+                const content = document.getElementById('transaction-details-content');
+                document.querySelector('#transaction-details-modal h2').textContent = 'DB Diagnostic';
+                content.textContent = result;
+                modal.style.display = 'flex';
+
+                console.log('📊 TX Diagnostic Result:\n', result);
+            } catch (e) {
+                console.error('Diagnostic failed:', e);
+                alert('Diagnostic failed: ' + e);
+            }
+        }
+
         // ============================================================================
         // Address Book Functions
         // ============================================================================
@@ -845,6 +1376,8 @@
                     const option = document.createElement('option');
                     option.value = entry.address;
                     option.setAttribute('data-label', entry.label);
+                    // FIX 2025-12-30: Use wallet color if address matches a wallet
+                    option.dataset.color = getWalletColorByAddress(entry.address);
 
                     // Show label and truncated address with usage info
                     const usageInfo = entry.usage_count > 0 ? ` (used ${entry.usage_count}x)` : '';
@@ -878,55 +1411,47 @@
 
         async function saveCurrentAddressToBook() {
             if (!window.invoke) {
-                alert('Tauri API not ready. Please wait a moment and try again.');
+                toast.error('Tauri API not ready. Please wait a moment and try again.');
                 return;
             }
 
             const address = document.getElementById('send-address').value.trim();
 
             if (!address) {
-                alert('Please enter a recipient address first');
+                toast.warning('Please enter a recipient address first');
                 return;
             }
 
             // Basic validation - backend will do full Base58 validation
             if (address.length < 26 || address.length > 42) {
-                alert('Invalid address format. BTPC addresses are typically ~34 characters (Base58 format).');
+                toast.warning('Invalid address format. BTPC addresses are typically ~34 characters (Base58 format).');
                 return;
             }
 
             // Check if address already exists
             const existing = allAddressBookEntries.find(e => e.address === address);
             if (existing) {
-                alert(`This address is already in your address book as "${existing.label}"`);
+                toast.info(`This address is already in your address book as "${existing.label}"`);
                 return;
             }
 
-            // Prompt for label
-            const label = prompt('Enter a label for this address:');
-            if (!label || label.trim() === '') {
-                return;
+            // Prompt for label using styled modal (open the address book add modal pre-filled)
+            // FIX 2025-12-30: Use wallet color if address matches a wallet
+            const entryColor = getWalletColorByAddress(address);
+            const modalHeader = document.querySelector('#address-book-modal .modal-header');
+            if (modalHeader) {
+                modalHeader.style.borderTop = `4px solid ${entryColor}`;
+                modalHeader.style.borderRadius = '0';
             }
 
-            // Optional notes
-            const notes = prompt('Enter optional notes (or leave blank):');
-
-            try {
-                const request = {
-                    label: label.trim(),
-                    address: address,
-                    notes: notes && notes.trim() !== '' ? notes.trim() : null,
-                    category: null
-                };
-
-                const entry = await window.invoke('add_address_book_entry', { request });
-                alert(`Address saved to address book as "${entry.label}"`);
-
-                // Reload address book
-                await loadAddressBook();
-            } catch (e) {
-                alert(`Failed to save address: ${e}`);
-            }
+            document.getElementById('address-modal-title').textContent = 'Save to Address Book';
+            document.getElementById('edit-entry-id').value = '';
+            document.getElementById('modal-label').value = '';
+            document.getElementById('modal-address').value = address;
+            document.getElementById('modal-address').disabled = true; // Address already set
+            document.getElementById('modal-category').value = '';
+            document.getElementById('modal-notes').value = '';
+            document.getElementById('address-book-modal').style.display = 'flex';
         }
 
         // Handle hash navigation (from wallet-manager redirects)
@@ -964,6 +1489,8 @@
                     if (balanceEl) {
                         balanceEl.textContent = (data.balance || 0).toFixed(8);
                     }
+                    const spendableEl = document.getElementById('spendable-balance');
+                    if (spendableEl) spendableEl.textContent = (data.spendable_balance || 0).toFixed(8);
                 }
                 // Note: transactions.html doesn't have chain-height element
             });
@@ -1027,7 +1554,7 @@
                     console.log('[Event] fee:estimated', event.payload);
                     const { total_fee, fee_rate, transaction_size } = event.payload;
                     const feeBtpc = (total_fee / 100000000).toFixed(8);
-                    showTransactionStatus('💰', 'Fee Estimated', `${feeBtpc} BTPC`, `Rate: ${fee_rate} sat/byte | Size: ${transaction_size} bytes`, 15);
+                    showTransactionStatus('💰', 'Fee Estimated', `${feeBtpc} BTPC`, `Rate: ${fee_rate} crd/KB | Size: ${transaction_size} bytes`, 15);
                 }));
 
                 // utxo:reserved
@@ -1075,21 +1602,26 @@
                 }));
 
                 // transaction:mempool_accepted
+                // FIX 2025-11-27: Access event.payload.payload due to Serde tag serialization
                 transactionEventListeners.push(await listen('transaction:mempool_accepted', (event) => {
                     console.log('[Event] transaction:mempool_accepted', event.payload);
-                    const { mempool_size, position } = event.payload;
-                    showTransactionStatus('⏳', 'In Mempool', `Position ${position} of ${mempool_size}`, 'Waiting for block confirmation', 80);
+                    const data = event.payload.payload || event.payload; // Handle both serialization formats
+                    const mempool_size = data.mempool_size || 0;
+                    const position = data.position || 0;
+                    showTransactionStatus('⏳', 'In Mempool', `Position ${position + 1} of ${mempool_size || 'pending'}`, 'Waiting for block confirmation', 80);
                 }));
 
                 // transaction:confirmed
-                transactionEventListeners.push(await listen('transaction:confirmed', (event) => {
+                transactionEventListeners.push(await listen('transaction:confirmed', async (event) => {
                     console.log('[Event] transaction:confirmed', event.payload);
                     const { block_height, confirmations } = event.payload;
                     showTransactionStatus('✅', 'Transaction Confirmed!', `Included in block #${block_height}`, `${confirmations} confirmation(s)`, 100);
 
-                    // Refresh transaction list and wallets
-                    loadTransactions();
-                    loadWallets();
+                    // FIX 2025-12-11: Refresh must be sequential to preserve wallet selection
+                    // Previously, parallel calls caused race condition where loadWallets could
+                    // change selectedWalletId while loadTransactions was querying
+                    await loadWallets();  // Updates balances, preserves selectedWalletId
+                    await loadTransactions();  // Uses preserved wallet ID
 
                     // Hide status after 5 seconds
                     setTimeout(hideTransactionStatus, 5000);
@@ -1148,6 +1680,11 @@
 
             // Setup transaction event listeners (Article XI, Section 11.3)
             await setupTransactionEventListeners();
+
+            // Setup fee estimation on amount/wallet change
+            setupFeeEstimation();
+
+            // Dropdowns will be initialized after wallet data loads (see initializeData below)
         });
 
         // Clean up event listeners on page unload (Article XI, Section 11.6)
@@ -1162,9 +1699,27 @@
         });
 
         // Load data on page load
-        loadWallets();
-        loadTransactions();
-        loadAddressBook();
+        // FIX 2025-12-11: Must await loadWallets() before loadTransactions()
+        // Otherwise selectedWalletId is empty on first transaction query
+        (async function initializeData() {
+            await loadWallets();  // Sets selectedWalletId via loadWalletFilter()
+            await loadTransactions();  // Now uses correct wallet ID
+            await loadAddressBook();
+
+            // FIX 2025-12-30: Initialize dropdowns AFTER data loads to ensure colors are applied
+            if (typeof initBtpcDropdown === 'function') {
+                // Send tab dropdowns
+                window.sendWalletDropdown = initBtpcDropdown('send-from-wallet');
+                window.addressBookDropdown = initBtpcDropdown('address-book-selector');
+
+                // Receive tab dropdown
+                window.receiveWalletDropdown = initBtpcDropdown('receive-wallet');
+
+                // History tab dropdowns
+                window.historyWalletDropdown = initBtpcDropdown('history-wallet-filter');
+                window.historyTypeDropdown = initBtpcDropdown('history-type-filter');
+            }
+        })();
         setInterval(loadTransactions, 10000);
 
         // Handle hash navigation after wallets load
@@ -1173,6 +1728,16 @@
         // Start manager updates if not already started
         // Note: startAutoUpdate called globally in btpc-common.js (Article XI compliance)
         // Removed duplicate call to prevent race condition
+
+        // FIX 2025-12-09: Expose functions to global scope for network change reload
+        // When network changes, btpc-common.js calls these to refresh data
+        window.loadWallets = loadWallets;
+        window.loadTransactions = loadTransactions;
+        // Also expose selectedWalletId so it can be reset on network change
+        Object.defineProperty(window, 'selectedWalletId', {
+            get: () => selectedWalletId,
+            set: (val) => { selectedWalletId = val; }
+        });
     </script>
 
     <!-- Transaction Details Modal -->
@@ -1220,18 +1785,6 @@
                     // Mining transaction - use ASCII tree format
                     output += `BLOCK CREATED #${tx.block_height}\n`;
 
-                    // Try to get block hash
-                    let blockHash = '[Block hash not available]';
-                    try {
-                        const blockInfo = await window.invoke('get_block_by_height', { height: tx.block_height });
-                        if (blockInfo && blockInfo.hash) {
-                            blockHash = blockInfo.hash;
-                        }
-                    } catch (e) {
-                        console.warn('Could not fetch block hash:', e);
-                    }
-                    output += `├─ Block Hash: ${blockHash}\n`;
-
                     // Timestamp
                     let timestampDisplay = 'Unknown';
                     if (tx.confirmed_at) {
@@ -1269,11 +1822,14 @@
                     output += `└─ Status: ✓ Block accepted to blockchain\n`;
 
                 } else {
-                    // Non-mining transaction - fallback to detailed view
+                    // Non-mining transaction - determine type using same logic as table
+                    const walletAddress = getCurrentWalletAddress();
+                    const txType = getTransactionType(tx, walletAddress);
+
                     output += `TRANSACTION DETAILS\n\n`;
                     output += `Transaction ID:\n${tx.txid}\n\n`;
 
-                    output += `Type: ${tx.is_coinbase ? 'MINING (Coinbase)' : 'RECEIVE'}\n`;
+                    output += `Type: ${txType}\n`;
                     output += `Block Height: ${tx.block_height !== null ? `#${tx.block_height}` : 'MEMPOOL (Unconfirmed)'}\n\n`;
 
                     // Timestamp
@@ -1354,6 +1910,11 @@
             if (event.target === passwordModal) {
                 closePasswordModal();
             }
+
+            const deleteModal = document.getElementById('delete-confirm-modal');
+            if (event.target === deleteModal) {
+                closeDeleteConfirmModal();
+            }
         });
 
         // Allow Enter key to submit password
@@ -1410,12 +1971,24 @@
     <div id="password-modal" class="modal">
         <div class="modal-content" style="max-width: 450px;">
             <div class="modal-header">
-                <h2>Enter Wallet Password</h2>
+                <h2>Confirm Transaction</h2>
                 <button class="modal-close" onclick="closePasswordModal()">&times;</button>
             </div>
             <div class="modal-body">
-                <div style="margin-bottom: 16px; color: var(--text-secondary);">
-                    Enter password for wallet: <strong id="password-wallet-name"></strong>
+                <!-- Network indicator -->
+                <div id="tx-network-badge" style="margin-bottom: 12px; padding: 8px 12px; border-radius: 6px; font-size: 0.8125rem; font-weight: 600; text-align: center;"></div>
+
+                <!-- Transaction summary -->
+                <div style="margin-bottom: 16px; padding: 12px; background: rgba(139, 92, 246, 0.05); border: 1px solid rgba(139, 92, 246, 0.15); border-radius: 8px;">
+                    <div style="margin-bottom: 8px; color: var(--text-secondary);">
+                        Wallet: <strong id="password-wallet-name"></strong>
+                    </div>
+                    <div style="margin-bottom: 4px; color: var(--text-secondary); font-size: 0.8125rem;">
+                        To: <span id="tx-confirm-address" style="font-family: monospace; word-break: break-all;"></span>
+                    </div>
+                    <div style="color: var(--text-primary); font-size: 1.1rem; font-weight: 600;">
+                        Amount: <span id="tx-confirm-amount"></span> BTPC
+                    </div>
                 </div>
 
                 <div class="form-group">
@@ -1426,7 +1999,7 @@
 
                 <div style="display: flex; gap: 12px; justify-content: flex-end;">
                     <button class="btn btn-secondary" onclick="closePasswordModal()">Cancel</button>
-                    <button class="btn btn-primary" onclick="submitPassword()">Confirm</button>
+                    <button class="btn btn-primary" onclick="submitPassword()">Send BTPC</button>
                 </div>
             </div>
         </div>
@@ -1453,6 +2026,9 @@
 
             entries.forEach(entry => {
                 const row = document.createElement('tr');
+                // FIX 2025-12-30: Use wallet color if address matches a wallet
+                const entryColor = getWalletColorByAddress(entry.address);
+                row.style.borderLeft = `4px solid ${entryColor}`;
 
                 // Format timestamps
                 const createdDate = new Date(entry.created_at);
@@ -1463,20 +2039,25 @@
                 // Truncate address for display
                 const truncatedAddress = entry.address.substring(0, 16) + '...' + entry.address.substring(112);
 
+                // FIX 2026-02-21 (H8): Escape user-supplied fields to prevent XSS
+                const safeLabel = escapeHtml(entry.label);
+                const safeCategory = escapeHtml(entry.category || '-');
+                const safeId = escapeHtml(entry.id);
+                const safeAddress = escapeHtml(entry.address);
                 row.innerHTML = `
-                    <td style="font-weight: 600;">${entry.label}</td>
-                    <td class="mono" style="font-size: 0.75rem;" title="${entry.address}">${truncatedAddress}</td>
-                    <td>${entry.category || '-'}</td>
+                    <td style="font-weight: 600;">${safeLabel}</td>
+                    <td class="mono" style="font-size: 0.75rem;" title="${safeAddress}">${escapeHtml(truncatedAddress)}</td>
+                    <td>${safeCategory}</td>
                     <td class="mono">${entry.usage_count}x</td>
                     <td style="font-size: 0.875rem;">${lastUsedDisplay}</td>
                     <td>
-                        <button class="btn btn-secondary" style="padding: 4px 12px; font-size: 0.75rem; margin-right: 4px;" onclick="editAddressBookEntry('${entry.id}')" title="Edit">
+                        <button class="btn btn-secondary" style="padding: 4px 12px; font-size: 0.75rem; margin-right: 4px;" onclick="editAddressBookEntry('${safeId}')" title="Edit">
                             Edit
                         </button>
-                        <button class="btn btn-secondary" style="padding: 4px 12px; font-size: 0.75rem; margin-right: 4px;" onclick="copyAddressToClipboard('${entry.address}')" title="Copy Address">
+                        <button class="btn btn-secondary" style="padding: 4px 12px; font-size: 0.75rem; margin-right: 4px;" onclick="copyAddressToClipboard('${safeAddress}')" title="Copy Address">
                             Copy
                         </button>
-                        <button class="btn btn-secondary" style="padding: 4px 12px; font-size: 0.75rem; background: var(--status-error); color: white;" onclick="deleteAddressBookEntry('${entry.id}', '${entry.label}')" title="Delete">
+                        <button class="btn btn-secondary" style="padding: 4px 12px; font-size: 0.75rem; background: var(--status-error); color: white;" onclick="deleteAddressBookEntry('${safeId}', '${safeLabel}')" title="Delete">
                             Delete
                         </button>
                     </td>
@@ -1505,6 +2086,13 @@
         }
 
         function showAddAddressModal() {
+            // FIX 2025-12-30: Show default color as modal header border for new entries
+            const modalHeader = document.querySelector('#address-book-modal .modal-header');
+            if (modalHeader) {
+                modalHeader.style.borderTop = '4px solid #6366f1';
+                modalHeader.style.borderRadius = '0';
+            }
+
             document.getElementById('address-modal-title').textContent = 'Add New Address';
             document.getElementById('edit-entry-id').value = '';
             document.getElementById('modal-label').value = '';
@@ -1518,8 +2106,16 @@
         function editAddressBookEntry(entryId) {
             const entry = allAddressBookEntries.find(e => e.id === entryId);
             if (!entry) {
-                alert('Entry not found');
+                toast.error('Entry not found');
                 return;
+            }
+
+            // FIX 2025-12-30: Use wallet color if address matches a wallet
+            const entryColor = getWalletColorByAddress(entry.address);
+            const modalHeader = document.querySelector('#address-book-modal .modal-header');
+            if (modalHeader) {
+                modalHeader.style.borderTop = `4px solid ${entryColor}`;
+                modalHeader.style.borderRadius = '0';
             }
 
             document.getElementById('address-modal-title').textContent = 'Edit Address';
@@ -1534,7 +2130,7 @@
 
         async function saveAddressBookEntry() {
             if (!window.invoke) {
-                alert('Tauri API not ready. Please wait a moment and try again.');
+                toast.error('Tauri API not ready. Please wait a moment and try again.');
                 return;
             }
 
@@ -1546,21 +2142,21 @@
 
             // Validation
             if (!label) {
-                alert('Please enter a label');
+                toast.warning('Please enter a label');
                 return;
             }
 
             if (!entryId) {
                 // Adding new entry - validate address (basic check, backend will do full Base58 validation)
                 if (!address || address.length < 26 || address.length > 42) {
-                    alert('Invalid address format. BTPC addresses are typically ~34 characters (Base58 format).');
+                    toast.warning('Invalid address format. BTPC addresses are typically ~34 characters (Base58 format).');
                     return;
                 }
             }
 
             try {
                 if (entryId) {
-                    // Update existing entry
+                    // Update existing entry (color is not editable - shown as border only)
                     const request = {
                         id: entryId,
                         label: label || null,
@@ -1569,9 +2165,10 @@
                     };
 
                     await window.invoke('update_address_book_entry', { request });
-                    alert('Address book entry updated successfully');
+                    closeAddressBookModal();
+                    toast.success('Address book entry updated successfully');
                 } else {
-                    // Add new entry
+                    // Add new entry (color uses default from backend)
                     const request = {
                         label: label,
                         address: address,
@@ -1580,46 +2177,68 @@
                     };
 
                     await window.invoke('add_address_book_entry', { request });
-                    alert('Address book entry added successfully');
+                    closeAddressBookModal();
+                    toast.success('Address book entry added successfully');
                 }
 
                 // Reload and refresh
                 await loadAddressBook();
                 updateAddressBookDisplay();
-                closeAddressBookModal();
             } catch (e) {
-                alert(`Failed to save address book entry: ${e}`);
+                toast.error(`Failed to save address book entry: ${e}`);
             }
         }
 
-        async function deleteAddressBookEntry(entryId, label) {
+        // Show styled delete confirmation modal (replaces native confirm())
+        function deleteAddressBookEntry(entryId, label) {
             if (!window.invoke) {
-                alert('Tauri API not ready. Please wait a moment and try again.');
+                toast.error('Tauri API not ready. Please wait a moment and try again.');
                 return;
             }
 
-            if (!confirm(`Are you sure you want to delete "${label}" from your address book?`)) {
+            // Store entry data and show styled modal
+            document.getElementById('delete-entry-id').value = entryId;
+            document.getElementById('delete-entry-label').textContent = label;
+            document.getElementById('delete-confirm-modal').style.display = 'flex';
+        }
+
+        // Close delete confirmation modal
+        function closeDeleteConfirmModal() {
+            document.getElementById('delete-confirm-modal').style.display = 'none';
+            document.getElementById('delete-entry-id').value = '';
+            document.getElementById('delete-entry-label').textContent = '';
+        }
+
+        // Confirm and execute deletion
+        async function confirmDeleteEntry() {
+            const entryId = document.getElementById('delete-entry-id').value;
+            const label = document.getElementById('delete-entry-label').textContent;
+
+            if (!entryId) {
+                closeDeleteConfirmModal();
                 return;
             }
 
             try {
                 await window.invoke('delete_address_book_entry', { id: entryId });
-                alert(`"${label}" deleted from address book`);
+                closeDeleteConfirmModal();
+                toast.success(`"${label}" deleted from address book`);
 
                 // Reload and refresh
                 await loadAddressBook();
                 updateAddressBookDisplay();
             } catch (e) {
-                alert(`Failed to delete entry: ${e}`);
+                closeDeleteConfirmModal();
+                toast.error(`Failed to delete entry: ${e}`);
             }
         }
 
         function copyAddressToClipboard(address) {
             navigator.clipboard.writeText(address).then(() => {
-                alert('Address copied to clipboard!');
+                toast.success('Address copied to clipboard!');
             }).catch(err => {
                 console.error('Failed to copy:', err);
-                alert('Failed to copy to clipboard');
+                toast.error('Failed to copy to clipboard');
             });
         }
 
@@ -1627,6 +2246,31 @@
             document.getElementById('address-book-modal').style.display = 'none';
         }
     </script>
+
+    <!-- Delete Confirmation Modal (Styled per App Theme) -->
+    <div id="delete-confirm-modal" class="modal">
+        <div class="modal-content" style="max-width: 450px;">
+            <div class="modal-header">
+                <h2 style="color: var(--status-error);">⚠️ Confirm Delete</h2>
+                <button class="modal-close" onclick="closeDeleteConfirmModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="margin-bottom: 20px; color: var(--text-secondary); line-height: 1.6;">
+                    Are you sure you want to delete <strong id="delete-entry-label" style="color: var(--text-primary);"></strong> from your address book?
+                </div>
+                <div style="padding: 12px 16px; background: rgba(239, 68, 68, 0.1); border-left: 3px solid var(--status-error); border-radius: 6px; margin-bottom: 20px;">
+                    <div style="color: var(--text-secondary); font-size: 0.875rem;">
+                        This action cannot be undone. The address will be permanently removed from your address book.
+                    </div>
+                </div>
+                <input type="hidden" id="delete-entry-id">
+                <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                    <button class="btn btn-secondary" onclick="closeDeleteConfirmModal()">Cancel</button>
+                    <button class="btn btn-primary" style="background: var(--status-error);" onclick="confirmDeleteEntry()">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Password Modal for Wallet Encryption -->
     <div id="password-modal-overlay">

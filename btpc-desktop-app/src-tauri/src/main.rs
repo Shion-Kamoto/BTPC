@@ -27,7 +27,6 @@ mod orphaned_utxo_cleaner;
 mod process_manager;
 pub mod state_management;
 mod sync_service;
-mod tx_storage;
 mod settings_storage;
 mod wallet_commands;
 
@@ -65,5 +64,10 @@ mod tauri_app;
 pub use app_state::AppState;
 
 fn main() {
+    // Note: input method env vars (GTK_IM_MODULE, XMODIFIERS, IBUS_DISABLE_SNOOPER)
+    // are intentionally NOT set here — they can break WebKitGTK keyboard input.
+    // IBUS snooper issues are handled at the package.json launch script level only
+    // if they manifest on a specific system.
+
     tauri_app::run();
 }

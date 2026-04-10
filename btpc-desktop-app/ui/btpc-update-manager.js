@@ -79,9 +79,32 @@ class BtpcUpdateManager {
 
     /**
      * Subscribe to state changes
+     * Immediately sends cached state to new subscribers to prevent UI flicker
      */
     subscribe(listener) {
         this.listeners.push(listener);
+
+        // Immediately notify with cached state to prevent delay on page load
+        try {
+            if (this.state.node.last_updated) {
+                listener('node', this.state.node, this.state);
+            }
+            if (this.state.mining.last_updated) {
+                listener('mining', this.state.mining, this.state);
+            }
+            if (this.state.blockchain.last_updated) {
+                listener('blockchain', this.state.blockchain, this.state);
+            }
+            if (this.state.wallet.last_updated) {
+                listener('wallet', this.state.wallet, this.state);
+            }
+            if (this.state.network.last_updated) {
+                listener('network', this.state.network, this.state);
+            }
+        } catch (e) {
+            console.error('Error sending initial state to subscriber:', e);
+        }
+
         // Return unsubscribe function
         return () => {
             this.listeners = this.listeners.filter(l => l !== listener);
@@ -166,14 +189,30 @@ class BtpcUpdateManager {
         if (!window.invoke) return;
 
         try {
+            // Check if node is running first - if not, show 0% sync
+            const nodeStatus = this.state.node;
+            const nodeIsRunning = nodeStatus && nodeStatus.running;
+
             const info = await window.invoke('get_blockchain_info');
             const height = info.blocks || info.height || 0;
             const headers = info.headers || height;
             const chain = info.chain || 'mainnet';
 
-            // Calculate sync progress
-            const sync_progress = headers > 0 ? Math.min(100, (height / headers) * 100) : 0;
-            const is_synced = sync_progress >= 99.9; // Consider synced if >= 99.9%
+            // Use sync progress from backend if available (more accurate via sync service)
+            // Otherwise fallback to headers/blocks calculation
+            // If node is off, always show 0% sync
+            let sync_progress, is_synced;
+            if (!nodeIsRunning) {
+                sync_progress = 0;
+                is_synced = false;
+            } else if (info.sync_progress !== undefined && info.is_synced !== undefined) {
+                sync_progress = info.sync_progress;
+                is_synced = info.is_synced;
+            } else {
+                // Fallback calculation
+                sync_progress = headers > 0 ? Math.min(100, (height / headers) * 100) : 0;
+                is_synced = sync_progress >= 99.9;
+            }
 
             const changed = this.state.blockchain.height !== height;
 
@@ -221,6 +260,7 @@ class BtpcUpdateManager {
 
             this.state.wallet = {
                 balance: summary.total_balance_btp || 0,
+                spendable_balance: summary.spendable_balance_btp || 0,
                 address_count: summary.total_wallets || 0,
                 last_updated: Date.now()
             };

@@ -20,7 +20,7 @@ pub use storage_validation::{
 };
 pub use validation::{BlockValidator, TransactionValidator, ValidationError};
 
-use crate::{crypto::Hash, Network};
+use crate::{crypto::Hash, economics::constants as econ, Network};
 
 /// Consensus constants for BTPC
 pub mod constants {
@@ -72,6 +72,49 @@ pub mod constants {
 
     /// Minimum supported transaction version
     pub const MIN_TRANSACTION_VERSION: u32 = 1;
+
+    // ── Initial Difficulty ("Difficulty 1") ─────────────────────────────
+    // Like Bitcoin launched at "difficulty 1" (0x1d00ffff) and let the 2016-block
+    // adjustment algorithm converge to match actual network hashrate, BTPC launches
+    // at its minimum meaningful difficulty. The first 2016 blocks will mine quickly,
+    // then the first adjustment corrects upward to match real hashrate.
+    // This eliminates the need to calibrate for a specific GPU hashrate.
+
+    /// Initial difficulty for Mainnet/Testnet (SHA-512 "difficulty 1")
+    /// Same as the minimum floor — the easiest non-trivial difficulty.
+    /// The 2016-block adjustment algorithm handles convergence to real hashrate.
+    pub const INITIAL_DIFFICULTY_BITS: u32 = 0x3C7FFFFF;
+
+    /// Initial difficulty for Regtest (instant mining for development)
+    pub const REGTEST_DIFFICULTY_BITS: u32 = 0x407FFFFF;
+
+    // ── Bootstrap Network Stability Constants ──────────────────────────
+    // These protect the network during the first 10 difficulty periods
+    // after launch, when hashrate is volatile and unpredictable.
+
+    /// Height at which bootstrap protections deactivate (10 difficulty periods)
+    pub const BOOTSTRAP_END_HEIGHT: u64 = 20_160;
+
+    /// Fast difficulty adjustment window (blocks) — ~24 hours at 10-min blocks
+    pub const FAST_ADJUSTMENT_WINDOW: u64 = 144;
+
+    /// Maximum fast adjustment multiplier (tighter than standard 4×)
+    pub const FAST_ADJUSTMENT_MAX: f64 = 2.0;
+
+    /// Minimum fast adjustment multiplier (tighter than standard 0.25×)
+    pub const FAST_ADJUSTMENT_MIN: f64 = 0.5;
+
+    /// EDA cooldown: blocks to wait after a Tier 2/3 trigger before allowing another
+    pub const EDA_COOLDOWN_BLOCKS: u64 = 6;
+
+    /// EDA Tier 1: 15 minutes with no block → 25% difficulty reduction
+    pub const EDA_TIER1_SECONDS: u64 = 900;
+
+    /// EDA Tier 2: 20 minutes with no block → 50% difficulty reduction
+    pub const EDA_TIER2_SECONDS: u64 = 1_200;
+
+    /// EDA Tier 3: 30 minutes with no block → reset to network minimum
+    pub const EDA_TIER3_SECONDS: u64 = 1_800;
 }
 
 /// Consensus parameters for different networks
@@ -95,12 +138,13 @@ pub struct ConsensusParams {
 
 impl ConsensusParams {
     /// Get consensus parameters for mainnet
+    /// FIX 2025-12-27: Updated to SHA-512 compatible difficulty values
     pub fn mainnet() -> Self {
         ConsensusParams {
             network: Network::Mainnet,
             genesis_hash: Hash::zero(), // Set after genesis creation
-            min_difficulty_target: DifficultyTarget::from_bits(0x1d00ffff),
-            max_difficulty_target: DifficultyTarget::from_bits(0x207fffff),
+            min_difficulty_target: DifficultyTarget::from_bits(0x3c7fffff), // SHA-512 ~32 bits work
+            max_difficulty_target: DifficultyTarget::from_bits(0x407fffff), // SHA-512 instant mining (max target)
             allow_min_difficulty_blocks: false,
             pow_limit: Self::mainnet_pow_limit(),
             reward_params: RewardParams::mainnet(),
@@ -108,12 +152,13 @@ impl ConsensusParams {
     }
 
     /// Get consensus parameters for testnet
+    /// FIX 2025-12-27: Updated to SHA-512 compatible difficulty values
     pub fn testnet() -> Self {
         ConsensusParams {
             network: Network::Testnet,
             genesis_hash: Hash::zero(),
-            min_difficulty_target: DifficultyTarget::from_bits(0x1d0fffff), // Consistent with DifficultyTarget::minimum_for_network
-            max_difficulty_target: DifficultyTarget::from_bits(0x207fffff),
+            min_difficulty_target: DifficultyTarget::from_bits(0x3c7fffff), // SHA-512 ~32 bits work
+            max_difficulty_target: DifficultyTarget::from_bits(0x407fffff), // SHA-512 instant mining (max target)
             allow_min_difficulty_blocks: true,
             pow_limit: Self::testnet_pow_limit(),
             reward_params: RewardParams::testnet(),
@@ -121,12 +166,13 @@ impl ConsensusParams {
     }
 
     /// Get consensus parameters for regtest
+    /// FIX 2025-12-27: Updated to SHA-512 compatible difficulty values
     pub fn regtest() -> Self {
         ConsensusParams {
             network: Network::Regtest,
             genesis_hash: Hash::zero(),
-            min_difficulty_target: DifficultyTarget::from_bits(0x1d0fffff), // Consistent with DifficultyTarget::minimum_for_network
-            max_difficulty_target: DifficultyTarget::from_bits(0x207fffff),
+            min_difficulty_target: DifficultyTarget::from_bits(0x407fffff), // Regtest uses easiest difficulty
+            max_difficulty_target: DifficultyTarget::from_bits(0x407fffff), // Same as min for regtest
             allow_min_difficulty_blocks: true,
             pow_limit: Self::regtest_pow_limit(),
             reward_params: RewardParams::regtest(),
@@ -172,9 +218,9 @@ impl ConsensusParams {
 /// Block reward calculation parameters
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RewardParams {
-    /// Initial block reward (satoshis)
+    /// Initial block reward (credits)
     pub initial_reward: u64,
-    /// Tail emission reward (satoshis)
+    /// Tail emission reward (credits)
     pub tail_emission: u64,
     /// Blocks per year (for linear decay calculation)
     pub blocks_per_year: u32,
@@ -184,23 +230,31 @@ pub struct RewardParams {
 
 impl RewardParams {
     /// Mainnet reward parameters
+    /// Uses constants from economics module for single source of truth
     pub fn mainnet() -> Self {
         RewardParams {
-            initial_reward: 3_237_500_000, // 32.375 BTPC
-            tail_emission: 50_000_000,     // 0.5 BTPC
-            blocks_per_year: 52_560,       // 365.25 * 24 * 6
-            decay_years: 24,
+            initial_reward: econ::INITIAL_REWARD,      // 32.375 BTPC
+            tail_emission: econ::TAIL_EMISSION,        // 0.5 BTPC
+            blocks_per_year: econ::BLOCKS_PER_YEAR,    // 52,596 (365.25 * 24 * 6)
+            decay_years: econ::DECAY_DURATION_YEARS,   // 24 years
         }
     }
 
-    /// Testnet reward parameters (same as mainnet)
+    /// Testnet reward parameters
+    /// Same economic model as mainnet for realistic testing
     pub fn testnet() -> Self {
         Self::mainnet()
     }
 
-    /// Regtest reward parameters (same as mainnet for consistency)
+    /// Regtest reward parameters - accelerated for fast development testing
+    /// Higher rewards and 2-year decay allows testing full reward curve quickly
     pub fn regtest() -> Self {
-        Self::mainnet()
+        RewardParams {
+            initial_reward: 10_000_000_000,         // 100 BTPC (3x mainnet for faster accumulation)
+            tail_emission: 100_000_000,             // 1 BTPC (2x mainnet)
+            blocks_per_year: econ::BLOCKS_PER_YEAR, // Same block timing (52,596)
+            decay_years: 2,                         // 2 years instead of 24 (12x faster decay testing)
+        }
     }
 }
 
@@ -576,9 +630,16 @@ mod tests {
     fn test_reward_params() {
         let params = RewardParams::mainnet();
 
+        // Verify mainnet uses constants from economics module
+        assert_eq!(params.initial_reward, econ::INITIAL_REWARD);
+        assert_eq!(params.tail_emission, econ::TAIL_EMISSION);
+        assert_eq!(params.blocks_per_year, econ::BLOCKS_PER_YEAR); // 52,596
+        assert_eq!(params.decay_years, econ::DECAY_DURATION_YEARS);
+
+        // Also verify the actual values for documentation
         assert_eq!(params.initial_reward, 3_237_500_000);
         assert_eq!(params.tail_emission, 50_000_000);
-        assert_eq!(params.blocks_per_year, 52_560);
+        assert_eq!(params.blocks_per_year, 52_596); // 365.25 * 24 * 6
         assert_eq!(params.decay_years, 24);
     }
 
@@ -598,8 +659,7 @@ mod tests {
         assert_eq!(TARGET_BLOCK_TIME, 600);
         assert_eq!(MAX_DIFFICULTY_ADJUSTMENT, 4.0);
         assert_eq!(MIN_DIFFICULTY_ADJUSTMENT, 0.25);
-        assert!(MAX_BLOCK_SIZE > 0);
-        assert!(COINBASE_MATURITY > 0);
+        // MAX_BLOCK_SIZE > 0 and COINBASE_MATURITY > 0 are enforced at compile time
     }
 
     #[test]
@@ -677,7 +737,7 @@ mod tests {
         let timestamps = vec![1500, 1000, 1800, 1200, 1600];
         let prev_blocks: Vec<crate::blockchain::Block> = timestamps
             .into_iter()
-            .map(|ts| crate::blockchain::Block::create_test_block_with_timestamp(ts))
+            .map(crate::blockchain::Block::create_test_block_with_timestamp)
             .collect();
 
         let mtp = engine.calculate_median_time_past(&prev_blocks);

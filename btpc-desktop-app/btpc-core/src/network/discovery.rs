@@ -4,9 +4,13 @@
 
 use std::{
     collections::{HashMap, HashSet},
+    fs,
     net::{IpAddr, SocketAddr},
+    path::Path,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+
+use serde::{Deserialize, Serialize};
 
 use thiserror::Error;
 use tokio::time::Instant;
@@ -66,25 +70,47 @@ pub enum DiscoveryError {
 }
 
 impl PeerDiscovery {
-    /// Create a new peer discovery manager
+    /// Create a new peer discovery manager (defaults to mainnet seeds)
     pub fn new(max_addresses: usize) -> Self {
+        Self::new_for_network(max_addresses, crate::Network::Mainnet)
+    }
+
+    /// Create a peer discovery manager with network-specific DNS seeds.
+    ///
+    /// - **Mainnet**: 3 DNS seeds (`seed.btpc.org`, `seed1/2.btpc.network`)
+    /// - **Testnet**: 2 DNS seeds (`testnet-seed.btpc.org`, `testnet-seed1.btpc.network`)
+    /// - **Regtest**: no DNS seeds (local-only network)
+    pub fn new_for_network(max_addresses: usize, network: crate::Network) -> Self {
         PeerDiscovery {
             addresses: HashMap::new(),
-            dns_seeds: Self::default_dns_seeds(),
+            dns_seeds: Self::dns_seeds_for_network(network),
             max_addresses,
             last_dns_query: None,
             dns_query_interval: Duration::from_secs(300), // 5 minutes
         }
     }
 
-    /// Default DNS seed addresses for mainnet
+    /// DNS seed addresses per network
+    fn dns_seeds_for_network(network: crate::Network) -> Vec<String> {
+        match network {
+            crate::Network::Mainnet => vec![
+                "seed.btpc.org".to_string(),
+                "seed1.btpc.network".to_string(),
+                "seed2.btpc.network".to_string(),
+            ],
+            crate::Network::Testnet => vec![
+                "testnet-seed.btpc.org".to_string(),
+                "testnet-seed1.btpc.network".to_string(),
+            ],
+            crate::Network::Regtest => vec![
+                // Regtest is local-only — no DNS seeds
+            ],
+        }
+    }
+
+    /// Default DNS seed addresses for mainnet (legacy helper)
     fn default_dns_seeds() -> Vec<String> {
-        vec![
-            "seed.btpc.org".to_string(),
-            "seed1.btpc.network".to_string(),
-            "seed2.btpc.network".to_string(),
-            // Add more DNS seeds as they become available
-        ]
+        Self::dns_seeds_for_network(crate::Network::Mainnet)
     }
 
     /// Add a peer address
@@ -344,7 +370,7 @@ impl PeerDiscovery {
         let seed_with_port = if seed.contains(':') {
             seed.to_string()
         } else {
-            format!("{}:8333", seed)
+            format!("{}:18341", seed)
         };
 
         let addresses: Vec<SocketAddr> = lookup_host(&seed_with_port)
@@ -420,6 +446,126 @@ impl PeerDiscovery {
             .map(|(addr, _)| *addr)
             .collect()
     }
+
+    /// Save known peers to disk (peers.dat equivalent).
+    ///
+    /// Only saves peers seen in the last 3 hours with fewer than 5 failed
+    /// attempts, capped at 1000 entries.  The format is a JSON array so it
+    /// can be inspected and hand-edited easily.
+    pub fn save_to_disk(&self, path: &Path) -> std::io::Result<()> {
+        let now_unix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        let cutoff = now_unix.saturating_sub(10_800); // 3 hours
+
+        let saved: Vec<SavedPeer> = self
+            .addresses
+            .iter()
+            .filter(|(_, info)| {
+                let last_seen = info
+                    .last_seen
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+                last_seen >= cutoff && info.failed_attempts < 5
+            })
+            .map(|(addr, info)| SavedPeer {
+                addr: addr.to_string(),
+                services: info.services.0,
+                last_seen_unix: info
+                    .last_seen
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+            })
+            .take(1000)
+            .collect();
+
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        let json = serde_json::to_string_pretty(&saved)
+            .map_err(std::io::Error::other)?;
+        fs::write(path, json)
+    }
+
+    /// Load known peers from disk (peers.dat equivalent).
+    ///
+    /// Silently ignores a missing file (first run).  Entries older than
+    /// 7 days are discarded so stale addresses don't clog the address book.
+    pub fn load_from_disk(&mut self, path: &Path) {
+        let data = match fs::read_to_string(path) {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+
+        let saved: Vec<SavedPeer> = match serde_json::from_str(&data) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("⚠️  Failed to parse peers.dat: {}", e);
+                return;
+            }
+        };
+
+        let now_unix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let max_age = 86_400 * 7; // 7 days
+
+        let mut loaded = 0usize;
+        for entry in saved {
+            if now_unix.saturating_sub(entry.last_seen_unix) > max_age {
+                continue;
+            }
+
+            let addr: SocketAddr = match entry.addr.parse() {
+                Ok(a) => a,
+                Err(_) => continue,
+            };
+
+            let services = ServiceFlags(entry.services);
+            let last_seen = UNIX_EPOCH + Duration::from_secs(entry.last_seen_unix);
+            let network_addr = NetworkAddress::new(addr.ip(), addr.port(), services);
+
+            let peer_info = PeerInfo {
+                address: network_addr,
+                last_seen,
+                first_seen: last_seen,
+                attempts: 0,
+                failed_attempts: 0,
+                last_attempt: None,
+                services,
+                success_rate: 0.5, // neutral starting score
+                avg_latency: None,
+                misbehavior_score: 0,
+            };
+
+            self.addresses.insert(addr, peer_info);
+            loaded += 1;
+        }
+
+        if loaded > 0 {
+            println!("📋 Loaded {} peer(s) from peers.dat", loaded);
+        }
+    }
+}
+
+/// Lightweight peer data serialised to peers.dat between restarts.
+///
+/// Transient fields (latency, scores, ban state) are intentionally omitted —
+/// they are rebuilt from live connections.
+#[derive(Serialize, Deserialize)]
+struct SavedPeer {
+    /// Socket address as "ip:port"
+    addr: String,
+    /// Raw service-flags bitmask
+    services: u64,
+    /// Unix timestamp of last successful contact
+    last_seen_unix: u64,
 }
 
 /// Bootstrap peer discovery from hardcoded seed nodes

@@ -30,8 +30,9 @@ bip39 = "2.0"    # BIP39 mnemonic generation
 sha3 = "0.10"    # SHAKE256 for key derivation
 
 # TLS Support for RPC (Issue #2)
-tokio-rustls = "0.25"
-rustls = "0.22"
+tokio-rustls = "0.26"
+rustls = "0.23"
+rustls-webpki = "0.103.10"
 rustls-pemfile = "2.0"
 
 # DoS Protection for RPC (Issue #3)
@@ -45,4 +46,12 @@ default = []
 tokio-test = "0.4"
 tempfile = "3.8"
 criterion = { version = "0.5", features = ["html_reports"] }
+proptest = "1.4"  # Property-based testing for cryptographic operations
 
+[[bench]]
+name = "crypto_bench"
+harness = false
+
+[[bench]]
+name = "blockchain_bench"
+harness = false

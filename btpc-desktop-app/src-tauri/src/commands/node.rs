@@ -41,7 +41,7 @@ pub async fn start_node(app: tauri::AppHandle, state: State<'_, AppState>) -> Re
     let active_p2p_port = *state.active_p2p_port.read().await;
     let active_rpc_port = *state.active_rpc_port.read().await;
 
-    let listen_addr = format!("127.0.0.1:{}", active_p2p_port);
+    let listen_addr = format!("0.0.0.0:{}", active_p2p_port);
     let args = vec![
         "--network".to_string(),
         active_network.to_string(),
@@ -102,6 +102,9 @@ pub async fn start_node(app: tauri::AppHandle, state: State<'_, AppState>) -> Re
         // Give the node a moment to start up before attempting sync
         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
+        // Get fork_id before acquiring sync_service lock (avoid holding MutexGuard across await)
+        let fork_id = state.active_network.read().await.fork_id();
+
         let mut sync_service_guard = state
             .sync_service
             .lock()
@@ -116,7 +119,7 @@ pub async fn start_node(app: tauri::AppHandle, state: State<'_, AppState>) -> Re
                 max_blocks_per_sync: 100,
             };
 
-            let service = BlockchainSyncService::new(state.utxo_manager.clone(), sync_config, Some(app.clone()));
+            let service = BlockchainSyncService::new(state.utxo_manager.clone(), sync_config, Some(app.clone()), fork_id);
 
             match service.start() {
                 Ok(_) => {
@@ -139,6 +142,25 @@ pub async fn start_node(app: tauri::AppHandle, state: State<'_, AppState>) -> Re
 
 #[tauri::command]
 pub async fn stop_node(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<String, String> {
+    // Check if node is actually running before attempting to kill
+    if !state.process_manager.is_running("node") {
+        // Node is not running, but update state to ensure consistency
+        state
+            .node_status
+            .update(
+                |status| {
+                    status.running = false;
+                    status.pid = None;
+                    status.block_height = 0;
+                    status.peer_count = 0;
+                    status.sync_progress = 0.0;
+                },
+                &app,
+            )
+            .map_err(|e| format!("Failed to update node status: {}", e))?;
+        return Ok("Node is already stopped".to_string());
+    }
+
     state.process_manager.kill("node")?;
 
     // Stop blockchain sync service if running
@@ -218,6 +240,9 @@ pub async fn get_node_status(state: State<'_, AppState>) -> Result<serde_json::V
 
 #[tauri::command]
 pub async fn start_blockchain_sync(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<String, String> {
+    // Get fork_id before acquiring sync_service lock (avoid holding MutexGuard across await)
+    let fork_id = state.active_network.read().await.fork_id();
+
     // Create sync service if not already created
     {
         let mut sync_service_guard = state.sync_service.lock().map_err(|_| {
@@ -237,7 +262,7 @@ pub async fn start_blockchain_sync(app: tauri::AppHandle, state: State<'_, AppSt
         };
 
         // Create new sync service
-        let service = BlockchainSyncService::new(state.utxo_manager.clone(), sync_config, Some(app.clone()));
+        let service = BlockchainSyncService::new(state.utxo_manager.clone(), sync_config, Some(app.clone()), fork_id);
 
         // Start the service
         service

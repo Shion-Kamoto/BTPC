@@ -25,15 +25,13 @@ pub use wallet_serde::{EncryptedWallet, KeyEntry, SecurePassword, WalletData, Wa
 
 /// Cryptographic constants for BTPC
 pub mod constants {
-    /// ML-DSA-65 private key size in bytes (pqc_dilithium implementation)
-    /// Note: FIPS 204 specifies 4032, but pqc_dilithium uses 4000 bytes internally
+    /// ML-DSA-87 (Dilithium5) private key size in bytes
     pub const ML_DSA_PRIVATE_KEY_SIZE: usize = pqc_dilithium::SECRETKEYBYTES;
 
-    /// ML-DSA-65 public key size in bytes (per FIPS 204 specification)
+    /// ML-DSA-87 (Dilithium5) public key size in bytes
     pub const ML_DSA_PUBLIC_KEY_SIZE: usize = pqc_dilithium::PUBLICKEYBYTES;
 
-    /// ML-DSA-65 signature size in bytes (pqc_dilithium implementation)
-    /// Note: FIPS 204 specifies 3309, but pqc_dilithium uses 3293 bytes
+    /// ML-DSA-87 (Dilithium5) signature size in bytes
     pub const ML_DSA_SIGNATURE_SIZE: usize = pqc_dilithium::SIGNBYTES;
 
     /// SHA-512 hash size in bytes
@@ -119,11 +117,10 @@ mod tests {
     fn test_constants_are_correct() {
         use constants::*;
 
-        // Verify ML-DSA-65 parameter sizes (pqc_dilithium implementation)
-        // Note: Slightly different from FIPS 204 spec due to internal format
-        assert_eq!(ML_DSA_PRIVATE_KEY_SIZE, 4000); // pqc_dilithium SECRETKEYBYTES
-        assert_eq!(ML_DSA_PUBLIC_KEY_SIZE, 1952); // Matches FIPS 204
-        assert_eq!(ML_DSA_SIGNATURE_SIZE, 3293); // pqc_dilithium SIGNBYTES
+        // Verify ML-DSA-87 (Dilithium5) parameter sizes
+        assert_eq!(ML_DSA_PRIVATE_KEY_SIZE, 4864); // Dilithium5 SECRETKEYBYTES
+        assert_eq!(ML_DSA_PUBLIC_KEY_SIZE, 2592); // Dilithium5 PUBLICKEYBYTES
+        assert_eq!(ML_DSA_SIGNATURE_SIZE, 4595); // Dilithium5 SIGNBYTES
 
         // Verify SHA-512 hash size
         assert_eq!(SHA512_HASH_SIZE, 64);

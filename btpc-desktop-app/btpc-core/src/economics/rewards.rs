@@ -242,11 +242,7 @@ mod tests {
             (24 * BLOCKS_PER_YEAR) as u64 * (INITIAL_REWARD + TAIL_EMISSION) / 2;
 
         // Supply should be close to formula (within 0.1% due to rounding)
-        let diff = if actual_supply > approximate_formula {
-            actual_supply - approximate_formula
-        } else {
-            approximate_formula - actual_supply
-        };
+        let diff = actual_supply.abs_diff(approximate_formula);
         let tolerance = approximate_formula / 1000; // 0.1% tolerance
         assert!(
             diff < tolerance,
@@ -273,7 +269,7 @@ mod tests {
 
     #[test]
     fn test_reward_validation() {
-        let height = 52560; // 1 year
+        let height = BLOCKS_PER_YEAR; // 1 year = 52,596 blocks
         let correct_reward = RewardCalculator::calculate_block_reward(height);
         let incorrect_reward = correct_reward + 1;
 
@@ -344,6 +340,118 @@ mod tests {
 
             // Reward should never exceed initial reward
             assert!(reward <= INITIAL_REWARD);
+        }
+    }
+
+    // ============================================================================
+    // Edge Case Tests for Year Boundaries
+    // ============================================================================
+
+    #[test]
+    fn test_year_boundary_rewards() {
+        // Test rewards at exact year boundaries (52,596 blocks per year)
+        let year_boundaries = [
+            (0, INITIAL_REWARD),           // Genesis
+            (BLOCKS_PER_YEAR, 3_104_713_100),     // Year 1 boundary
+            (BLOCKS_PER_YEAR * 2, 2_971_926_200), // Year 2 boundary
+            (BLOCKS_PER_YEAR * 12, 1_643_841_200), // Year 12 (midpoint)
+            (BLOCKS_PER_YEAR * 23, 182_966_300),  // Year 23 (near end)
+        ];
+
+        for (height, expected_approx) in year_boundaries {
+            let reward = RewardCalculator::calculate_block_reward(height);
+
+            // Allow small variance due to integer division
+            let diff = reward.abs_diff(expected_approx);
+
+            // Within 1% tolerance
+            let tolerance = expected_approx / 100;
+            assert!(
+                diff <= tolerance,
+                "Year boundary at height {}: expected ~{}, got {}, diff {}",
+                height, expected_approx, reward, diff
+            );
+        }
+    }
+
+    #[test]
+    fn test_year_boundary_transition() {
+        // Test that reward decreases smoothly across year boundaries
+        for year in 0..24 {
+            let last_block_of_year = (year + 1) * BLOCKS_PER_YEAR - 1;
+            let first_block_of_next_year = (year + 1) * BLOCKS_PER_YEAR;
+
+            let reward_before = RewardCalculator::calculate_block_reward(last_block_of_year);
+            let reward_after = RewardCalculator::calculate_block_reward(first_block_of_next_year);
+
+            // Reward should decrease (or stay same at tail)
+            assert!(
+                reward_after <= reward_before,
+                "Reward should not increase at year {} boundary: {} -> {}",
+                year, reward_before, reward_after
+            );
+
+            // Difference should be exactly DECREASE_PER_BLOCK
+            if reward_before > TAIL_EMISSION && reward_after > TAIL_EMISSION {
+                let expected_decrease = DECREASE_PER_BLOCK;
+                let actual_decrease = reward_before - reward_after;
+                assert_eq!(
+                    actual_decrease, expected_decrease,
+                    "Decrease at year {} boundary should be {} but was {}",
+                    year, expected_decrease, actual_decrease
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_decay_end_boundary() {
+        // Test the exact transition from decay to tail emission
+        let before_end = DECAY_END_HEIGHT - 1;
+        let at_end = DECAY_END_HEIGHT;
+        let after_end = DECAY_END_HEIGHT + 1;
+
+        let reward_before = RewardCalculator::calculate_block_reward(before_end);
+        let reward_at = RewardCalculator::calculate_block_reward(at_end);
+        let reward_after = RewardCalculator::calculate_block_reward(after_end);
+
+        // Before end should be > tail emission
+        assert!(
+            reward_before > TAIL_EMISSION,
+            "Reward at height {} should be > TAIL_EMISSION ({}), got {}",
+            before_end, TAIL_EMISSION, reward_before
+        );
+
+        // At end should be exactly tail emission
+        assert_eq!(
+            reward_at, TAIL_EMISSION,
+            "Reward at DECAY_END_HEIGHT ({}) should be exactly TAIL_EMISSION ({}), got {}",
+            DECAY_END_HEIGHT, TAIL_EMISSION, reward_at
+        );
+
+        // After end should also be tail emission
+        assert_eq!(
+            reward_after, TAIL_EMISSION,
+            "Reward after DECAY_END_HEIGHT should be TAIL_EMISSION"
+        );
+    }
+
+    #[test]
+    fn test_total_supply_at_year_boundaries() {
+        // Verify total supply increases at year boundaries
+        let mut prev_supply = 0u64;
+
+        for year in 1..=25 {
+            let height = year * BLOCKS_PER_YEAR;
+            let supply = RewardCalculator::calculate_total_supply(height);
+
+            assert!(
+                supply > prev_supply,
+                "Total supply at year {} ({} blocks) should increase: prev={}, current={}",
+                year, height, prev_supply, supply
+            );
+
+            prev_supply = supply;
         }
     }
 

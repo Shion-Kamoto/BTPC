@@ -158,15 +158,13 @@ mod tests {
         // RED: This test will fail until GREEN phase
         let gpus = detect_gpus();
         // Should return a vector (empty or populated)
-        assert!(gpus.len() >= 0);
+        let _ = gpus;
     }
 
     #[test]
     fn test_has_gpu_returns_bool() {
         // RED: This test will fail until GREEN phase
-        let has_gpu_result = has_gpu();
-        // Should return a boolean
-        assert!(has_gpu_result == true || has_gpu_result == false);
+        let _has_gpu_result = has_gpu();
     }
 
     #[test]
@@ -183,7 +181,6 @@ mod tests {
             }
             None => {
                 // No GPU found is valid on systems without GPU
-                assert!(true);
             }
         }
     }
@@ -192,7 +189,7 @@ mod tests {
     fn test_gpu_vendor_priority() {
         // RED: This test defines behavior for vendor priority
         // NVIDIA > AMD > Intel for mining
-        let gpus = vec![
+        let gpus = [
             GpuInfo {
                 name: "Intel UHD".to_string(),
                 vendor: "intel".to_string(),

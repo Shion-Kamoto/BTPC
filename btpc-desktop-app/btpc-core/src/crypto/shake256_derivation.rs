@@ -9,7 +9,7 @@ use zeroize::Zeroizing;
 /// Domain separation tag for BTPC ML-DSA key derivation (NFR-002)
 const DOMAIN_TAG: &[u8] = b"BTPC-ML-DSA-v1";
 
-/// ML-DSA seed length (Dilithium3 requires 48 bytes)
+/// ML-DSA seed length (Dilithium5 requires 48 bytes)
 const ML_DSA_SEED_LEN: usize = 48;
 
 /// Expand a 32-byte BIP39 seed to 48-byte ML-DSA seed using SHAKE256
@@ -155,7 +155,7 @@ mod tests {
     #[test]
     fn test_entropy_preservation() {
         // Test various seed patterns
-        let test_seeds = vec![
+        let test_seeds = [
             [1u8; 32],
             [255u8; 32],
             [42u8; 32],

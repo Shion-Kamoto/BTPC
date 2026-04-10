@@ -338,19 +338,22 @@ mod tests {
 
     fn test_config() -> NetworkConfig {
         NetworkConfig {
-            listen_addr: "0.0.0.0:8333".parse().unwrap(),
+            listen_addr: "0.0.0.0:18341".parse().unwrap(),
             max_connections: 10,
             max_per_ip: 2,
             max_per_subnet_24: 5,
             max_per_subnet_16: 8,
             connection_timeout: 30,
             testnet: false,
-            user_agent: "/BTPC:0.1.0/".to_string(),
+            regtest: false,
+            user_agent: "/BTPC:1.0.0/".to_string(),
             seed_nodes: vec![],
             rate_limiter: crate::network::RateLimiterConfig::default(),
             event_queue_size: 1000,
             peer_message_queue_size: 100,
             timeouts: crate::network::ConnectionTimeouts::default(),
+            dns_seeds: vec![],
+            hardcoded_seeds: vec![],
         }
     }
 

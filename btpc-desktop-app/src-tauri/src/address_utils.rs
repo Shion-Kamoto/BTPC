@@ -14,6 +14,7 @@ use std::path::PathBuf;
 /// 3. Validates Base58 address format
 ///
 /// Returns the clean Base58 address or an error if invalid
+#[allow(dead_code)] // Reserved for transaction validation pipeline
 pub fn clean_and_validate_address(
     address: &str,
     wallets_dir: Option<&PathBuf>,

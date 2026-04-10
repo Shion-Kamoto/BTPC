@@ -250,11 +250,13 @@ mod tests {
     use super::*;
 
     fn test_params() -> RewardParams {
+        // Use the official economics constants for consistency
+        use crate::economics::constants as econ;
         RewardParams {
-            initial_reward: 3_237_500_000, // 32.375 BTPC
-            tail_emission: 50_000_000,     // 0.5 BTPC
-            blocks_per_year: 52_560,       // ~10 minute blocks
-            decay_years: 24,
+            initial_reward: econ::INITIAL_REWARD,
+            tail_emission: econ::TAIL_EMISSION,
+            blocks_per_year: econ::BLOCKS_PER_YEAR,  // 52,596 (leap-year adjusted)
+            decay_years: econ::DECAY_DURATION_YEARS,
         }
     }
 
@@ -427,11 +429,12 @@ mod tests {
 
     #[test]
     fn test_emission_statistics() {
+        use crate::economics::constants as econ;
         let params = test_params();
         let stats = RewardCalculator::calculate_emission_stats(&params).unwrap();
 
-        assert_eq!(stats.decay_period_years, 24);
-        assert_eq!(stats.decay_period_blocks, 24 * 52_560);
+        assert_eq!(stats.decay_period_years, econ::DECAY_DURATION_YEARS);
+        assert_eq!(stats.decay_period_blocks, econ::DECAY_DURATION_YEARS * econ::BLOCKS_PER_YEAR);
         assert!(stats.total_decay_supply > 0);
         assert_eq!(
             stats.initial_annual_emission,

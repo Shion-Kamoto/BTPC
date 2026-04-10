@@ -4,7 +4,7 @@
 
 use std::fmt;
 
-use pqc_dilithium::Keypair as DilithiumKeypair;
+use pqc_dilithium::{Keypair as DilithiumKeypair, PUBLICKEYBYTES, SECRETKEYBYTES, SIGNBYTES};
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -26,7 +26,7 @@ use crate::crypto::{
 /// The Keypair cannot be reconstructed from bytes alone due to pqc_dilithium API constraints.
 #[derive(Clone, Zeroize, ZeroizeOnDrop)]
 pub struct PrivateKey {
-    /// The raw secret key bytes (ML-DSA-65 format)
+    /// The raw secret key bytes (ML-DSA-87 format)
     /// Will be automatically zeroized on drop
     key_bytes: [u8; ML_DSA_PRIVATE_KEY_SIZE],
     /// Cached public key bytes derived from private key
@@ -47,8 +47,8 @@ impl PrivateKey {
     /// Generate a new ML-DSA private key using cryptographically secure randomness
     ///
     /// # Security
-    /// Uses pqc_dilithium's ML-DSA-65 (Dilithium3) implementation which provides:
-    /// - NIST security level 3 (192-bit classical security, quantum-resistant)
+    /// Uses pqc_dilithium's ML-DSA-87 (Dilithium5) implementation which provides:
+    /// - NIST security level 5 (256-bit classical security, quantum-resistant)
     /// - Constant-time operations to prevent timing side-channels
     /// - Proper key generation per FIPS 204 specification
     pub fn generate_ml_dsa() -> Result<Self, KeyError> {
@@ -79,41 +79,28 @@ impl PrivateKey {
 
     /// Create a private key from a seed (for wallet recovery)
     ///
-    /// # IMPORTANT LIMITATION
-    /// Due to pqc_dilithium v0.2 library constraints, this method does NOT generate
-    /// truly deterministic keys from the seed. The seed is stored for future use
-    /// (enabling on-demand keypair regeneration for signing), but the initial keypair
-    /// uses system randomness.
+    /// # Deterministic Key Generation
+    /// This method generates ML-DSA keys deterministically from the provided 32-byte seed.
+    /// The same seed will ALWAYS produce the same keypair, enabling BIP39-style wallet recovery.
     ///
-    /// # Current Behavior
-    /// - Stores the seed for later use
-    /// - Generates a random ML-DSA keypair (NOT from seed)
-    /// - When signing, regenerates a keypair (also random, not from seed)
-    ///
-    /// # Why This Still Works for Wallets
-    /// Even though the keys aren't deterministically derived from the seed, wallet
-    /// recovery works because:
-    /// 1. The actual key bytes are stored in the wallet file
-    /// 2. The seed enables on-demand signing capability after wallet load
-    /// 3. Same wallet file = same keys (determinism via file storage, not seed)
-    ///
-    /// # For True Deterministic Keys
-    /// To achieve truly deterministic key generation from a seed (e.g., for BIP39-style
-    /// recovery), we would need either:
-    /// - A newer pqc_dilithium version with exposed seeded key generation
-    /// - A different ML-DSA library (pqcrypto-dilithium)
-    /// - Custom implementation of Dilithium key derivation
+    /// # Implementation
+    /// Uses pqc_dilithium's internal `crypto_sign_keypair` function with the seed parameter,
+    /// which expands the seed using SHAKE256 to derive all key material deterministically.
     ///
     /// # Security
     /// The seed MUST be cryptographically secure random bytes (32 bytes).
+    /// For BIP39 wallets, this is derived from the mnemonic via PBKDF2.
     ///
     /// # Returns
-    /// A private key with the seed stored for future keypair regeneration.
+    /// A private key with deterministic bytes that can be recovered from the same seed.
     pub fn from_seed(seed: &[u8; 32]) -> Result<Self, KeyError> {
-        // Generate a standard ML-DSA keypair
-        // NOTE: This uses system randomness, NOT the provided seed
-        // The seed is only stored for later use in signing operations
-        let keypair = DilithiumKeypair::generate();
+        // Security: Reject all-zero seeds (weak key risk per Constitution Article III)
+        if seed.iter().all(|&b| b == 0) {
+            return Err(KeyError::WeakSeed);
+        }
+
+        // Generate ML-DSA keypair DETERMINISTICALLY from the seed
+        let keypair = DilithiumKeypair::generate_with_seed(seed);
         let key_bytes_slice = keypair.expose_secret();
         let public_bytes_slice = &keypair.public;
 
@@ -133,8 +120,8 @@ impl PrivateKey {
         Ok(PrivateKey {
             key_bytes,
             public_key_bytes,
-            seed: Some(*seed),      // Store seed for future keypair regeneration
-            keypair: Some(keypair), // Cache the generated keypair
+            seed: Some(*seed),
+            keypair: Some(keypair), // Cache for immediate signing
         })
     }
 
@@ -148,7 +135,7 @@ impl PrivateKey {
     /// Use `from_key_pair_bytes()` instead for proper key reconstruction.
     ///
     /// # Security
-    /// The bytes must be a valid ML-DSA-65 secret key. This function does NOT validate
+    /// The bytes must be a valid ML-DSA-87 secret key. This function does NOT validate
     /// the mathematical correctness of the key - it only checks the size.
     /// Use `generate_ml_dsa()` to create cryptographically valid keys.
     #[deprecated(note = "Use from_key_pair_bytes() instead for proper key reconstruction")]
@@ -194,8 +181,8 @@ impl PrivateKey {
     /// `from_key_pair_bytes_with_seed()`.
     ///
     /// # Arguments
-    /// * `private_key_bytes` - The ML-DSA-65 private key bytes (4000 bytes)
-    /// * `public_key_bytes` - The ML-DSA-65 public key bytes (1952 bytes)
+    /// * `private_key_bytes` - The ML-DSA-87 private key bytes (4864 bytes)
+    /// * `public_key_bytes` - The ML-DSA-87 public key bytes (2592 bytes)
     pub fn from_key_pair_bytes(
         private_key_bytes: &[u8],
         public_key_bytes: &[u8],
@@ -237,8 +224,8 @@ impl PrivateKey {
     /// because they have the seed available for keypair regeneration.
     ///
     /// # Arguments
-    /// * `private_key_bytes` - The ML-DSA-65 private key bytes (4000 bytes)
-    /// * `public_key_bytes` - The ML-DSA-65 public key bytes (1952 bytes)
+    /// * `private_key_bytes` - The ML-DSA-87 private key bytes (4864 bytes)
+    /// * `public_key_bytes` - The ML-DSA-87 public key bytes (2592 bytes)
     /// * `seed` - The 32-byte seed used to generate this key
     pub fn from_key_pair_bytes_with_seed(
         private_key_bytes: &[u8],
@@ -273,11 +260,11 @@ impl PrivateKey {
         }
     }
 
-    /// Sign data with this private key using ML-DSA-65
+    /// Sign data with this private key using ML-DSA-87
     ///
     /// # Security
-    /// Uses pqc_dilithium's constant-time ML-DSA-65 signature generation.
-    /// The signature is quantum-resistant and provides NIST security level 3.
+    /// Uses pqc_dilithium's constant-time ML-DSA-87 signature generation.
+    /// The signature is quantum-resistant and provides NIST security level 5.
     ///
     /// # Implementation
     /// This method will:
@@ -300,7 +287,7 @@ impl PrivateKey {
             return Err(SignatureError::SigningFailed);
         };
 
-        // Sign using ML-DSA-65
+        // Sign using ML-DSA-87
         let signature_arr = keypair.sign(data);
 
         // Convert to our Signature type
@@ -313,26 +300,23 @@ impl PrivateKey {
     /// but we have the seed available. The keypair is regenerated on-the-fly
     /// to enable signing for wallet-loaded keys.
     ///
-    /// # Important
-    /// This uses the same logic as from_seed() to regenerate the keypair.
-    /// Due to pqc_dilithium limitations, the keypair uses system randomness
-    /// but this is acceptable for signing operations.
+    /// # Deterministic Signing
+    /// Uses the same deterministic key generation as from_seed(), so the
+    /// regenerated keypair will be byte-identical to the original.
     fn sign_with_seed_regeneration(
         &self,
         data: &[u8],
         seed: &[u8; 32],
     ) -> Result<Signature, SignatureError> {
-        // Regenerate a private key from the seed using the same logic as from_seed()
-        // This will create a new keypair that can sign
-        let regenerated = PrivateKey::from_seed(seed).map_err(|_| SignatureError::SigningFailed)?;
-
-        // Use the regenerated key to sign
-        regenerated.sign(data)
+        // Regenerate keypair deterministically from seed and sign
+        let keypair = DilithiumKeypair::generate_with_seed(seed);
+        let sig = keypair.sign(data);
+        Signature::from_bytes(&sig).map_err(|_| SignatureError::SigningFailed)
     }
 
     /// Get the algorithm name
     pub fn algorithm(&self) -> &'static str {
-        "ML-DSA-65"
+        "ML-DSA-87"
     }
 
     /// Get the key size in bytes
@@ -406,10 +390,10 @@ impl PublicKey {
         })
     }
 
-    /// Verify a signature against data using ML-DSA-65
+    /// Verify a signature against data using ML-DSA-87
     ///
     /// # Security
-    /// Uses pqc_dilithium's constant-time ML-DSA-65 signature verification.
+    /// Uses pqc_dilithium's constant-time ML-DSA-87 signature verification.
     /// Returns true if the signature is valid for this public key and message.
     ///
     /// # Returns
@@ -427,7 +411,7 @@ impl PublicKey {
 
     /// Get the algorithm name
     pub fn algorithm(&self) -> &'static str {
-        "ML-DSA-65"
+        "ML-DSA-87"
     }
 
     /// Get the key size in bytes
@@ -497,6 +481,8 @@ pub enum KeyError {
     InvalidKeyData,
     /// Unsupported key algorithm
     UnsupportedAlgorithm,
+    /// Weak seed detected (e.g., all zeros) - security risk
+    WeakSeed,
 }
 
 impl fmt::Display for KeyError {
@@ -506,6 +492,7 @@ impl fmt::Display for KeyError {
             KeyError::InvalidKeySize => write!(f, "Invalid key size"),
             KeyError::InvalidKeyData => write!(f, "Invalid key data"),
             KeyError::UnsupportedAlgorithm => write!(f, "Unsupported key algorithm"),
+            KeyError::WeakSeed => write!(f, "Weak seed detected: all zeros is a security risk"),
         }
     }
 }
@@ -584,7 +571,6 @@ impl<'de> Deserialize<'de> for PublicKey {
 }
 
 #[cfg(test)]
-#[allow(deprecated)]
 mod tests {
     use super::*;
 
@@ -598,27 +584,21 @@ mod tests {
         assert_eq!(public_key.size(), ML_DSA_PUBLIC_KEY_SIZE);
 
         // Verify algorithm
-        assert_eq!(private_key.algorithm(), "ML-DSA-65");
-        assert_eq!(public_key.algorithm(), "ML-DSA-65");
+        assert_eq!(private_key.algorithm(), "ML-DSA-87");
+        assert_eq!(public_key.algorithm(), "ML-DSA-87");
     }
 
     #[test]
-    #[ignore] // TODO: Implement true deterministic key generation from seed
     fn test_deterministic_key_generation() {
-        // NOTE: Current implementation does NOT support deterministic key generation
-        // from_seed() currently just calls generate_ml_dsa() which uses OS randomness
-        // This would require seeding the pqc_dilithium RNG, which isn't exposed in the API
+        // Deterministic key generation is now working!
+        // crypto_sign_keypair() with Some(seed) produces identical keys each call.
         let seed = [42u8; 32];
         let key1 = PrivateKey::from_seed(&seed).unwrap();
         let key2 = PrivateKey::from_seed(&seed).unwrap();
 
-        // Same seed should generate same keys (currently fails)
-        // assert_eq!(key1.to_bytes(), key2.to_bytes());
-        // assert_eq!(key1.public_key().to_bytes(), key2.public_key().to_bytes());
-
-        // For now, just test that from_seed() works and generates valid keys
-        assert!(key1.to_bytes().len() > 0);
-        assert!(key2.to_bytes().len() > 0);
+        // Same seed generates same keys (VERIFIED WORKING)
+        assert_eq!(key1.to_bytes(), key2.to_bytes());
+        assert_eq!(key1.public_key().to_bytes(), key2.public_key().to_bytes());
     }
 
     #[test]
@@ -628,6 +608,7 @@ mod tests {
 
         // Test private key round-trip
         let private_bytes = private_key.to_bytes();
+        #[allow(deprecated)]
         let restored_private = PrivateKey::from_bytes(&private_bytes).unwrap();
         assert_eq!(private_key.to_bytes(), restored_private.to_bytes());
 
@@ -660,10 +641,13 @@ mod tests {
         let short_bytes = vec![0u8; 100];
         let long_bytes = vec![0u8; 5000];
 
-        assert!(PrivateKey::from_bytes(&short_bytes).is_err());
-        assert!(PublicKey::from_bytes(&short_bytes).is_err());
-        assert!(PrivateKey::from_bytes(&long_bytes).is_err());
-        assert!(PublicKey::from_bytes(&long_bytes).is_err());
+        #[allow(deprecated)]
+        {
+            assert!(PrivateKey::from_bytes(&short_bytes).is_err());
+            assert!(PublicKey::from_bytes(&short_bytes).is_err());
+            assert!(PrivateKey::from_bytes(&long_bytes).is_err());
+            assert!(PublicKey::from_bytes(&long_bytes).is_err());
+        }
     }
 
     #[test]
@@ -805,7 +789,7 @@ mod tests {
         // with that keypair's public key (which may differ from stored public key)
         // This is acceptable because the signing capability is restored.
         assert!(
-            signature.to_bytes().len() > 0,
+            !signature.to_bytes().is_empty(),
             "Signature was created successfully"
         );
     }
@@ -829,5 +813,31 @@ mod tests {
             result.is_err(),
             "Legacy keys without seed should not be able to sign"
         );
+    }
+
+    // Security: Test that all-zero seeds are rejected (Constitution Article III)
+    #[test]
+    fn test_rejects_all_zero_seed() {
+        let zero_seed = [0u8; 32];
+
+        let result = PrivateKey::from_seed(&zero_seed);
+
+        assert!(result.is_err(), "All-zero seed must be rejected");
+        assert_eq!(
+            result.unwrap_err(),
+            KeyError::WeakSeed,
+            "Should return WeakSeed error for all-zero seed"
+        );
+    }
+
+    // Security: Test that non-zero seeds are accepted
+    #[test]
+    fn test_accepts_valid_seeds() {
+        // Single non-zero byte should be accepted
+        let mut almost_zero = [0u8; 32];
+        almost_zero[31] = 1;
+
+        let result = PrivateKey::from_seed(&almost_zero);
+        assert!(result.is_ok(), "Seed with at least one non-zero byte must be accepted");
     }
 }

@@ -249,6 +249,48 @@ body {
     font-weight: 600;
 }
 
+.spendable-row {
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(99,102,241,0.1);
+}
+
+.spendable-label {
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 3px;
+    font-weight: 600;
+}
+
+.spendable-amount {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--status-success);
+    font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
+    letter-spacing: -0.025em;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    overflow: hidden;
+    max-width: 100%;
+}
+
+.spendable-amount #spendable-balance {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.spendable-amount .balance-unit {
+    font-size: 0.75rem;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
 /* Navigation - Simplified */
 nav {
     flex: 1;
@@ -287,6 +329,11 @@ nav {
     height: 24px;
     background: var(--btpc-primary);
     border-radius: 0 4px 4px 0;
+}
+
+/* Green icon filter for active nav item */
+.nav-item.active .icon {
+    filter: brightness(0) saturate(100%) invert(58%) sepia(69%) saturate(456%) hue-rotate(107deg) brightness(95%) contrast(92%);
 }
 
 .nav-icon {
@@ -370,6 +417,48 @@ nav {
     transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* FR-057: Chain Reorganization Banner */
+.reorg-banner {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(239, 68, 68, 0.15));
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 20px;
+    animation: reorg-pulse 2s ease-in-out infinite;
+}
+
+.reorg-banner-content {
+    display: flex;
+    align-items: center;
+    color: #f59e0b;
+    font-weight: 500;
+    font-size: 0.9375rem;
+}
+
+.reorg-banner.reorg-failed {
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(220, 38, 38, 0.15));
+    border-color: rgba(239, 68, 68, 0.4);
+}
+
+.reorg-banner.reorg-failed .reorg-banner-content {
+    color: #ef4444;
+}
+
+.reorg-banner.reorg-completed {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(5, 150, 105, 0.15));
+    border-color: rgba(16, 185, 129, 0.4);
+    animation: none;
+}
+
+.reorg-banner.reorg-completed .reorg-banner-content {
+    color: #10b981;
+}
+
+@keyframes reorg-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
 /* Main Content Area - Clean Layout */
 .main-content {
     background: var(--bg-primary);
@@ -379,21 +468,28 @@ nav {
     position: relative;
 }
 
-/* Date/Time Display - Above Logout Button */
+/* Date/Time Display - Button-styled in sidebar */
 .datetime-display {
-    position: fixed;
-    top: 0;
-    right: 20px;
-    padding: 8px 12px;
-    background: transparent;
-    color: var(--text-primary);
-    font-size: 0.75rem;
-    font-weight: 500;
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    gap: 8px;
-    z-index: 1000;
+    justify-content: center;
+    gap: 10px;
+    margin: 12px 16px;
+    padding: 10px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
     font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    cursor: default;
+    transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.datetime-display:hover {
+    border-color: var(--btpc-primary);
+    background: var(--bg-hover);
 }
 
 .datetime-date {
@@ -402,8 +498,8 @@ nav {
 }
 
 .datetime-time {
-    color: var(--text-primary);
-    font-weight: 600;
+    color: var(--btpc-primary);
+    font-weight: 700;
     letter-spacing: 0.5px;
 }
 
@@ -725,14 +821,24 @@ nav {
 }
 
 .btn-primary {
-    background: var(--btpc-primary);
-    color: white;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
 }
 
 .btn-primary:hover {
-    background: #4F46E5;
+    background: var(--bg-hover);
+    border-color: var(--btpc-primary);
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(99,102,241,0.25);
+}
+
+/* Green icons for primary buttons with SVG/icon elements */
+.btn-primary .icon,
+.btn-primary svg {
+    color: var(--status-success);
+    fill: var(--status-success);
+    /* Filter for background-image based icons to make them green */
+    filter: brightness(0) saturate(100%) invert(58%) sepia(69%) saturate(456%) hue-rotate(107deg) brightness(95%) contrast(92%);
 }
 
 .btn-secondary {
@@ -744,6 +850,12 @@ nav {
 .btn-secondary:hover {
     background: var(--bg-hover);
     border-color: var(--btpc-primary);
+}
+
+/* Green icons for secondary buttons */
+.btn-secondary .icon,
+.btn-secondary svg {
+    filter: brightness(0) saturate(100%) invert(58%) sepia(69%) saturate(456%) hue-rotate(107deg) brightness(95%) contrast(92%);
 }
 
 .btn-success {
@@ -762,8 +874,58 @@ nav {
 }
 
 .btn-danger:hover {
-    background: #4F46E5;
+    background: #dc2626;
     transform: translateY(-1px);
+}
+
+/* Toggle Button - Secondary style with status indicator dot */
+.btn-toggle {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn-toggle:hover {
+    background: var(--bg-hover);
+    border-color: var(--btpc-primary);
+    transform: translateY(-1px);
+}
+
+/* Green icons for toggle buttons */
+.btn-toggle .icon,
+.btn-toggle svg {
+    filter: brightness(0) saturate(100%) invert(58%) sepia(69%) saturate(456%) hue-rotate(107deg) brightness(95%) contrast(92%);
+}
+
+.btn-toggle .status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--status-error);
+    box-shadow: 0 0 4px var(--status-error);
+    transition: all 0.3s ease;
+}
+
+.btn-toggle.active .status-dot {
+    background: var(--status-success);
+    box-shadow: 0 0 6px var(--status-success);
+}
+
+/* Pulsing animation for active state */
+.btn-toggle.active .status-dot {
+    animation: pulse-dot 2s infinite;
+}
+
+@keyframes pulse-dot {
+    0%, 100% {
+        box-shadow: 0 0 4px var(--status-success);
+    }
+    50% {
+        box-shadow: 0 0 10px var(--status-success), 0 0 20px rgba(74, 222, 128, 0.4);
+    }
 }
 
 /* Forms - Clean Inputs */
@@ -801,55 +963,229 @@ nav {
     color: var(--text-muted);
 }
 
-/* Select/Dropdown Specific Styling */
+/* ============================================ */
+/* Select/Dropdown Styling - Purple Theme      */
+/* Matches the mining page wallet dropdown     */
+/* ============================================ */
+
 select.form-input {
     cursor: pointer;
     appearance: none;
     -webkit-appearance: none;
     -moz-appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236366F1' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+    /* Purple chevron arrow */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238B5CF6' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
-    background-position: right 12px center;
-    padding-right: 36px;
-    accent-color: var(--btpc-primary);
+    background-position: right 14px center;
+    padding-right: 40px;
+    /* Match mining dropdown button style */
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    transition: all 200ms ease;
+}
+
+select.form-input:hover {
+    background-color: var(--bg-hover);
+    border-color: var(--btpc-primary);
 }
 
 select.form-input:focus {
-    border-color: var(--btpc-primary);
-    box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
-    accent-color: var(--btpc-primary);
+    border-color: var(--btpc-secondary);
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2);
+    background-color: var(--bg-hover);
 }
 
-/* Dropdown options - dark theme with !important to override browser defaults */
+/* Dropdown options - purple theme with dark background */
 select.form-input option {
     background-color: var(--bg-card) !important;
     background: var(--bg-card) !important;
     color: var(--text-primary) !important;
-    padding: 12px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border-color);
 }
 
 select.form-input option:hover {
-    background-color: var(--btpc-primary) !important;
-    background: var(--btpc-primary) !important;
-    color: white !important;
+    background-color: var(--bg-hover) !important;
+    background: var(--bg-hover) !important;
 }
 
+/* Selected option - purple highlight like mining dropdown */
 select.form-input option:checked,
 select.form-input option:focus,
 select.form-input option[selected] {
-    background-color: var(--btpc-primary) !important;
-    background: var(--btpc-primary) !important;
-    color: white !important;
+    background: linear-gradient(0deg, rgba(139, 92, 246, 0.25) 0%, rgba(139, 92, 246, 0.25) 100%) !important;
+    background-color: rgba(139, 92, 246, 0.25) !important;
+    color: var(--text-primary) !important;
+    border-left: 3px solid var(--btpc-secondary) !important;
 }
 
-/* Additional select styling to ensure consistent appearance */
+/* Hide native dropdown arrow in IE/Edge */
 select.form-input::-ms-expand {
     display: none;
 }
 
+/* Firefox focus ring fix */
 select.form-input:-moz-focusring {
     color: transparent;
     text-shadow: 0 0 0 var(--text-primary);
+}
+
+/* WebKit scrollbar for dropdown (Chrome/Safari) */
+select.form-input::-webkit-scrollbar {
+    width: 8px;
+}
+
+select.form-input::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+}
+
+select.form-input::-webkit-scrollbar-thumb {
+    background: var(--btpc-secondary);
+    border-radius: 4px;
+}
+
+select.form-input::-webkit-scrollbar-thumb:hover {
+    background: var(--btpc-primary);
+}
+
+/* ============================================ */
+/* Custom Dropdown Component - Purple Theme    */
+/* Reusable across all pages                   */
+/* ============================================ */
+
+.btpc-dropdown {
+    position: relative;
+    display: inline-block;
+    width: 100%;
+}
+
+.btpc-dropdown-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    padding: 12px 16px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    color: var(--text-primary);
+    font-size: 0.9375rem;
+    cursor: pointer;
+    transition: all 200ms ease;
+}
+
+.btpc-dropdown-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--btpc-primary);
+}
+
+.btpc-dropdown-btn.open {
+    border-color: var(--btpc-secondary);
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2);
+}
+
+.btpc-dropdown-btn .chevron {
+    font-size: 0.75rem;
+    color: var(--btpc-secondary);
+    transition: transform 200ms ease;
+}
+
+.btpc-dropdown-btn.open .chevron {
+    transform: rotate(180deg);
+}
+
+.btpc-dropdown-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin-top: 4px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    z-index: 100;
+    display: none;
+    max-height: 280px;
+    overflow-y: auto;
+}
+
+.btpc-dropdown-menu.show {
+    display: block;
+}
+
+.btpc-dropdown-item {
+    padding: 12px 14px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    transition: background 150ms ease;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.btpc-dropdown-item:last-child {
+    border-bottom: none;
+}
+
+.btpc-dropdown-item:hover {
+    background: var(--bg-hover);
+}
+
+.btpc-dropdown-item.selected {
+    background: rgba(139, 92, 246, 0.15);
+    border-left: 3px solid var(--btpc-secondary);
+}
+
+.btpc-dropdown-item .item-label {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.btpc-dropdown-item .item-description {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+/* Dropdown scrollbar */
+.btpc-dropdown-menu::-webkit-scrollbar {
+    width: 6px;
+}
+
+.btpc-dropdown-menu::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+    border-radius: 3px;
+}
+
+.btpc-dropdown-menu::-webkit-scrollbar-thumb {
+    background: var(--btpc-secondary);
+    border-radius: 3px;
+}
+
+/* Color Input - Styled for dark theme */
+input[type="color"].form-input {
+    padding: 4px;
+    height: 44px;
+    cursor: pointer;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+}
+
+input[type="color"].form-input::-webkit-color-swatch-wrapper {
+    padding: 2px;
+    border-radius: 6px;
+}
+
+input[type="color"].form-input::-webkit-color-swatch {
+    border: none;
+    border-radius: 6px;
+}
+
+input[type="color"].form-input::-moz-color-swatch {
+    border: none;
+    border-radius: 6px;
 }
 
 /* Tables - Clean Design */
@@ -1144,6 +1480,80 @@ button:focus-visible, .btn:focus-visible {
     color: var(--status-info);
 }
 
+/* FR-057: Chain Reorganization Banner */
+.reorg-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10000;
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    color: #fff;
+    padding: 12px 20px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    animation: reorg-slide-in 0.3s ease-out;
+}
+
+.reorg-banner.removing {
+    animation: reorg-slide-out 0.3s ease-in forwards;
+}
+
+@keyframes reorg-slide-in {
+    from {
+        transform: translateY(-100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+@keyframes reorg-slide-out {
+    from {
+        transform: translateY(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateY(-100%);
+        opacity: 0;
+    }
+}
+
+.reorg-banner-content {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.reorg-icon {
+    font-size: 24px;
+    animation: reorg-spin 2s linear infinite;
+}
+
+@keyframes reorg-spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.reorg-text {
+    font-weight: 600;
+    font-size: 16px;
+}
+
+.reorg-details {
+    font-size: 14px;
+    opacity: 0.9;
+    margin-left: 8px;
+}
+
 /* Empty State Illustrations */
 .empty-state {
     display: flex;
@@ -1358,6 +1768,7 @@ button:focus-visible, .btn:focus-visible {
 }
 /* ============================================ */
 /* Password Modal for Wallet Encryption        */
+/* Styled to match app theme (confirm modal)   */
 /* ============================================ */
 
 /* Password Modal Overlay */
@@ -1368,7 +1779,8 @@ button:focus-visible, .btn:focus-visible {
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: rgba(0, 0, 0, 0.85);
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
     z-index: 9999;
     justify-content: center;
     align-items: center;
@@ -1378,45 +1790,59 @@ button:focus-visible, .btn:focus-visible {
     display: flex;
 }
 
-/* Modal Container */
+/* Modal Container - matches confirm modal style */
 .password-modal {
     background: var(--bg-card);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: 0;
+    border-radius: 16px;
+    padding: 28px;
     width: 90%;
-    max-width: 450px;
-    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
-    animation: modalSlideIn 200ms ease-out;
-    overflow: hidden;
+    max-width: 420px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    animation: passwordModalSlideIn 200ms ease-out;
 }
 
-@keyframes modalSlideIn {
+@keyframes passwordModalSlideIn {
     from {
         opacity: 0;
-        transform: translateY(-50px);
+        transform: translateY(-20px) scale(0.95);
     }
     to {
         opacity: 1;
-        transform: translateY(0);
+        transform: translateY(0) scale(1);
     }
 }
 
-/* Modal Header */
-.password-modal h2 {
-    color: var(--btpc-primary);
-    font-size: 24px;
-    margin: 0 0 10px 0;
-    text-align: center;
-    font-weight: 600;
+/* Icon Circle - matches confirm modal */
+.password-modal-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 20px;
+    font-size: 28px;
+    background: rgba(139, 92, 246, 0.15);
+    border: 2px solid var(--btpc-secondary);
 }
 
+/* Modal Title */
+.password-modal h3 {
+    color: var(--text-primary);
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin: 0 0 12px 0;
+    text-align: center;
+}
+
+/* Modal Description */
 .password-modal p {
     color: var(--text-secondary);
-    font-size: 14px;
-    text-align: center;
-    margin: 0 0 30px 0;
+    font-size: 0.9rem;
     line-height: 1.5;
+    margin: 0 0 24px 0;
+    text-align: center;
 }
 
 /* Password Input Group */
@@ -1522,38 +1948,21 @@ button:focus-visible, .btn:focus-visible {
     font-size: 13px;
 }
 
-/* Button Container */
+/* Button Container - matches confirm modal */
 .password-modal-buttons {
     display: flex;
-    gap: 15px;
-    margin-top: 25px;
+    gap: 12px;
+    justify-content: center;
+    margin-top: 24px;
 }
 
-.password-modal-buttons button {
-    flex: 1;
-    padding: 12px 20px;
-    font-size: 15px;
+.password-modal-buttons .btn {
+    min-width: 100px;
+    padding: 12px 24px;
     font-weight: 600;
-    border: none;
-    border-radius: 6px;
+    border-radius: 8px;
     cursor: pointer;
-    transition: all 0.2s;
-}
-
-/* Primary Button (Unlock) */
-.btn-unlock {
-    background: linear-gradient(135deg, var(--btpc-primary) 0%, var(--btpc-secondary) 100%);
-    color: var(--text-primary);
-}
-
-.btn-unlock:hover {
-    background: linear-gradient(135deg, var(--btpc-secondary) 0%, var(--btpc-primary) 100%);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
-}
-
-.btn-unlock:active {
-    transform: translateY(0);
+    transition: all 200ms ease;
 }
 
 .btn-unlock:disabled {
@@ -1575,42 +1984,53 @@ button:focus-visible, .btn:focus-visible {
     border-color: var(--border-subtle);
 }
 
-/* Migration Notice */
+/* Migration Notice - styled to match app theme */
 .migration-notice {
     display: none;
-    background-color: rgba(99, 102, 241, 0.1);
-    border: 1px solid rgba(99, 102, 241, 0.3);
-    border-radius: 6px;
-    padding: 15px;
+    background: rgba(139, 92, 246, 0.1);
+    border: 1px solid var(--btpc-secondary);
+    border-left: 3px solid var(--btpc-secondary);
+    border-radius: 8px;
+    padding: 16px;
     margin-bottom: 20px;
+    text-align: left;
 }
 
 .migration-notice.show {
     display: block;
 }
 
-.migration-notice h3 {
-    color: var(--btpc-primary);
-    font-size: 16px;
-    margin: 0 0 10px 0;
+.migration-notice-header {
+    color: var(--btpc-secondary);
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin-bottom: 10px;
 }
 
 .migration-notice p {
     color: var(--text-secondary);
-    font-size: 13px;
-    margin: 0;
+    font-size: 0.85rem;
+    margin: 0 0 10px 0;
     text-align: left;
+    line-height: 1.5;
 }
 
 .migration-notice ul {
     color: var(--text-secondary);
-    font-size: 13px;
+    font-size: 0.85rem;
     margin: 10px 0 0 20px;
     padding: 0;
 }
 
 .migration-notice li {
-    margin-bottom: 5px;
+    margin-bottom: 6px;
+}
+
+.migration-notice .migration-warning {
+    color: var(--status-warning);
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(139, 92, 246, 0.2);
 }
 
 /* ===== UI Polish: Loading & Toast Components ===== */
@@ -1945,4 +2365,183 @@ button:focus-visible, .btn:focus-visible {
 
 @keyframes spin {
     to { transform: rotate(360deg); }
+}
+
+/* ===================================================================
+   GPU Mining Dashboard Styles (Feature 012)
+   Matches current Quantum-Resistant Indigo theme
+   =================================================================== */
+
+#gpu-cards-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+    gap: 20px;
+}
+
+.gpu-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+    transition: all 0.2s ease;
+}
+
+.gpu-card:hover {
+    border-color: var(--btpc-primary);
+    box-shadow: 0 4px 16px rgba(99, 102, 241, 0.2);
+}
+
+.gpu-card-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.gpu-icon {
+    font-size: 2rem;
+    line-height: 1;
+}
+
+.gpu-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.gpu-name {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+    word-wrap: break-word;
+}
+
+.gpu-index {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    font-family: 'SF Mono', monospace;
+}
+
+.status-badge {
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+}
+
+.status-active {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--status-success);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.status-idle {
+    background: rgba(100, 116, 139, 0.15);
+    color: var(--text-muted);
+    border: 1px solid rgba(100, 116, 139, 0.3);
+}
+
+.status-error {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--status-error);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.status-throttled {
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--status-warning);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.gpu-section {
+    margin-bottom: 16px;
+}
+
+.gpu-section:last-child {
+    margin-bottom: 0;
+}
+
+.section-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+}
+
+.stat-item {
+    background: var(--bg-primary);
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border-subtle);
+    transition: border-color 0.2s ease;
+}
+
+.stat-item:hover {
+    border-color: var(--border-color);
+}
+
+.stat-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.stat-value {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    font-family: 'SF Mono', 'Courier New', monospace;
+}
+
+.stat-unavailable {
+    color: var(--text-muted);
+    font-style: italic;
+    font-size: 0.9375rem;
+}
+
+.stat-placeholder {
+    text-align: center;
+    padding: 30px 20px;
+    color: var(--text-muted);
+    font-size: 0.875rem;
+    background: var(--bg-primary);
+    border-radius: 8px;
+    border: 1px dashed var(--border-color);
+}
+
+.throttle-warning {
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-radius: 8px;
+    padding: 12px 16px;
+    color: var(--status-warning);
+    font-size: 0.8125rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.error-message {
+    padding: 60px 20px;
+    text-align: center;
+    color: var(--status-error);
+    font-size: 0.9375rem;
+    line-height: 1.6;
 }

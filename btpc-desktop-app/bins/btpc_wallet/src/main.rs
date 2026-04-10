@@ -26,7 +26,7 @@ pub struct WalletConfig {
     pub datadir: PathBuf,
     /// RPC server URL for node communication
     pub rpc_url: String,
-    /// Default fee rate (satoshis per byte)
+    /// Default fee rate (credits per byte)
     pub fee_rate: u64,
 }
 
@@ -649,7 +649,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Arg::new("fee-rate")
                         .long("fee-rate")
                         .value_name("RATE")
-                        .help("Fee rate (satoshis per byte)"),
+                        .help("Fee rate (credits per byte)"),
                 ),
         )
         .subcommand(Command::new("history").about("Show transaction history"))

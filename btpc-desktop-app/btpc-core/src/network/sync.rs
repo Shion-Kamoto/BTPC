@@ -332,7 +332,7 @@ mod tests {
     fn test_sync_manager_creation() {
         let sync_manager = SyncManager::new(10);
         assert_eq!(sync_manager.state(), &SyncState::Idle);
-        assert!(sync_manager.is_synced() == false);
+        assert!(!sync_manager.is_synced());
     }
 
     #[test]

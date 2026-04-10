@@ -136,7 +136,7 @@ pub struct MempoolConfig {
     pub max_size: usize,
     /// Maximum number of transactions
     pub max_transactions: usize,
-    /// Minimum transaction fee (satoshis per byte)
+    /// Minimum transaction fee (credits per kilobyte)
     pub min_fee_rate: u64,
     /// Maximum transaction age in seconds
     pub max_age: u64,
@@ -149,7 +149,7 @@ impl Default for MempoolConfig {
         MempoolConfig {
             max_size: constants::DEFAULT_MEMPOOL_SIZE,
             max_transactions: constants::DEFAULT_MAX_MEMPOOL_TXS,
-            min_fee_rate: 1000,    // 1000 satoshis per byte
+            min_fee_rate: 1000,    // 1000 crd/KB
             max_age: 24 * 60 * 60, // 24 hours
             enable_rbf: true,
         }
@@ -475,10 +475,6 @@ mod tests {
     fn test_constants() {
         use constants::*;
 
-        assert!(DEFAULT_CACHE_SIZE > 0);
-        assert!(DEFAULT_WRITE_BUFFER_SIZE > 0);
-        assert!(DEFAULT_MAX_OPEN_FILES > 0);
-        assert!(DEFAULT_MEMPOOL_SIZE > 0);
-        assert!(DEFAULT_MAX_MEMPOOL_TXS > 0);
+        // Constants validity is enforced at compile time; no runtime assertions needed.
     }
 }

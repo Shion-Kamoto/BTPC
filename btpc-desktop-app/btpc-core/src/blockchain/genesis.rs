@@ -34,11 +34,12 @@ pub struct GenesisConfig {
 
 impl GenesisConfig {
     /// Create mainnet genesis configuration
+    /// FIX 2026-02-22: Use initial_for_network (calibrated for ~10 min blocks)
     pub fn mainnet() -> Self {
         GenesisConfig {
             timestamp: 1735689600, // 2025-01-01 00:00:00 UTC
             message: "Times 03/Jan/2009 Chancellor on brink of second bailout for banks/ 22/Nov/2025 Security for the future - beyond the financial reset".to_string(),
-            difficulty_target: DifficultyTarget::minimum_for_network(crate::Network::Mainnet),
+            difficulty_target: DifficultyTarget::initial_for_network(crate::Network::Mainnet),
             reward: 5_000_000_000, // 50 BTPC (with 8 decimal places)
             recipient_pubkey_hash: vec![0u8; 20], // Burn address
             network: "mainnet".to_string(),
@@ -46,11 +47,12 @@ impl GenesisConfig {
     }
 
     /// Create testnet genesis configuration
+    /// FIX 2026-02-22: Use initial_for_network (calibrated for ~10 min blocks)
     pub fn testnet() -> Self {
         GenesisConfig {
             timestamp: 1735689600, // Same as mainnet for deterministic testing
             message: "BTPC Testnet Genesis Block - Post-Quantum Bitcoin".to_string(),
-            difficulty_target: DifficultyTarget::minimum_for_network(crate::Network::Testnet),
+            difficulty_target: DifficultyTarget::initial_for_network(crate::Network::Testnet),
             reward: 5_000_000_000,                // 50 BTPC
             recipient_pubkey_hash: vec![0u8; 20], // Burn address
             network: "testnet".to_string(),
@@ -58,12 +60,10 @@ impl GenesisConfig {
     }
 
     /// Create regtest genesis configuration
+    /// Uses fixed timestamp for consistent genesis block hash across all regtest instances
     pub fn regtest() -> Self {
         GenesisConfig {
-            timestamp: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_else(|_| std::time::Duration::from_secs(0))
-                .as_secs(),
+            timestamp: 1735689600, // Same as mainnet (Jan 1, 2025) for consistent genesis hash
             message: "BTPC Regtest Genesis Block".to_string(),
             difficulty_target: DifficultyTarget::minimum_for_network(crate::Network::Regtest),
             reward: 5_000_000_000,                // 50 BTPC

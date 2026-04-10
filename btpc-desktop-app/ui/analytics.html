@@ -43,6 +43,13 @@
                         <span id="wallet-balance">0.00000000</span>
                         <span class="balance-unit">BTPC</span>
                     </div>
+                    <div class="spendable-row">
+                        <div class="spendable-label">Spendable</div>
+                        <div class="spendable-amount">
+                            <span id="spendable-balance">0.00000000</span>
+                            <span class="balance-unit">BTPC</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -187,6 +194,7 @@
         </div>
     </div>
 
+    <script src="btpc-storage.js"></script>
     <script src="btpc-common.js"></script>
     <script>
         let syncUpdateInterval = null;

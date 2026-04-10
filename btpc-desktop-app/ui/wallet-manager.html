@@ -38,6 +38,206 @@
         .tab-content.active {
             display: block;
         }
+
+        /* Modal Styles - Matching App Theme */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(4px);
+            z-index: 9999;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.2s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .modal-content {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            max-width: 800px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            animation: slideUp 0.3s ease;
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border-color);
+            background: var(--bg-primary);
+            border-radius: 12px 12px 0 0;
+        }
+
+        .modal-header span,
+        .modal-header h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin: 0;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 1.75rem;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+        }
+
+        .modal-close:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .modal-body {
+            padding: 24px;
+        }
+
+        .detail-section {
+            padding: 20px 24px;
+        }
+
+        .detail-section h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 16px;
+        }
+
+        .stat-label {
+            font-size: 0.8125rem;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-subtext {
+            font-size: 0.9375rem;
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        /* Password Strength Meter (NIST SP 800-63B - 80 bits required) */
+        .password-strength-container {
+            margin-top: 8px;
+        }
+
+        .password-strength-bar {
+            height: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 6px;
+        }
+
+        .password-strength-fill {
+            height: 100%;
+            width: 0%;
+            transition: all 0.3s ease;
+            border-radius: 3px;
+        }
+
+        .password-strength-fill.weak {
+            width: 25%;
+            background: #ef4444;
+        }
+
+        .password-strength-fill.fair {
+            width: 50%;
+            background: #f59e0b;
+        }
+
+        .password-strength-fill.good {
+            width: 75%;
+            background: #3b82f6;
+        }
+
+        .password-strength-fill.strong {
+            width: 100%;
+            background: #10b981;
+        }
+
+        .password-strength-text {
+            font-size: 0.75rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .password-strength-label {
+            font-weight: 500;
+        }
+
+        .password-strength-label.weak { color: #ef4444; }
+        .password-strength-label.fair { color: #f59e0b; }
+        .password-strength-label.good { color: #3b82f6; }
+        .password-strength-label.strong { color: #10b981; }
+
+        .entropy-bits {
+            color: var(--text-muted);
+            font-family: 'SF Mono', monospace;
+        }
+
+        /* Import Validation Feedback */
+        .import-validation {
+            margin-top: 8px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            display: none;
+        }
+
+        .import-validation.valid {
+            display: block;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: #10b981;
+        }
+
+        .import-validation.invalid {
+            display: block;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #ef4444;
+        }
+
+        .import-validation .validation-icon {
+            margin-right: 8px;
+        }
     </style>
 </head>
 <body>
@@ -68,6 +268,13 @@
                     <div class="balance-amount">
                         <span id="wallet-balance">0.00000000</span>
                         <span class="balance-unit">BTPC</span>
+                    </div>
+                    <div class="spendable-row">
+                        <div class="spendable-label">Spendable</div>
+                        <div class="spendable-amount">
+                            <span id="spendable-balance">0.00000000</span>
+                            <span class="balance-unit">BTPC</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -163,7 +370,7 @@
                 <div class="card">
                     <div class="card-header">
                         <span>My Wallets</span>
-                        <button class="btn btn-secondary" onclick="refreshWallets()" style="padding: 6px 16px;"><span class="icon icon-refresh"></span> Display</button>
+                        <button class="btn btn-secondary" onclick="refreshWallets()" style="padding: 6px 16px;"><span class="icon icon-refresh"></span> Refresh</button>
                     </div>
 
                     <div id="wallet-list-container">
@@ -231,14 +438,24 @@
                         <div class="form-group">
                             <label class="form-label">Password</label>
                             <input type="password" class="form-input" id="new-wallet-password" placeholder="Enter a strong password" required>
-                            <small style="color: var(--text-muted); margin-top: 4px;">Used to encrypt your private key</small>
+                            <!-- Password Strength Meter (NIST SP 800-63B - 80 bits required) -->
+                            <div class="password-strength-container" id="wallet-strength-container" style="display: none;">
+                                <div class="password-strength-bar">
+                                    <div class="password-strength-fill" id="wallet-strength-fill"></div>
+                                </div>
+                                <div class="password-strength-text">
+                                    <span class="password-strength-label" id="wallet-strength-label">Weak</span>
+                                    <span class="entropy-bits" id="wallet-entropy-bits">0 bits</span>
+                                </div>
+                            </div>
+                            <small style="color: var(--text-muted); margin-top: 4px;">Used to encrypt your private key (80+ bits required)</small>
                         </div>
                         <div class="form-group">
                             <label class="form-label">Confirm Password</label>
                             <input type="password" class="form-input" id="new-wallet-password-confirm" placeholder="Re-enter password" required>
                         </div>
                     </div>
-                    <div style="display: flex; gap: 12px;">
+                    <div style="padding: 16px; background: rgba(139, 92, 246, 0.1); border-left: 3px solid var(--btpc-primary); border-radius: 6px; display: flex; gap: 12px; justify-content: center;">
                         <button class="btn btn-primary" onclick="createNewWallet()"><span class="icon icon-plus"></span> Create Wallet</button>
                         <button class="btn btn-secondary" onclick="switchTab('manage')">← Back to Wallets</button>
                     </div>
@@ -272,10 +489,6 @@
                                 <input type="radio" name="import-type" value="key" onchange="updateImportMethod()">
                                 <span>Private Key</span>
                             </label>
-                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                                <input type="radio" name="import-type" value="file" onchange="updateImportMethod()">
-                                <span>Backup File</span>
-                            </label>
                         </div>
                     </div>
 
@@ -283,24 +496,26 @@
                     <div id="import-seed-section">
                         <div class="form-group">
                             <label class="form-label">Seed Phrase</label>
-                            <textarea class="form-input" id="import-seed" rows="4" placeholder="Enter your 24-word seed phrase separated by spaces"></textarea>
+                            <textarea class="form-input" id="import-seed" rows="4" placeholder="Enter your 24-word seed phrase separated by spaces" oninput="validateSeedPhrase(this.value)"></textarea>
+                            <div id="seed-validation" class="import-validation">
+                                <span class="validation-icon"></span>
+                                <span class="validation-text"></span>
+                            </div>
                         </div>
                     </div>
                     <div id="import-key-section" style="display: none;">
                         <div class="form-group">
-                            <label class="form-label">Private Key</label>
-                            <textarea class="form-input" id="import-key" rows="4" placeholder="Enter your private key"></textarea>
-                        </div>
-                    </div>
-                    <div id="import-file-section" style="display: none;">
-                        <div class="form-group">
-                            <label class="form-label">Backup File Path</label>
-                            <input type="text" class="form-input" id="import-file" placeholder="Enter full path to backup file">
-                            <small style="color: var(--text-muted); margin-top: 4px;">Example: /home/user/.btpc/backups/wallet.btpc</small>
+                            <label class="form-label">Private Key (Seed)</label>
+                            <textarea class="form-input" id="import-key" rows="2" placeholder="Enter 64 hex characters (32-byte seed)" oninput="validatePrivateKey(this.value)"></textarea>
+                            <div id="key-validation" class="import-validation">
+                                <span class="validation-icon"></span>
+                                <span class="validation-text"></span>
+                            </div>
+                            <small style="color: var(--text-muted); margin-top: 4px;">ML-DSA requires seed format. Use mnemonic recovery if you don't have your seed.</small>
                         </div>
                     </div>
 
-                    <div style="display: flex; gap: 12px; margin-top: 24px;">
+                    <div style="padding: 16px; background: rgba(139, 92, 246, 0.1); border-left: 3px solid var(--btpc-primary); border-radius: 6px; display: flex; gap: 12px; margin-top: 24px; justify-content: center;">
                         <button class="btn btn-primary" onclick="importWallet()"><span class="icon icon-send"></span> Import Wallet</button>
                         <button class="btn btn-secondary" onclick="switchTab('manage')">← Cancel</button>
                     </div>
@@ -360,8 +575,8 @@
 
                     <div class="detail-section" style="margin-top: 24px;">
                         <h3 style="font-size: 1.125rem; color: #dc2626; margin-bottom: 12px;"><span class="icon icon-key"></span> Recovery Seed Phrase (24 words)</h3>
-                        <div style="background: #fff7ed; border: 2px solid #fb923c; border-radius: 8px; padding: 16px; margin-bottom: 12px;">
-                            <div id="recovery-seed-phrase" style="font-family: 'Courier New', monospace; font-size: 0.875rem; line-height: 1.8; color: #1f2937; word-wrap: break-word;">-</div>
+                        <div style="background: rgba(139, 92, 246, 0.1); border: 2px solid var(--btpc-primary); border-radius: 8px; padding: 16px; margin-bottom: 12px;">
+                            <div id="recovery-seed-phrase" style="font-family: 'Courier New', monospace; font-size: 0.875rem; line-height: 1.8; color: var(--text-primary); word-wrap: break-word;">-</div>
                         </div>
                         <button class="btn btn-secondary" onclick="copySeedPhrase()" style="margin-top: 8px; width: 100%;">
                             <span class="icon icon-send"></span> Copy Seed Phrase
@@ -374,11 +589,33 @@
                         <div style="margin-top: 12px; color: var(--text-muted); font-size: 0.875rem;">Scan this QR code to backup your seed phrase</div>
                     </div>
 
+                    <!-- Seed Hex (64 chars) - For Private Key Import -->
+                    <div class="detail-section" style="margin-top: 24px;">
+                        <details open style="background: rgba(139, 92, 246, 0.1); border: 1px solid var(--btpc-primary); border-radius: 8px; padding: 12px;">
+                            <summary style="cursor: pointer; font-weight: 600; color: var(--btpc-primary); font-size: 0.875rem;">Seed Hex (For Private Key Import)</summary>
+                            <div style="margin-top: 12px;">
+                                <div style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 8px;">Use this 64-character seed for "Import from Private Key" option:</div>
+                                <div class="form-input mono" id="recovery-seed-hex" style="word-break: break-all; font-size: 0.9rem; background: var(--bg-card); padding: 12px; font-family: monospace;">
+                                    -
+                                </div>
+                                <button class="btn btn-primary" onclick="copySeedHex()" style="margin-top: 8px; width: 100%;">
+                                    <span class="icon icon-send"></span> Copy Seed Hex (64 chars)
+                                </button>
+                                <div style="margin-top: 16px; text-align: center;">
+                                    <h4 style="font-size: 0.9rem; color: var(--text-primary); margin-bottom: 12px;">Seed Hex QR Code</h4>
+                                    <div id="recovery-seed-hex-qr" style="background: white; padding: 16px; border-radius: 12px; display: inline-block;"></div>
+                                    <div style="margin-top: 8px; color: var(--text-muted); font-size: 0.8rem;">Scan this QR code to backup your seed hex key</div>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+
                     <!-- Advanced: Private Key Hex (collapsed by default) -->
                     <div class="detail-section" style="margin-top: 24px;">
                         <details style="background: var(--bg-section); border-radius: 8px; padding: 12px;">
-                            <summary style="cursor: pointer; font-weight: 600; color: var(--text-muted); font-size: 0.875rem;">Advanced: Show Raw Private Key (Hex)</summary>
+                            <summary style="cursor: pointer; font-weight: 600; color: var(--text-muted); font-size: 0.875rem;">Advanced: Show Raw Private Key (8000 chars - Not for import)</summary>
                             <div style="margin-top: 16px;">
+                                <div style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 8px;">⚠️ This is the full ML-DSA private key. Use Seed Hex above for import.</div>
                                 <div class="form-input mono" id="recovery-private-key" style="word-break: break-all; font-size: 0.75rem; background: var(--bg-card); max-height: 120px; overflow-y: auto; margin-top: 8px;">
                                     -
                                 </div>
@@ -452,7 +689,7 @@
                             <button class="btn btn-primary" onclick="receiveToWallet()"><span class="icon icon-send"></span> Receive</button>
                             <button class="btn btn-secondary" onclick="viewHistory()"><span class="icon icon-chart"></span> History</button>
                             <button class="btn btn-secondary" onclick="mineToWallet()"><span class="icon icon-pickaxe"></span> Mine Here</button>
-                            <button class="btn btn-secondary" onclick="backupWallet()"><span class="icon icon-save"></span> Backup</button>
+                            <button class="btn btn-secondary" id="favorite-btn" onclick="toggleFavorite()"><span id="favorite-icon">☆</span> Favorite</button>
                             <button class="btn btn-danger" onclick="deleteWallet()"><span class="icon icon-stop"></span> Delete</button>
                         </div>
                     </div>
@@ -473,6 +710,34 @@
 
                         <div style="display: flex; gap: 12px; justify-content: flex-end;">
                             <button class="btn btn-primary" onclick="closeCopyConfirmModal()">OK</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Delete Wallet Confirmation Modal (Styled per App Theme) -->
+            <div id="delete-wallet-modal" class="modal">
+                <div class="modal-content" style="max-width: 450px;">
+                    <div class="modal-header">
+                        <h2 style="color: var(--status-error);">⚠️ Delete Wallet</h2>
+                        <button class="modal-close" onclick="closeDeleteWalletModal()">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div style="margin-bottom: 20px; color: var(--text-secondary); line-height: 1.6;">
+                            Are you sure you want to delete wallet <strong id="delete-wallet-name" style="color: var(--text-primary);"></strong>?
+                        </div>
+                        <div style="padding: 12px 16px; background: rgba(239, 68, 68, 0.1); border-left: 3px solid var(--status-error); border-radius: 6px; margin-bottom: 20px;">
+                            <div style="color: var(--status-error); font-weight: 600; margin-bottom: 8px;">⚠️ Warning: This action cannot be undone!</div>
+                            <div style="color: var(--text-secondary); font-size: 0.875rem; line-height: 1.5;">
+                                <ul style="margin: 0; padding-left: 20px;">
+                                    <li>The wallet will be permanently removed</li>
+                                    <li>Make sure you have backed up your seed phrase</li>
+                                    <li>Any funds in this wallet may be lost forever</li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                            <button class="btn btn-secondary" onclick="closeDeleteWalletModal()">Cancel</button>
+                            <button class="btn btn-primary" style="background: var(--status-error);" onclick="confirmDeleteWallet()">Delete Wallet</button>
                         </div>
                     </div>
                 </div>
@@ -524,7 +789,9 @@
     <script src="btpc-navigation-guard.js"></script>
     <script src="btpc-event-manager.js"></script>
     <script src="btpc-backend-first.js"></script>
+    <script src="btpc-storage.js"></script>
     <script src="btpc-common.js"></script>
+    <script src="btpc-corruption-check.js"></script>
     <script src="btpc-update-manager.js"></script>
     <script src="password-modal.js"></script>
     <script src="btpc-logout.js"></script>
@@ -554,8 +821,224 @@
 
             document.getElementById('import-seed-section').style.display = method === 'seed' ? 'block' : 'none';
             document.getElementById('import-key-section').style.display = method === 'key' ? 'block' : 'none';
-            document.getElementById('import-file-section').style.display = method === 'file' ? 'block' : 'none';
+
+            // Clear validation messages when switching methods
+            document.getElementById('seed-validation').className = 'import-validation';
+            document.getElementById('seed-validation').style.display = 'none';
+            document.getElementById('key-validation').className = 'import-validation';
+            document.getElementById('key-validation').style.display = 'none';
         }
+
+        // Password Entropy Calculator (NIST SP 800-63B - 80 bits required)
+        function calculatePasswordEntropy(password) {
+            if (!password || password.length === 0) return 0;
+
+            // Character set size calculation
+            let charsetSize = 0;
+            if (/[a-z]/.test(password)) charsetSize += 26; // lowercase
+            if (/[A-Z]/.test(password)) charsetSize += 26; // uppercase
+            if (/[0-9]/.test(password)) charsetSize += 10; // digits
+            if (/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(password)) charsetSize += 32; // special chars
+            if (/\s/.test(password)) charsetSize += 1; // space
+
+            // Basic entropy: log2(charsetSize^length) = length * log2(charsetSize)
+            const basicEntropy = password.length * Math.log2(charsetSize || 1);
+
+            // Penalty for common patterns (reduces entropy)
+            let penalty = 0;
+
+            // Repeated characters penalty
+            const repeats = password.match(/(.)\1{2,}/g);
+            if (repeats) penalty += repeats.length * 5;
+
+            // Sequential characters penalty (abc, 123, etc.)
+            const sequences = password.match(/(abc|bcd|cde|def|efg|fgh|ghi|hij|ijk|jkl|klm|lmn|mno|nop|opq|pqr|qrs|rst|stu|tuv|uvw|vwx|wxy|xyz|012|123|234|345|456|567|678|789)/gi);
+            if (sequences) penalty += sequences.length * 5;
+
+            // Keyboard patterns penalty (qwerty, asdf, etc.)
+            const keyboard = password.match(/(qwert|asdf|zxcv|qazwsx|1qaz|2wsx)/gi);
+            if (keyboard) penalty += keyboard.length * 10;
+
+            // Common words penalty
+            const commonWords = ['password', 'bitcoin', 'wallet', '123456', 'qwerty', 'admin', 'letmein', 'welcome', 'btpc', 'crypto'];
+            for (const word of commonWords) {
+                if (password.toLowerCase().includes(word)) penalty += 20;
+            }
+
+            return Math.max(0, basicEntropy - penalty);
+        }
+
+        function updateWalletPasswordStrength(password) {
+            const container = document.getElementById('wallet-strength-container');
+            const fill = document.getElementById('wallet-strength-fill');
+            const label = document.getElementById('wallet-strength-label');
+            const bits = document.getElementById('wallet-entropy-bits');
+
+            if (!password || password.length === 0) {
+                container.style.display = 'none';
+                return;
+            }
+
+            container.style.display = 'block';
+            const entropy = calculatePasswordEntropy(password);
+
+            // Update entropy display
+            bits.textContent = `${Math.round(entropy)} bits`;
+
+            // Clear previous classes
+            fill.className = 'password-strength-fill';
+            label.className = 'password-strength-label';
+
+            // FR-001: 80 bits is the threshold for "strong"
+            if (entropy < 40) {
+                fill.classList.add('weak');
+                label.classList.add('weak');
+                label.textContent = 'Weak';
+            } else if (entropy < 60) {
+                fill.classList.add('fair');
+                label.classList.add('fair');
+                label.textContent = 'Fair';
+            } else if (entropy < 80) {
+                fill.classList.add('good');
+                label.classList.add('good');
+                label.textContent = 'Good';
+            } else {
+                fill.classList.add('strong');
+                label.classList.add('strong');
+                label.textContent = 'Strong (80+ bits)';
+            }
+        }
+
+        // BIP39 Word List (2048 words) - subset for validation
+        // Full list would be loaded from backend, but we validate structure here
+        const BIP39_WORD_SAMPLE = [
+            'abandon', 'ability', 'able', 'about', 'above', 'absent', 'absorb', 'abstract',
+            'absurd', 'abuse', 'access', 'accident', 'account', 'accuse', 'achieve', 'acid',
+            'acoustic', 'acquire', 'across', 'act', 'action', 'actor', 'actress', 'actual',
+            'adapt', 'add', 'addict', 'address', 'adjust', 'admit', 'adult', 'advance',
+            'advice', 'aerobic', 'affair', 'afford', 'afraid', 'again', 'age', 'agent',
+            'agree', 'ahead', 'aim', 'air', 'airport', 'aisle', 'alarm', 'album',
+            'zone', 'zoo', 'wrong', 'write', 'wrist', 'world', 'worth', 'wrap'
+        ];
+
+        // Validate seed phrase (24 words)
+        function validateSeedPhrase(input) {
+            const validation = document.getElementById('seed-validation');
+            const icon = validation.querySelector('.validation-icon');
+            const text = validation.querySelector('.validation-text');
+
+            // Reset classes
+            validation.className = 'import-validation';
+
+            if (!input || input.trim().length === 0) {
+                validation.style.display = 'none';
+                return false;
+            }
+
+            // Split and clean words
+            const words = input.trim().toLowerCase().split(/\s+/).filter(w => w.length > 0);
+            const wordCount = words.length;
+
+            // Check word count
+            if (wordCount === 0) {
+                validation.style.display = 'none';
+                return false;
+            }
+
+            // Show the validation box
+            validation.style.display = 'block';
+
+            if (wordCount < 24) {
+                validation.classList.add('invalid');
+                icon.textContent = '✗';
+                text.textContent = `Only ${wordCount} words entered. Need exactly 24 words (${24 - wordCount} more needed)`;
+                return false;
+            }
+
+            if (wordCount > 24) {
+                validation.classList.add('invalid');
+                icon.textContent = '✗';
+                text.textContent = `Too many words (${wordCount}). Need exactly 24 words (remove ${wordCount - 24})`;
+                return false;
+            }
+
+            // Check for invalid characters
+            const invalidWords = words.filter(w => !/^[a-z]+$/.test(w));
+            if (invalidWords.length > 0) {
+                validation.classList.add('invalid');
+                icon.textContent = '✗';
+                text.textContent = `Invalid characters detected. Words should only contain letters (a-z)`;
+                return false;
+            }
+
+            // All checks passed
+            validation.classList.add('valid');
+            icon.textContent = '✓';
+            text.textContent = `Valid format: 24 words detected. Ready to import.`;
+            return true;
+        }
+
+        // Validate private key (64 hex characters)
+        function validatePrivateKey(input) {
+            const validation = document.getElementById('key-validation');
+            const icon = validation.querySelector('.validation-icon');
+            const text = validation.querySelector('.validation-text');
+
+            // Reset classes
+            validation.className = 'import-validation';
+
+            if (!input || input.trim().length === 0) {
+                validation.style.display = 'none';
+                return false;
+            }
+
+            // Show the validation box
+            validation.style.display = 'block';
+
+            const cleaned = input.trim().toLowerCase();
+            const length = cleaned.length;
+
+            // Check if it's hex
+            const isHex = /^[0-9a-f]+$/.test(cleaned);
+
+            if (!isHex) {
+                validation.classList.add('invalid');
+                icon.textContent = '✗';
+                text.textContent = `Invalid characters. Only hexadecimal (0-9, a-f) allowed`;
+                return false;
+            }
+
+            if (length < 64) {
+                validation.classList.add('invalid');
+                icon.textContent = '✗';
+                text.textContent = `Too short: ${length} characters. Need exactly 64 hex characters (${64 - length} more needed)`;
+                return false;
+            }
+
+            if (length > 64) {
+                validation.classList.add('invalid');
+                icon.textContent = '✗';
+                text.textContent = `Too long: ${length} characters. Need exactly 64 hex characters (remove ${length - 64})`;
+                return false;
+            }
+
+            // All checks passed
+            validation.classList.add('valid');
+            icon.textContent = '✓';
+            text.textContent = `Valid format: 64 hex characters (32-byte seed). Ready to import.`;
+            return true;
+        }
+
+        // Attach real-time password strength meter
+        document.addEventListener('DOMContentLoaded', () => {
+            const passwordInput = document.getElementById('new-wallet-password');
+            if (passwordInput) {
+                passwordInput.addEventListener('input', (e) => {
+                    updateWalletPasswordStrength(e.target.value);
+                });
+            }
+            // Note: Seed phrase and private key validation use inline oninput handlers
+        });
 
         // Load wallets on page load
         async function loadWallets() {
@@ -584,9 +1067,20 @@
             document.getElementById('total-balance').textContent = totalBalance.toFixed(8);
             document.getElementById('wallet-balance').textContent = totalBalance.toFixed(8);
 
-            // Count favorites
-            const favoriteCount = allWallets.filter(w => w.metadata?.is_favorite).length;
-            document.getElementById('favorite-count').textContent = favoriteCount;
+            // Count favorites and show colored circles
+            const favoriteWallets = allWallets.filter(w => w.metadata?.is_favorite);
+            const favoriteCountEl = document.getElementById('favorite-count');
+
+            // FIX 2025-12-30: Show colored circles instead of number
+            if (favoriteWallets.length === 0) {
+                favoriteCountEl.innerHTML = '<span style="color: var(--text-muted);">0</span>';
+            } else {
+                const circles = favoriteWallets.map(w => {
+                    const color = w.metadata?.color || '#6366f1';
+                    return `<span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: ${color}; margin: 0 2px;"></span>`;
+                }).join('');
+                favoriteCountEl.innerHTML = circles;
+            }
 
             // Show/hide empty state
             if (count === 0) {
@@ -607,6 +1101,8 @@
                 const option = document.createElement('option');
                 option.value = wallet.address;
                 option.textContent = `${wallet.nickname} - ${wallet.address.substring(0, 16)}...`;
+                // FIX 2025-12-30: Store wallet color for dropdown styling
+                option.dataset.color = wallet.metadata?.color || '#6366f1';
                 select.appendChild(option);
             });
         }
@@ -675,18 +1171,22 @@
 
             allWallets.forEach(wallet => {
                 const row = document.createElement('tr');
+                // FIX 2025-12-30: Show wallet color as left border stripe
+                const walletColor = wallet.metadata?.color || '#6366f1';
+                row.style.borderLeft = `4px solid ${walletColor}`;
+                // FIX 2026-02-21 (H8): Escape user-supplied fields to prevent XSS
                 row.innerHTML = `
                     <td>
                         ${wallet.metadata?.is_favorite ? '⭐ ' : ''}
-                        ${wallet.nickname}
+                        ${escapeHtml(wallet.nickname)}
                         ${wallet.is_default ? '<span class="badge badge-success" style="margin-left: 8px;">DEFAULT</span>' : ''}
                     </td>
-                    <td class="mono" style="font-size: 0.8125rem;">${wallet.address.substring(0, 16)}...${wallet.address.substring(wallet.address.length - 16)}</td>
+                    <td class="mono" style="font-size: 0.8125rem;">${escapeHtml(wallet.address.substring(0, 16))}...${escapeHtml(wallet.address.substring(wallet.address.length - 16))}</td>
                     <td class="mono">${(wallet.cached_balance_btp || 0).toFixed(8)} BTPC</td>
-                    <td><span class="badge badge-info">${wallet.metadata?.category || 'default'}</span></td>
+                    <td><span class="badge badge-info">${escapeHtml(wallet.metadata?.category || 'default')}</span></td>
                     <td style="font-size: 0.8125rem;">${new Date(wallet.created_at).toLocaleDateString()}</td>
                     <td>
-                        <button class="btn btn-primary" style="padding: 6px 16px; font-size: 0.8125rem;" onclick="viewWalletDetails('${wallet.id}')">
+                        <button class="btn btn-primary" style="padding: 6px 16px; font-size: 0.8125rem;" onclick="viewWalletDetails('${escapeHtml(wallet.id)}')">
                             View
                         </button>
                     </td>
@@ -701,6 +1201,14 @@
 
             if (!wallet) return;
 
+            // FIX 2025-12-30: Show wallet color on modal header top border
+            const walletColor = wallet.metadata?.color || '#6366f1';
+            const modalHeader = document.querySelector('#wallet-details-modal .modal-header');
+            if (modalHeader) {
+                modalHeader.style.borderTop = `4px solid ${walletColor}`;
+                modalHeader.style.borderRadius = '0';
+            }
+
             document.getElementById('modal-wallet-name').textContent = wallet.nickname;
             document.getElementById('detail-nickname').textContent = wallet.nickname;
             document.getElementById('detail-balance').textContent = `${(wallet.cached_balance_btp || 0).toFixed(8)} BTPC`;
@@ -708,7 +1216,58 @@
             document.getElementById('detail-created').textContent = new Date(wallet.created_at).toLocaleString();
             document.getElementById('detail-address').textContent = wallet.address;
 
+            // Update favorite button state
+            const isFavorite = wallet.metadata?.is_favorite || false;
+            document.getElementById('favorite-icon').textContent = isFavorite ? '⭐' : '☆';
+
             document.getElementById('wallet-details-modal').style.display = 'flex';
+        }
+
+        async function toggleFavorite() {
+            if (!currentWalletId) return;
+            if (!window.invoke) {
+                toast.error('Tauri API not ready');
+                return;
+            }
+
+            try {
+                await window.invoke('toggle_wallet_favorite', { walletId: currentWalletId });
+
+                // Update local state
+                const wallet = allWallets.find(w => w.id === currentWalletId);
+                if (wallet) {
+                    if (!wallet.metadata) wallet.metadata = {};
+                    wallet.metadata.is_favorite = !wallet.metadata.is_favorite;
+
+                    // Update button icon
+                    const isFavorite = wallet.metadata.is_favorite;
+                    document.getElementById('favorite-icon').textContent = isFavorite ? '⭐' : '☆';
+
+                    // Update favorite count and color in summary
+                    const favoriteWallets = allWallets.filter(w => w.metadata?.is_favorite);
+                    const favoriteCount = favoriteWallets.length;
+                    const favoriteCountEl = document.getElementById('favorite-count');
+
+                    // FIX 2025-12-30: Show colored circles instead of number/gradient
+                    if (favoriteCount === 0) {
+                        favoriteCountEl.innerHTML = '<span style="color: var(--text-muted);">0</span>';
+                    } else {
+                        const circles = favoriteWallets.map(w => {
+                            const color = w.metadata?.color || '#6366f1';
+                            return `<span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: ${color}; margin: 0 2px;"></span>`;
+                        }).join('');
+                        favoriteCountEl.innerHTML = circles;
+                    }
+
+                    // Re-render table to show/hide star
+                    renderWalletTable();
+
+                    toast.success(isFavorite ? 'Added to favorites' : 'Removed from favorites');
+                }
+            } catch (e) {
+                toast.error(`Failed to toggle favorite: ${e}`);
+                console.error('Toggle favorite error:', e);
+            }
         }
 
         function closeWalletDetails() {
@@ -734,8 +1293,10 @@
                 return;
             }
 
-            if (password.length < 8) {
-                toast.warning('Password must be at least 8 characters long');
+            // NIST SP 800-63B: Require 80 bits of entropy
+            const entropy = calculatePasswordEntropy(password);
+            if (entropy < 80) {
+                toast.warning(`Password too weak (${Math.round(entropy)} bits). Need 80+ bits. Use 14+ chars with mixed case, numbers, and symbols.`);
                 return;
             }
 
@@ -781,11 +1342,14 @@
                 document.getElementById('new-wallet-description').value = '';
                 document.getElementById('new-wallet-password').value = '';
                 document.getElementById('new-wallet-password-confirm').value = '';
+                document.getElementById('wallet-strength-container').style.display = 'none';
 
                 toast.success(`Wallet "${nickname}" created successfully!`);
 
-                // Show recovery modal with seed phrase, address, and private key
-                showRecoveryModal(walletInfo.address, response.seed_phrase, privateKeyHex);
+                // Show recovery modal with seed phrase, address, private key, and seed hex
+                // FIX 2025-12-03: Added seed_hex for private key import
+                const seedHex = response.seed_hex || '';
+                showRecoveryModal(walletInfo.address, response.seed_phrase, privateKeyHex, seedHex);
 
                 // Reload wallets and switch to manage tab
                 await loadWallets();
@@ -852,7 +1416,7 @@
                     }
 
                     result = await window.invoke('import_wallet_from_key', {
-                        private_key: privateKey,
+                        privateKey: privateKey,
                         nickname: nickname,
                         password: password
                     });
@@ -865,20 +1429,7 @@
                     }
 
                     result = await window.invoke('import_wallet_from_mnemonic', {
-                        mnemonic_phrase: mnemonic,
-                        nickname: nickname,
-                        password: password
-                    });
-                } else if (importType === 'file') {
-                    const backupPath = document.getElementById('import-file').value.trim();
-                    if (!backupPath) {
-                        hideLoading();
-                        toast.warning('Please enter a backup file path');
-                        return;
-                    }
-
-                    result = await window.invoke('import_wallet_from_backup', {
-                        backup_path: backupPath,
+                        mnemonicPhrase: mnemonic,
                         nickname: nickname,
                         password: password
                     });
@@ -894,7 +1445,11 @@
                 document.getElementById('import-password').value = '';
                 document.getElementById('import-key').value = '';
                 document.getElementById('import-seed').value = '';
-                document.getElementById('import-file').value = '';
+                // Clear validation messages
+                document.getElementById('seed-validation').className = 'import-validation';
+                document.getElementById('seed-validation').style.display = 'none';
+                document.getElementById('key-validation').className = 'import-validation';
+                document.getElementById('key-validation').style.display = 'none';
 
                 await loadWallets();
                 switchTab('manage');
@@ -906,7 +1461,7 @@
         }
 
         function exportWallets() {
-            alert('Export wallets feature coming soon!');
+            toast.info('Export wallets feature coming soon!');
         }
 
         function sendFromWallet() {
@@ -934,57 +1489,60 @@
             window.location.href = 'mining.html';
         }
 
-        async function backupWallet() {
+        // Show styled delete wallet confirmation modal
+        function deleteWallet() {
+            if (!currentWalletId) return;
             if (!window.invoke) {
-                alert('Tauri API not ready. Please wait a moment and try again.');
+                toast.error('Tauri API not ready');
                 return;
             }
 
             const wallet = allWallets.find(w => w.id === currentWalletId);
             if (!wallet) {
-                alert('Wallet not found');
+                toast.error('Wallet not found');
                 return;
             }
 
-            if (confirm(`Backup wallet "${wallet.nickname}"?\n\nThis will create an encrypted backup file in your wallet directory.`)) {
-                try {
-                    const result = await window.invoke('backup_wallet', {
-                        wallet_id: currentWalletId
-                    });
-
-                    alert(`${result}\n\nYour wallet has been safely backed up!`);
-                } catch (e) {
-                    alert(`Failed to backup wallet:\n${e}`);
-                }
-            }
+            // Show styled confirmation modal
+            document.getElementById('delete-wallet-name').textContent = `"${wallet.nickname}"`;
+            document.getElementById('delete-wallet-modal').style.display = 'flex';
         }
 
-        async function deleteWallet() {
-            if (!currentWalletId) return;
-            if (!window.invoke) {
-                alert('Tauri API not ready');
+        // Close delete wallet confirmation modal
+        function closeDeleteWalletModal() {
+            document.getElementById('delete-wallet-modal').style.display = 'none';
+        }
+
+        // Confirm and execute wallet deletion
+        async function confirmDeleteWallet() {
+            if (!currentWalletId) {
+                closeDeleteWalletModal();
                 return;
             }
 
             const wallet = allWallets.find(w => w.id === currentWalletId);
-            if (!confirm(`Are you sure you want to delete wallet "${wallet.nickname}"?`)) return;
+            const walletName = wallet ? wallet.nickname : 'Unknown';
 
             try {
-                await window.invoke('delete_wallet', { wallet_id: currentWalletId });
-                alert('Wallet deleted successfully');
+                await window.invoke('delete_wallet', { walletId: currentWalletId });
+                closeDeleteWalletModal();
                 closeWalletDetails();
+                toast.success(`Wallet "${walletName}" deleted successfully`);
                 loadWallets();
             } catch (e) {
-                alert(`Failed to delete wallet: ${e}`);
+                closeDeleteWalletModal();
+                toast.error(`Failed to delete wallet: ${e}`);
             }
         }
 
         // Recovery Modal Functions
-        function showRecoveryModal(address, seedPhrase, privateKeyHex) {
+        // FIX 2025-12-03: Added seedHex parameter for private key import
+        function showRecoveryModal(address, seedPhrase, privateKeyHex, seedHex) {
             // Populate modal with data
             document.getElementById('recovery-address').textContent = address;
             document.getElementById('recovery-seed-phrase').textContent = seedPhrase;
             document.getElementById('recovery-private-key').textContent = privateKeyHex;
+            document.getElementById('recovery-seed-hex').textContent = seedHex || '(Not available)';
 
             // Generate QR code for seed phrase (more user-friendly than hex)
             const qrContainer = document.getElementById('recovery-qr-code');
@@ -1009,15 +1567,59 @@
                 qrContainer.innerHTML = '<div style="width: 256px; height: 256px; display: flex; align-items: center; justify-content: center; padding: 20px; background: #fee; color: #c00; font-size: 0.875rem;">Failed to generate QR code</div>';
             }
 
+            // Generate QR code for seed hex (64-char key for private key import)
+            const hexQrContainer = document.getElementById('recovery-seed-hex-qr');
+            hexQrContainer.innerHTML = '';
+            if (seedHex) {
+                try {
+                    if (typeof QRCode !== 'undefined') {
+                        new QRCode(hexQrContainer, {
+                            text: seedHex,
+                            width: 200,
+                            height: 200,
+                            colorDark: '#000000',
+                            colorLight: '#ffffff',
+                            correctLevel: QRCode.CorrectLevel.H
+                        });
+                    } else {
+                        hexQrContainer.innerHTML = '<div style="width: 200px; height: 200px; display: flex; align-items: center; justify-content: center; padding: 16px; background: #fee; color: #c00; font-size: 0.8rem;">QR Code library not loaded</div>';
+                    }
+                } catch (e) {
+                    console.error('Seed hex QR code generation failed:', e);
+                    hexQrContainer.innerHTML = '<div style="width: 200px; height: 200px; display: flex; align-items: center; justify-content: center; padding: 16px; background: #fee; color: #c00; font-size: 0.8rem;">Failed to generate QR code</div>';
+                }
+            } else {
+                hexQrContainer.innerHTML = '<div style="width: 200px; height: 200px; display: flex; align-items: center; justify-content: center; padding: 16px; background: var(--bg-section); color: var(--text-muted); font-size: 0.8rem;">Seed hex not available</div>';
+            }
+
             // Show modal
             document.getElementById('recovery-modal').style.display = 'flex';
+
+            // FIX 2026-02-21 (C6): Auto-clear sensitive data after 5 minutes
+            // Mnemonic phrase must not persist in DOM indefinitely
+            if (window._recoveryAutoCloseTimer) clearTimeout(window._recoveryAutoCloseTimer);
+            window._recoveryAutoCloseTimer = setTimeout(() => {
+                if (document.getElementById('recovery-modal').style.display === 'flex') {
+                    closeRecoveryModal();
+                    if (typeof toast !== 'undefined') {
+                        toast.warning('Recovery info auto-cleared for security (5 min timeout)');
+                    }
+                }
+            }, 5 * 60 * 1000); // 5 minutes
         }
 
         function closeRecoveryModal() {
+            // FIX 2026-02-21 (C6): Clear auto-close timer
+            if (window._recoveryAutoCloseTimer) {
+                clearTimeout(window._recoveryAutoCloseTimer);
+                window._recoveryAutoCloseTimer = null;
+            }
+
             // Clear sensitive data from modal
             document.getElementById('recovery-address').textContent = '-';
             document.getElementById('recovery-seed-phrase').textContent = '-';
             document.getElementById('recovery-private-key').textContent = '-';
+            document.getElementById('recovery-seed-hex').textContent = '-';
             document.getElementById('recovery-qr-code').innerHTML = '';
 
             // Hide modal
@@ -1039,6 +1641,16 @@
             copyToClipboard(privateKey, 'Private key copied! Keep this secure and never share it.');
         }
 
+        // FIX 2025-12-03: Added copySeedHex for private key import
+        function copySeedHex() {
+            const seedHex = document.getElementById('recovery-seed-hex').textContent;
+            if (seedHex && seedHex !== '(Not available)' && seedHex !== '-') {
+                copyToClipboard(seedHex, 'Seed hex copied (64 chars)! Use this for private key import.');
+            } else {
+                toast.warning('Seed hex not available');
+            }
+        }
+
         // Subscribe to updates (one-time only - prevent duplicate subscriptions causing stack overflow)
         if (!window.walletManagerPageSubscribed) {
             window.walletManagerPageSubscribed = true;
@@ -1048,6 +1660,8 @@
                     if (balanceEl) {
                         balanceEl.textContent = (data.balance || 0).toFixed(8);
                     }
+                    const spendableEl = document.getElementById('spendable-balance');
+                    if (spendableEl) spendableEl.textContent = (data.spendable_balance || 0).toFixed(8);
                 }
                 // Note: wallet-manager.html doesn't have chain-height element
             });
@@ -1105,8 +1719,22 @@
             }
         });
 
-        // Load wallets on page load
-        loadWallets();
+        // FIX 2025-12-09: Expose loadWallets to global scope for network change reload
+        // When network changes, btpc-common.js calls this to refresh wallet data
+        window.loadWallets = loadWallets;
+
+        // Load wallets on page load, then initialize dropdowns
+        (async function() {
+            await loadWallets();
+            // FIX 2025-12-30: Initialize dropdowns AFTER wallet data loads for proper colors
+            if (typeof initBtpcDropdown === 'function') {
+                // Create wallet category dropdown
+                window.categoryDropdown = initBtpcDropdown('new-wallet-category');
+
+                // Show Address wallet selector (with wallet colors)
+                window.addressWalletDropdown = initBtpcDropdown('address-wallet-select');
+            }
+        })();
         setInterval(loadWallets, 10000); // Refresh every 10 seconds
 
         // Note: startAutoUpdate is called globally in btpc-common.js (Article XI compliance)
@@ -1115,8 +1743,13 @@
         // Close modals when clicking outside
         window.addEventListener('click', (event) => {
             const copyModal = document.getElementById('copy-confirm-modal');
+            const deleteWalletModal = document.getElementById('delete-wallet-modal');
+
             if (event.target === copyModal) {
                 closeCopyConfirmModal();
+            }
+            if (event.target === deleteWalletModal) {
+                closeDeleteWalletModal();
             }
         });
     </script>

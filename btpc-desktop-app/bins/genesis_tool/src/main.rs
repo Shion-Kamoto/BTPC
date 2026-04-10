@@ -38,7 +38,7 @@ pub struct GenesisConfig {
 pub struct GenesisReward {
     /// Recipient address/pubkey
     pub address: String,
-    /// Amount in satoshis
+    /// Amount in credits
     pub amount: u64,
     /// Description/label
     pub label: String,
@@ -368,12 +368,12 @@ pub const GENESIS_TIMESTAMP: u32 = {};
             block.header.nonce,
             block.transactions[0].version,
             block.transactions[0].inputs[0].previous_output.txid.to_hex(),
-            hex::encode(&block.transactions[0].inputs[0].script_sig),
+            hex::encode(block.transactions[0].inputs[0].script_sig.to_bytes()),
             block.transactions[0].outputs.iter()
                 .map(|output| format!(
                     "\n            TransactionOutput {{\n                value: {},\n                script_pubkey: Script::new(hex::decode(\"{}\").unwrap()),\n            }},",
                     output.value,
-                    hex::encode(&output.script_pubkey)
+                    hex::encode(output.script_pubkey.to_bytes())
                 ))
                 .collect::<String>(),
             block.transactions[0].lock_time,

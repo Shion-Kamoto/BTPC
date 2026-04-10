@@ -10,7 +10,9 @@ use aes_gcm::{
     Aes256Gcm, Nonce,
 };
 use argon2::{Argon2, PasswordHasher};
-use rand::RngCore;
+// SECURITY FIX 2025-12-20: Use OsRng (OS-level CSPRNG) instead of thread_rng
+// thread_rng uses ChaCha12 which is fast but OsRng is preferred for cryptographic key material
+use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -66,9 +68,9 @@ pub struct WalletData {
 pub struct KeyEntry {
     /// User-defined label
     pub label: String,
-    /// Private key bytes (4000 bytes for ML-DSA-65)
+    /// Private key bytes (4864 bytes for ML-DSA-87)
     pub private_key_bytes: Vec<u8>,
-    /// Public key bytes (1952 bytes for ML-DSA-65)
+    /// Public key bytes (2592 bytes for ML-DSA-87)
     pub public_key_bytes: Vec<u8>,
     /// Key generation seed (32 bytes)
     /// Required for signing capability after wallet load (T014 fix)
@@ -111,15 +113,17 @@ impl EncryptedWallet {
         password: &SecurePassword,
     ) -> Result<Self, WalletError> {
         // Generate random salt for password derivation
+        // SECURITY FIX 2025-12-20: Use OsRng for cryptographically secure randomness
         let mut salt = [0u8; SALT_SIZE];
-        rand::thread_rng().fill_bytes(&mut salt);
+        OsRng.fill_bytes(&mut salt);
 
         // Derive encryption key from password using Argon2id
         let encryption_key = Self::derive_key(password.as_bytes(), &salt)?;
 
         // Generate random nonce for AES-GCM
+        // SECURITY FIX 2025-12-20: Use OsRng for cryptographically secure randomness
         let mut nonce = [0u8; NONCE_SIZE];
-        rand::thread_rng().fill_bytes(&mut nonce);
+        OsRng.fill_bytes(&mut nonce);
 
         // Serialize wallet data
         let plaintext =

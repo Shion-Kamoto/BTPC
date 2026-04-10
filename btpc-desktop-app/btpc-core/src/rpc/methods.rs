@@ -493,7 +493,7 @@ impl RpcMethods {
             "total_supply": total_supply as f64 / 100_000_000.0,
             "inflation_rate": inflation_rate,
             "is_tail_emission": height >= RewardCalculator::tail_emission_start_height(&params) as u64,
-            "decay_complete": height >= 24 * 52560 // 24 years
+            "decay_complete": height >= RewardCalculator::tail_emission_start_height(&params) as u64
         }))
     }
 
@@ -555,16 +555,15 @@ impl RpcMethods {
     }
 
     fn get_block_hash_by_height(&self, _height: u32) -> Result<Hash, RpcMethodError> {
-        // In a real implementation, this would query the database for block hash by height
-        // For now, return a placeholder
+        // Height-to-hash lookup requires index not available in base BlockchainDatabase trait
+        // Use integrated_handlers which maintains height index
         Err(RpcMethodError::InternalError(
-            "Height-based lookup not implemented".to_string(),
+            "Height-based lookup requires height index (use integrated RPC)".to_string(),
         ))
     }
 
-    fn calculate_difficulty(&self, _block: &Block) -> Result<f64, RpcMethodError> {
-        // In a real implementation, this would calculate actual difficulty
-        Ok(1.0)
+    fn calculate_difficulty(&self, block: &Block) -> Result<f64, RpcMethodError> {
+        Ok(crate::consensus::DifficultyTarget::from_bits(block.header.bits).as_f64())
     }
 
     fn calculate_chain_work(&self, _height: u32) -> Result<String, RpcMethodError> {
@@ -620,9 +619,27 @@ impl RpcMethods {
             .get_block_height(&block_hash)
             .unwrap_or(0);
 
+        // Calculate confirmations: tip_height - block_height + 1
+        let confirmations = self.blockchain_db
+            .get_chain_tip()
+            .ok()
+            .flatten()
+            .and_then(|tip| self.blockchain_db.get_block_height(&tip.hash()).ok())
+            .map(|tip_height| {
+                if tip_height >= height {
+                    tip_height - height + 1
+                } else {
+                    1
+                }
+            })
+            .unwrap_or(1);
+
+        // Calculate difficulty from bits
+        let difficulty = crate::consensus::DifficultyTarget::from_bits(block.header.bits).as_f64();
+
         Ok(RpcBlockInfo {
             hash: hex::encode(block_hash.as_bytes()),
-            confirmations: 1, // Placeholder
+            confirmations,
             size: block.size() as u32,
             height,
             version: block.header.version,
@@ -635,7 +652,7 @@ impl RpcMethods {
             time: block.header.timestamp as u32,
             nonce: block.header.nonce,
             bits: format!("{:08x}", block.header.bits),
-            difficulty: 1.0, // Placeholder
+            difficulty,
             previous_block_hash: hex::encode(block.header.prev_hash.as_bytes()),
         })
     }
@@ -655,16 +672,41 @@ impl RpcMethods {
     }
 
     fn header_to_rpc_info(&self, header: &BlockHeader) -> Result<RpcBlockHeader, RpcMethodError> {
+        let header_hash = header.hash();
+
+        // Get height from database
+        let height = self.blockchain_db
+            .get_block_height(&header_hash)
+            .unwrap_or(0);
+
+        // Calculate confirmations: tip_height - block_height + 1
+        let confirmations = self.blockchain_db
+            .get_chain_tip()
+            .ok()
+            .flatten()
+            .and_then(|tip| self.blockchain_db.get_block_height(&tip.hash()).ok())
+            .map(|tip_height| {
+                if tip_height >= height {
+                    tip_height - height + 1
+                } else {
+                    1
+                }
+            })
+            .unwrap_or(1);
+
+        // Calculate difficulty from bits
+        let difficulty = crate::consensus::DifficultyTarget::from_bits(header.bits).as_f64();
+
         Ok(RpcBlockHeader {
-            hash: hex::encode(header.hash().as_bytes()),
-            confirmations: 1, // Placeholder
-            height: 0,        // Placeholder
+            hash: hex::encode(header_hash.as_bytes()),
+            confirmations,
+            height,
             version: header.version,
             merkle_root: hex::encode(header.merkle_root.as_bytes()),
             time: header.timestamp as u32,
             nonce: header.nonce,
             bits: format!("{:08x}", header.bits),
-            difficulty: 1.0, // Placeholder
+            difficulty,
             previous_block_hash: hex::encode(header.prev_hash.as_bytes()),
         })
     }
@@ -673,48 +715,136 @@ impl RpcMethods {
         &self,
         transaction: &Transaction,
     ) -> Result<RpcTransactionInfo, RpcMethodError> {
+        // Serialize transaction to get size and hex
+        let tx_bytes = transaction.serialize();
+        let tx_size = tx_bytes.len() as u32;
+        let tx_hex = hex::encode(&tx_bytes);
+
+        // For BTPC, vsize = size (no SegWit), weight = size * 4
+        let vsize = tx_size;
+        let weight = tx_size * 4;
+
         Ok(RpcTransactionInfo {
             txid: hex::encode(transaction.hash().as_bytes()),
             hash: hex::encode(transaction.hash().as_bytes()),
             version: transaction.version,
-            size: 0,   // Placeholder
-            vsize: 0,  // Placeholder
-            weight: 0, // Placeholder
+            size: tx_size,
+            vsize,
+            weight,
             lock_time: transaction.lock_time,
             vin: transaction
                 .inputs
                 .iter()
-                .map(|input| RpcTxInput {
-                    txid: hex::encode(input.previous_output.txid.as_bytes()),
-                    vout: input.previous_output.vout,
-                    script_sig: RpcScriptSig {
-                        asm: "".to_string(), // Placeholder
-                        hex: hex::encode(input.script_sig.to_bytes()),
-                    },
-                    sequence: input.sequence,
+                .map(|input| {
+                    let script_bytes = input.script_sig.to_bytes();
+                    let asm = Self::script_to_asm(&script_bytes);
+                    RpcTxInput {
+                        txid: hex::encode(input.previous_output.txid.as_bytes()),
+                        vout: input.previous_output.vout,
+                        script_sig: RpcScriptSig {
+                            asm,
+                            hex: hex::encode(&script_bytes),
+                        },
+                        sequence: input.sequence,
+                    }
                 })
                 .collect(),
             vout: transaction
                 .outputs
                 .iter()
                 .enumerate()
-                .map(|(n, output)| RpcTxOutput {
-                    value: output.value as f64 / 100_000_000.0,
-                    n: n as u32,
-                    script_pub_key: RpcScriptPubKey {
-                        asm: "".to_string(), // Placeholder
-                        hex: hex::encode(output.script_pubkey.to_bytes()),
-                        script_type: "unknown".to_string(),
-                        addresses: None,
-                    },
+                .map(|(n, output)| {
+                    let script_bytes = output.script_pubkey.to_bytes();
+                    let asm = Self::script_to_asm(&script_bytes);
+                    let script_type = Self::detect_script_type(&script_bytes);
+                    RpcTxOutput {
+                        value: output.value as f64 / 100_000_000.0,
+                        n: n as u32,
+                        script_pub_key: RpcScriptPubKey {
+                            asm,
+                            hex: hex::encode(&script_bytes),
+                            script_type,
+                            addresses: None,
+                        },
+                    }
                 })
                 .collect(),
-            hex: "".to_string(), // Placeholder
+            hex: tx_hex,
             block_hash: None,
             confirmations: None,
             time: None,
             block_time: None,
         })
+    }
+
+    /// Convert script bytes to ASM representation
+    fn script_to_asm(script_bytes: &[u8]) -> String {
+        if script_bytes.is_empty() {
+            return String::new();
+        }
+
+        let mut asm_parts = Vec::new();
+        let mut i = 0;
+
+        while i < script_bytes.len() {
+            let op = script_bytes[i];
+            match op {
+                // OP_0 through OP_PUSHDATA
+                0x00 => asm_parts.push("OP_0".to_string()),
+                0x01..=0x4b => {
+                    // Direct push of N bytes
+                    let len = op as usize;
+                    if i + 1 + len <= script_bytes.len() {
+                        asm_parts.push(hex::encode(&script_bytes[i + 1..i + 1 + len]));
+                        i += len;
+                    }
+                }
+                0x4c => {
+                    // OP_PUSHDATA1
+                    if i + 1 < script_bytes.len() {
+                        let len = script_bytes[i + 1] as usize;
+                        if i + 2 + len <= script_bytes.len() {
+                            asm_parts.push(hex::encode(&script_bytes[i + 2..i + 2 + len]));
+                            i += 1 + len;
+                        }
+                    }
+                }
+                // Common opcodes
+                0x76 => asm_parts.push("OP_DUP".to_string()),
+                0xa9 => asm_parts.push("OP_HASH160".to_string()),
+                0x88 => asm_parts.push("OP_EQUALVERIFY".to_string()),
+                0xac => asm_parts.push("OP_CHECKSIG".to_string()),
+                0x87 => asm_parts.push("OP_EQUAL".to_string()),
+                0x51..=0x60 => asm_parts.push(format!("OP_{}", op - 0x50)),
+                _ => asm_parts.push(format!("OP_UNKNOWN_{:02x}", op)),
+            }
+            i += 1;
+        }
+
+        asm_parts.join(" ")
+    }
+
+    /// Detect script type from bytes
+    fn detect_script_type(script_bytes: &[u8]) -> String {
+        if script_bytes.len() == 25
+            && script_bytes[0] == 0x76  // OP_DUP
+            && script_bytes[1] == 0xa9  // OP_HASH160
+            && script_bytes[2] == 0x14  // Push 20 bytes
+            && script_bytes[23] == 0x88 // OP_EQUALVERIFY
+            && script_bytes[24] == 0xac // OP_CHECKSIG
+        {
+            "pubkeyhash".to_string()
+        } else if script_bytes.len() == 23
+            && script_bytes[0] == 0xa9  // OP_HASH160
+            && script_bytes[1] == 0x14  // Push 20 bytes
+            && script_bytes[22] == 0x87 // OP_EQUAL
+        {
+            "scripthash".to_string()
+        } else if !script_bytes.is_empty() && script_bytes[0] == 0x6a {
+            "nulldata".to_string()
+        } else {
+            "nonstandard".to_string()
+        }
     }
 }
 
@@ -759,6 +889,10 @@ mod tests {
         ) -> Result<(), BlockchainDbError> {
             Ok(())
         }
+
+        fn get_disk_usage(&self) -> u64 {
+            0
+        }
     }
 
     struct MockUtxoDb;
@@ -787,6 +921,13 @@ mod tests {
             _to_add: &[&crate::blockchain::UTXO],
         ) -> Result<(), UTXODbError> {
             Ok(())
+        }
+
+        fn get_utxos_for_pubkey_hash(
+            &self,
+            _pubkey_hash: &[u8; 20],
+        ) -> Result<Vec<crate::blockchain::UTXO>, UTXODbError> {
+            Ok(Vec::new())
         }
     }
 

@@ -42,7 +42,8 @@ pub async fn get_mining_status(state: State<'_, AppState>) -> Result<serde_json:
             "is_mining": stats.is_mining,
             "hashrate": stats.total_hashrate,
             "blocks_found": stats.blocks_found,
-            "current_height": current_height
+            "current_height": current_height,
+            "uptime_seconds": stats.uptime_seconds
         }))
     } else {
         Ok(serde_json::json!({

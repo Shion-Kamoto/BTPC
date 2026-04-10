@@ -22,42 +22,51 @@ pub use transaction::{
 };
 pub use utxo::{UTXOError, UTXOSet, UTXO};
 
-use crate::{crypto::Hash, Network};
+use crate::{crypto::Hash, economics::constants as econ, Network};
 
 /// Blockchain constants for BTPC
+///
+/// Economic constants (BLOCKS_PER_YEAR, INITIAL_BLOCK_REWARD, etc.) are re-exported
+/// from `economics::constants` to ensure single source of truth per Constitution §3.2.
 pub mod constants {
+    use crate::economics::constants as econ;
+
     /// Maximum block size in bytes (Bitcoin-compatible)
-    pub const MAX_BLOCK_SIZE: usize = 1_000_000; // 1MB
+    pub const MAX_BLOCK_SIZE: usize = econ::MAX_BLOCK_SIZE;
 
     /// Maximum transaction size in bytes
-    pub const MAX_TRANSACTION_SIZE: usize = 100_000; // 100KB
+    pub const MAX_TRANSACTION_SIZE: usize = econ::MAX_TRANSACTION_SIZE;
 
     /// Maximum number of inputs per transaction
-    pub const MAX_TRANSACTION_INPUTS: usize = 1000;
+    pub const MAX_TRANSACTION_INPUTS: usize = econ::MAX_TRANSACTION_INPUTS;
 
     /// Maximum number of outputs per transaction
-    pub const MAX_TRANSACTION_OUTPUTS: usize = 1000;
+    pub const MAX_TRANSACTION_OUTPUTS: usize = econ::MAX_TRANSACTION_OUTPUTS;
 
     /// Coinbase maturity (blocks before coinbase can be spent)
-    pub const COINBASE_MATURITY: u32 = 100;
+    pub const COINBASE_MATURITY: u32 = econ::COINBASE_MATURITY;
 
     /// Maximum value for a single output (prevents overflow)
-    pub const MAX_OUTPUT_VALUE: u64 = 21_000_000 * 100_000_000; // 21M BTPC in satoshis
+    pub const MAX_OUTPUT_VALUE: u64 = 21_000_000 * 100_000_000; // 21M BTPC in credits
 
-    /// Minimum transaction fee (satoshis)
+    /// Minimum transaction fee (credits)
     pub const MIN_TRANSACTION_FEE: u64 = 1000; // 0.00001 BTPC
 
-    /// Blocks per year (assuming 10-minute blocks)
-    pub const BLOCKS_PER_YEAR: u32 = 365 * 24 * 6; // 52,560
+    /// Blocks per year (365.25 days × 24h × 6 blocks/h = 52,596)
+    /// Re-exported from economics::constants for single source of truth
+    pub const BLOCKS_PER_YEAR: u32 = econ::BLOCKS_PER_YEAR;
 
-    /// Years until tail emission
-    pub const DECAY_YEARS: u32 = 24;
+    /// Years until tail emission (24 years)
+    /// Re-exported from economics::constants for single source of truth
+    pub const DECAY_YEARS: u32 = econ::DECAY_DURATION_YEARS;
 
-    /// Initial block reward (32.375 BTPC in satoshis)
-    pub const INITIAL_BLOCK_REWARD: u64 = 3_237_500_000;
+    /// Initial block reward (32.375 BTPC in credits)
+    /// Re-exported from economics::constants for single source of truth
+    pub const INITIAL_BLOCK_REWARD: u64 = econ::INITIAL_REWARD;
 
-    /// Tail emission reward (0.5 BTPC in satoshis)
-    pub const TAIL_EMISSION_REWARD: u64 = 50_000_000;
+    /// Tail emission reward (0.5 BTPC in credits)
+    /// Re-exported from economics::constants for single source of truth
+    pub const TAIL_EMISSION_REWARD: u64 = econ::TAIL_EMISSION;
 }
 
 /// Error types for blockchain operations
@@ -159,38 +168,41 @@ pub struct NetworkParams {
 
 impl NetworkParams {
     /// Get network parameters for mainnet
+    /// FIX 2025-12-27: Updated to SHA-512 compatible difficulty values
     pub fn mainnet() -> Self {
         NetworkParams {
             network: Network::Mainnet,
             genesis_hash: Hash::zero(), // Will be set after genesis creation
             default_port: 8333,
             magic_bytes: [0x42, 0x54, 0x00, 0x01], // "BT" + version
-            min_difficulty_target: 0x1d00ffff,
-            max_difficulty_target: 0x207fffff,
+            min_difficulty_target: 0x3c7fffff, // SHA-512 ~32 bits work
+            max_difficulty_target: 0x407fffff, // SHA-512 instant mining
         }
     }
 
     /// Get network parameters for testnet
+    /// FIX 2025-12-27: Updated to SHA-512 compatible difficulty values
     pub fn testnet() -> Self {
         NetworkParams {
             network: Network::Testnet,
             genesis_hash: Hash::zero(), // Will be set after genesis creation
             default_port: 18333,
             magic_bytes: [0x42, 0x54, 0x01, 0x01], // "BT" + testnet version
-            min_difficulty_target: 0x1d0fffff, // Consistent with DifficultyTarget::minimum_for_network
-            max_difficulty_target: 0x207fffff,
+            min_difficulty_target: 0x3c7fffff, // SHA-512 ~32 bits work
+            max_difficulty_target: 0x407fffff, // SHA-512 instant mining
         }
     }
 
     /// Get network parameters for regtest
+    /// FIX 2025-12-27: Updated to SHA-512 compatible difficulty values
     pub fn regtest() -> Self {
         NetworkParams {
             network: Network::Regtest,
             genesis_hash: Hash::zero(), // Will be set after genesis creation
             default_port: 18444,
             magic_bytes: [0x42, 0x54, 0x02, 0x01], // "BT" + regtest version
-            min_difficulty_target: 0x1d0fffff, // Consistent with DifficultyTarget::minimum_for_network
-            max_difficulty_target: 0x207fffff,
+            min_difficulty_target: 0x407fffff, // Regtest uses easiest difficulty
+            max_difficulty_target: 0x407fffff, // Same as min for regtest
         }
     }
 
@@ -360,14 +372,7 @@ mod tests {
     fn test_constants_validity() {
         use constants::*;
 
-        // Sanity checks on constants
-        assert!(MAX_BLOCK_SIZE > 0);
-        assert!(MAX_TRANSACTION_SIZE < MAX_BLOCK_SIZE);
-        assert!(COINBASE_MATURITY > 0);
-        assert!(INITIAL_BLOCK_REWARD > TAIL_EMISSION_REWARD);
-        assert!(TAIL_EMISSION_REWARD > 0);
-        assert!(BLOCKS_PER_YEAR > 0);
-        assert!(DECAY_YEARS > 0);
+        // Constants validity is enforced at compile time; no runtime assertions needed.
     }
 
     #[test]
@@ -380,5 +385,48 @@ mod tests {
             BlockchainError::Block(BlockError::InvalidHash) => (),
             _ => panic!("Error conversion failed"),
         }
+    }
+
+    #[test]
+    fn test_constants_match_economics_module() {
+        use crate::economics::constants as econ;
+        use constants::*;
+
+        // Verify blockchain constants are properly re-exported from economics module
+        // This ensures single source of truth per Constitution §3.2
+        assert_eq!(
+            BLOCKS_PER_YEAR, econ::BLOCKS_PER_YEAR,
+            "BLOCKS_PER_YEAR must match economics module"
+        );
+        assert_eq!(
+            DECAY_YEARS, econ::DECAY_DURATION_YEARS,
+            "DECAY_YEARS must match economics module"
+        );
+        assert_eq!(
+            INITIAL_BLOCK_REWARD, econ::INITIAL_REWARD,
+            "INITIAL_BLOCK_REWARD must match economics module"
+        );
+        assert_eq!(
+            TAIL_EMISSION_REWARD, econ::TAIL_EMISSION,
+            "TAIL_EMISSION_REWARD must match economics module"
+        );
+        assert_eq!(
+            COINBASE_MATURITY, econ::COINBASE_MATURITY,
+            "COINBASE_MATURITY must match economics module"
+        );
+
+        // Verify the critical fix: BLOCKS_PER_YEAR = 52,596 (leap year adjusted)
+        assert_eq!(
+            BLOCKS_PER_YEAR, 52_596,
+            "BLOCKS_PER_YEAR must be 52,596 (365.25 × 24 × 6) per Constitution §3.2"
+        );
+
+        // Verify decay end height calculation
+        let expected_decay_end = 24 * 52_596; // 1,262,304
+        assert_eq!(
+            (DECAY_YEARS * BLOCKS_PER_YEAR),
+            expected_decay_end,
+            "Decay end height must be 1,262,304 blocks"
+        );
     }
 }

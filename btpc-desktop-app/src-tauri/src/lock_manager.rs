@@ -1,3 +1,7 @@
+// Suppress MSRV warning - fs2::FileExt provides lock methods for all Rust versions
+// Clippy incorrectly thinks these are std methods stabilized in Rust 1.89
+#![allow(clippy::incompatible_msrv)]
+
 //! Lock Manager - Safe File Locking Module
 //!
 //! Provides safe, cross-platform file locking using the fs2 crate.
@@ -56,7 +60,7 @@ impl LockManager {
     /// * `lock_dir` - Directory where lock files will be created
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,ignore
     /// let lock_mgr = LockManager::new("~/.btpc/locks")?;
     /// ```
     pub fn new(lock_dir: impl Into<PathBuf>) -> BtpcResult<Self> {
@@ -83,7 +87,7 @@ impl LockManager {
     /// `FileLockGuard` which will automatically release the lock when dropped
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,ignore
     /// let _guard = lock_mgr.lock_exclusive("database")?;
     /// // Lock is held here
     /// // Lock automatically released when _guard goes out of scope
@@ -94,6 +98,7 @@ impl LockManager {
         let file = OpenOptions::new()
             .write(true)
             .create(true)
+            .truncate(false) // Lock files should not be truncated
             .open(&lock_path)
             .map_err(|e| {
                 BtpcError::Application(format!(
@@ -133,7 +138,7 @@ impl LockManager {
     /// * `Err(...)` - Error occurred
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,ignore
     /// match lock_mgr.try_lock_exclusive("app")? {
     ///     Some(guard) => {
     ///         // We got the lock
@@ -151,6 +156,7 @@ impl LockManager {
         let file = OpenOptions::new()
             .write(true)
             .create(true)
+            .truncate(false) // Lock files should not be truncated
             .open(&lock_path)
             .map_err(|e| {
                 BtpcError::Application(format!(
@@ -191,6 +197,7 @@ impl LockManager {
             .read(true)
             .write(true) // Need write permission to create the file
             .create(true)
+            .truncate(false) // Lock files should not be truncated
             .open(&lock_path)
             .map_err(|e| {
                 BtpcError::Application(format!(
@@ -225,6 +232,7 @@ impl LockManager {
             .read(true)
             .write(true) // Need write permission to create the file
             .create(true)
+            .truncate(false) // Lock files should not be truncated
             .open(&lock_path)
             .map_err(|e| {
                 BtpcError::Application(format!(
@@ -295,7 +303,7 @@ impl LockManager {
 /// Ensure single instance of desktop application (FR-008)
 ///
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// let app_lock = ensure_single_instance("~/.btpc/locks")?;
 /// // Keep app_lock alive for the entire application lifetime
 /// ```
@@ -314,13 +322,12 @@ pub fn ensure_single_instance(lock_dir: impl Into<PathBuf>) -> BtpcResult<FileLo
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
     use tempfile::TempDir;
 
     #[test]
     fn test_lock_manager_creation() {
         let temp_dir = TempDir::new().unwrap();
-        let lock_mgr = LockManager::new(temp_dir.path()).unwrap();
+        let _lock_mgr = LockManager::new(temp_dir.path()).unwrap();
         assert!(temp_dir.path().exists());
     }
 
