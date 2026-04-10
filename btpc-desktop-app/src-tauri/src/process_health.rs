@@ -366,9 +366,9 @@ mod tests {
     fn test_crash_info_default() {
         let info = CrashInfo::default();
         assert_eq!(info.crash_count, 0);
-        assert_eq!(info.auto_restart_enabled, true);
-        assert_eq!(info.should_auto_restart(), true);
-        assert_eq!(info.should_notify_user(), false);
+        assert!(info.auto_restart_enabled);
+        assert!(info.should_auto_restart());
+        assert!(!info.should_notify_user());
     }
 
     #[test]
@@ -377,8 +377,8 @@ mod tests {
         info.record_crash();
 
         assert_eq!(info.crash_count, 1);
-        assert_eq!(info.should_auto_restart(), true); // FR-039: auto-restart on first crash
-        assert_eq!(info.should_notify_user(), false);
+        assert!(info.should_auto_restart()); // FR-039: auto-restart on first crash
+        assert!(!info.should_notify_user());
     }
 
     #[test]
@@ -388,8 +388,8 @@ mod tests {
         info.record_crash();
 
         assert_eq!(info.crash_count, 2);
-        assert_eq!(info.should_auto_restart(), false); // FR-040: no auto-restart on second crash
-        assert_eq!(info.should_notify_user(), true); // FR-040: notify user
+        assert!(!info.should_auto_restart()); // FR-040: no auto-restart on second crash
+        assert!(info.should_notify_user()); // FR-040: notify user
     }
 
     #[test]
@@ -399,7 +399,7 @@ mod tests {
         info.reset_counter();
 
         assert_eq!(info.crash_count, 0);
-        assert_eq!(info.auto_restart_enabled, true);
+        assert!(info.auto_restart_enabled);
     }
 
     #[test]
@@ -419,10 +419,10 @@ mod tests {
 
         // First crash: should auto-restart
         let should_restart = monitor.record_crash("test_miner", Some(1)).unwrap();
-        assert_eq!(should_restart, true);
+        assert!(should_restart);
 
         // Second crash: should notify user
         let should_restart = monitor.record_crash("test_miner", Some(1)).unwrap();
-        assert_eq!(should_restart, false);
+        assert!(!should_restart);
     }
 }

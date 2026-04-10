@@ -31,6 +31,7 @@ pub struct NodeStatus {
     pub peer_count: u32,
     pub sync_progress: f64, // 0.0 to 1.0
     pub network: String,    // "mainnet", "testnet", "regtest"
+    pub difficulty: f64,    // Mining difficulty (1.0 = minimum)
 }
 
 impl Default for NodeStatus {
@@ -42,6 +43,7 @@ impl Default for NodeStatus {
             peer_count: 0,
             sync_progress: 0.0,
             network: "mainnet".to_string(),
+            difficulty: 1.0,
         }
     }
 }

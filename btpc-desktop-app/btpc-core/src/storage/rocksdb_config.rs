@@ -213,12 +213,26 @@ fn create_metadata_cf() -> ColumnFamilyDescriptor {
     ColumnFamilyDescriptor::new(CF_METADATA, opts)
 }
 
-/// Get available system memory in MB
-/// Used to calculate appropriate cache size (50-70% of RAM)
+/// Get available system memory in MB.
+/// Reads from /proc/meminfo on Linux, falls back to 8GB default on other platforms.
 fn get_available_memory_mb() -> usize {
-    // For production, would query actual system memory
-    // For now, assume 8GB available and use conservative estimate
-
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(contents) = std::fs::read_to_string("/proc/meminfo") {
+            for line in contents.lines() {
+                if line.starts_with("MemTotal:") {
+                    // Format: "MemTotal:       16384000 kB"
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if parts.len() >= 2 {
+                        if let Ok(kb) = parts[1].parse::<usize>() {
+                            return kb / 1024; // Convert kB to MB
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Fallback for non-Linux or parse failure
     8192
 }
 

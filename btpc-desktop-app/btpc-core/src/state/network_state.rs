@@ -51,7 +51,7 @@ pub struct NetworkState {
     /// Hash of the UTXO set for validation
     #[serde(with = "serde_array")]
     pub utxo_set_hash: [u8; 64],
-    /// Total supply in satoshis (sum of all UTXOs)
+    /// Total supply in credits (sum of all UTXOs)
     pub total_supply: u64,
     /// Estimated network hashrate (hashes/second)
     pub network_hashrate: f64,
@@ -262,7 +262,7 @@ mod tests {
 
         let block = create_test_block(1, 1000600);
         let utxo_hash = [1u8; 64];
-        let total_supply = 3237500000; // 32.375 BTPC in satoshis
+        let total_supply = 3237500000; // 32.375 BTPC in credits
 
         state.update_with_block(&block, utxo_hash, total_supply);
 

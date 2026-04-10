@@ -32,7 +32,8 @@ use tokio::{
 use crate::{
     blockchain::Block,
     network::{
-        protocol::*, ConnectionTracker, NetworkConfig, NetworkError, NetworkResult, PeerRateLimiter,
+        discovery::PeerDiscovery, protocol::*, ConnectionTracker, NetworkConfig, NetworkError,
+        NetworkResult, PeerRateLimiter,
     },
 };
 
@@ -40,7 +41,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub enum PeerEvent {
     /// Peer connected
-    PeerConnected { addr: SocketAddr, height: u32 },
+    PeerConnected { addr: SocketAddr, height: u32, user_agent: String },
     /// Peer disconnected
     PeerDisconnected {
         addr: SocketAddr,
@@ -75,10 +76,16 @@ pub enum DisconnectReason {
     ConnectionError(String),
 }
 
+/// Minimum outbound connections to maintain for eclipse attack resistance.
+/// Bitcoin uses 8; we match that for mainnet security.
+pub const MIN_OUTBOUND_CONNECTIONS: usize = 8;
+
 /// Simple peer manager with security features
 pub struct SimplePeerManager {
     /// Connected peers
     peers: Arc<RwLock<HashMap<SocketAddr, PeerHandle>>>,
+    /// Outbound peer addresses (node-initiated connections)
+    outbound_peers: Arc<RwLock<std::collections::HashSet<SocketAddr>>>,
     /// Magic bytes for network
     magic_bytes: [u8; 4],
     /// Local listening address
@@ -93,6 +100,8 @@ pub struct SimplePeerManager {
     connection_tracker: Arc<RwLock<ConnectionTracker>>,
     /// Network configuration
     config: NetworkConfig,
+    /// Peer address book — Bitcoin-style AddrMan equivalent
+    pub discovery: Arc<RwLock<PeerDiscovery>>,
 }
 
 /// Handle to a connected peer with rate limiting
@@ -109,8 +118,24 @@ impl SimplePeerManager {
         // Create bounded event channel (Issue #3)
         let (event_tx, event_rx) = mpsc::channel(config.event_queue_size);
 
+        // Initialise the address book for the correct network
+        let network = if config.regtest {
+            crate::Network::Regtest
+        } else if config.testnet {
+            crate::Network::Testnet
+        } else {
+            crate::Network::Mainnet
+        };
+        let mut discovery = PeerDiscovery::new_for_network(2048, network);
+
+        // Seed the address book with hardcoded fallback peers from config
+        for addr in &config.hardcoded_seeds {
+            discovery.add_address(*addr, ServiceFlags::NETWORK);
+        }
+
         SimplePeerManager {
             peers: Arc::new(RwLock::new(HashMap::new())),
+            outbound_peers: Arc::new(RwLock::new(std::collections::HashSet::new())),
             magic_bytes: config.magic_bytes(),
             local_addr: config.listen_addr,
             block_height,
@@ -118,6 +143,7 @@ impl SimplePeerManager {
             event_rx: Arc::new(RwLock::new(Some(event_rx))),
             connection_tracker: Arc::new(RwLock::new(ConnectionTracker::new())),
             config,
+            discovery: Arc::new(RwLock::new(discovery)),
         }
     }
 
@@ -140,6 +166,7 @@ impl SimplePeerManager {
         let event_tx = self.event_tx.clone();
         let connection_tracker = Arc::clone(&self.connection_tracker);
         let config = self.config.clone();
+        let discovery = Arc::clone(&self.discovery);
 
         tokio::spawn(async move {
             loop {
@@ -160,6 +187,7 @@ impl SimplePeerManager {
                                 let event_tx_clone = event_tx.clone();
                                 let tracker_clone = Arc::clone(&connection_tracker);
                                 let config_clone = config.clone();
+                                let discovery_clone = Arc::clone(&discovery);
 
                                 tokio::spawn(async move {
                                     if let Err(e) = Self::handle_incoming_peer(
@@ -171,6 +199,7 @@ impl SimplePeerManager {
                                         event_tx_clone,
                                         tracker_clone,
                                         config_clone,
+                                        discovery_clone,
                                     )
                                     .await
                                     {
@@ -203,6 +232,7 @@ impl SimplePeerManager {
         event_tx: mpsc::Sender<PeerEvent>,
         connection_tracker: Arc<RwLock<ConnectionTracker>>,
         config: NetworkConfig,
+        discovery: Arc<RwLock<PeerDiscovery>>,
     ) -> NetworkResult<()> {
         // Register connection (Issue #4)
         {
@@ -233,20 +263,31 @@ impl SimplePeerManager {
                     addr, peer_version.start_height
                 );
 
+                // Record peer in address book
+                {
+                    let mut disc = discovery.write().await;
+                    disc.add_address(addr, ServiceFlags::NETWORK);
+                    disc.record_success(&addr);
+                }
+
                 // Send peer connected event (with backpressure handling - Issue #3)
                 if let Err(e) = event_tx.try_send(PeerEvent::PeerConnected {
                     addr,
                     height: peer_version.start_height,
+                    user_agent: peer_version.user_agent.clone(),
                 }) {
                     eprintln!(
                         "⚠️ Event queue full when notifying connection from {}: {}",
                         addr, e
                     );
-                    // Continue anyway - connection event is not critical
                 }
 
                 // Create bounded message channel (Issue #3)
                 let (tx, mut rx) = mpsc::channel(config.peer_message_queue_size);
+
+                // Keep a sender clone for use inside the message-handler loop
+                // (needed to reply to GetAddr without going through the HashMap)
+                let peer_tx_for_handler = tx.clone();
 
                 // Create rate limiter for this peer (Issue #1)
                 let rate_limiter = Arc::new(RwLock::new(PeerRateLimiter::with_config(
@@ -265,10 +306,15 @@ impl SimplePeerManager {
                     );
                 }
 
+                // Ask the inbound peer for their address list — Bitcoin does this
+                // immediately after handshake for both inbound and outbound peers.
+                let _ = peer_tx_for_handler.try_send(Message::GetAddr);
+
                 // Spawn message handler
                 let peers_clone = Arc::clone(&peers);
                 let event_tx_clone = event_tx.clone();
                 let tracker_clone = Arc::clone(&connection_tracker);
+                let discovery_clone = Arc::clone(&discovery);
                 tokio::spawn(async move {
                     let disconnect_reason = loop {
                         tokio::select! {
@@ -291,7 +337,14 @@ impl SimplePeerManager {
 
                                         match rate_check {
                                             Ok(()) => {
-                                                Self::handle_peer_message(&msg, addr, &event_tx_clone).await;
+                                                Self::handle_peer_message(
+                                                    &msg,
+                                                    addr,
+                                                    &event_tx_clone,
+                                                    &peer_tx_for_handler,
+                                                    &discovery_clone,
+                                                )
+                                                .await;
                                             }
                                             Err(e) => {
                                                 eprintln!("❌ Rate limit exceeded for {}: {}", addr, e);
@@ -359,8 +412,10 @@ impl SimplePeerManager {
         let stream = TcpStream::connect(addr).await.map_err(|e| {
             // Unregister on connection failure
             let tracker = self.connection_tracker.clone();
+            let disc = Arc::clone(&self.discovery);
             tokio::spawn(async move {
                 tracker.write().await.remove_connection(&addr);
+                disc.write().await.record_failure(&addr);
             });
             NetworkError::Connection(format!("Failed to connect: {}", e))
         })?;
@@ -386,21 +441,32 @@ impl SimplePeerManager {
                     addr, peer_version.start_height
                 );
 
+                // Record in address book and update success stats
+                {
+                    let mut disc = self.discovery.write().await;
+                    disc.add_address(addr, ServiceFlags::NETWORK);
+                    disc.record_success(&addr);
+                }
+
                 // Send peer connected event (with backpressure)
                 let _ = self.event_tx.try_send(PeerEvent::PeerConnected {
                     addr,
                     height: peer_version.start_height,
+                    user_agent: peer_version.user_agent.clone(),
                 });
 
                 // Create bounded message channel (Issue #3)
                 let (tx, mut rx) = mpsc::channel(self.config.peer_message_queue_size);
+
+                // Keep a sender clone for responding to GetAddr inside the loop
+                let peer_tx_for_handler = tx.clone();
 
                 // Create rate limiter for this peer (Issue #1)
                 let rate_limiter = Arc::new(RwLock::new(PeerRateLimiter::with_config(
                     self.config.rate_limiter.clone(),
                 )));
 
-                // Store peer
+                // Store peer and mark as outbound
                 {
                     let mut peers_write = self.peers.write().await;
                     peers_write.insert(
@@ -411,11 +477,29 @@ impl SimplePeerManager {
                         },
                     );
                 }
+                {
+                    let mut outbound = self.outbound_peers.write().await;
+                    outbound.insert(addr);
+                }
+
+                // Bitcoin-style post-handshake address exchange:
+                // 1. Ask the peer for its address list
+                let _ = peer_tx_for_handler.try_send(Message::GetAddr);
+                // 2. Announce our own listening address so the peer can store and
+                //    relay it — this is how new nodes propagate into the network.
+                let our_addr_msg = Message::Addr(vec![NetworkAddress::new(
+                    self.local_addr.ip(),
+                    self.local_addr.port(),
+                    ServiceFlags::NETWORK,
+                )]);
+                let _ = peer_tx_for_handler.try_send(our_addr_msg);
 
                 // Spawn message handler
                 let peers_clone = Arc::clone(&self.peers);
+                let outbound_clone = Arc::clone(&self.outbound_peers);
                 let event_tx_clone = self.event_tx.clone();
                 let tracker_clone = Arc::clone(&self.connection_tracker);
+                let discovery_clone = Arc::clone(&self.discovery);
                 tokio::spawn(async move {
                     let disconnect_reason = loop {
                         tokio::select! {
@@ -438,7 +522,14 @@ impl SimplePeerManager {
 
                                         match rate_check {
                                             Ok(()) => {
-                                                Self::handle_peer_message(&msg, addr, &event_tx_clone).await;
+                                                Self::handle_peer_message(
+                                                    &msg,
+                                                    addr,
+                                                    &event_tx_clone,
+                                                    &peer_tx_for_handler,
+                                                    &discovery_clone,
+                                                )
+                                                .await;
                                             }
                                             Err(e) => {
                                                 eprintln!("❌ Rate limit exceeded for {}: {}", addr, e);
@@ -457,6 +548,7 @@ impl SimplePeerManager {
 
                     // Remove peer on disconnect
                     peers_clone.write().await.remove(&addr);
+                    outbound_clone.write().await.remove(&addr);
 
                     // Unregister connection (Issue #4)
                     {
@@ -464,13 +556,16 @@ impl SimplePeerManager {
                         tracker.remove_connection(&addr);
                     }
 
+                    // Update failure stats on disconnect
+                    discovery_clone.write().await.record_failure(&addr);
+
                     // Notify disconnect
                     let _ = event_tx_clone.try_send(PeerEvent::PeerDisconnected {
                         addr,
                         reason: disconnect_reason,
                     });
 
-                    println!("❌ Peer {} disconnected", addr);
+                    println!("Peer {} disconnected", addr);
                 });
 
                 Ok(())
@@ -478,7 +573,8 @@ impl SimplePeerManager {
             Err(e) => {
                 eprintln!("Handshake failed with {}: {}", addr, e);
 
-                // Unregister connection on handshake failure
+                // Update stats and unregister connection on handshake failure
+                self.discovery.write().await.record_failure(&addr);
                 let mut tracker = self.connection_tracker.write().await;
                 tracker.remove_connection(&addr);
 
@@ -487,11 +583,17 @@ impl SimplePeerManager {
         }
     }
 
-    /// Handle message from peer
+    /// Handle message from peer.
+    ///
+    /// `peer_tx` is the sender for messages going back to *this* peer (used to
+    /// reply to `GetAddr` without taking the global peers lock).
+    /// `discovery` is the shared address book (written on incoming `Addr` msgs).
     async fn handle_peer_message(
         msg: &Message,
         from: SocketAddr,
         event_tx: &mpsc::Sender<PeerEvent>,
+        peer_tx: &mpsc::Sender<Message>,
+        discovery: &Arc<RwLock<PeerDiscovery>>,
     ) {
         match msg {
             Message::Ping(nonce) => {
@@ -501,6 +603,40 @@ impl SimplePeerManager {
             Message::Pong(nonce) => {
                 println!("📍 Pong from {}: {}", from, nonce);
             }
+
+            // ── Bitcoin-style peer exchange ──────────────────────────────
+            //
+            // GetAddr: peer wants our address list — reply with up to 1000
+            // addresses we know about (same as Bitcoin Core does).
+            Message::GetAddr => {
+                let addrs = discovery
+                    .read()
+                    .await
+                    .get_addresses_for_sharing(1000);
+                if !addrs.is_empty() {
+                    println!(
+                        "📬 GetAddr from {} — sending {} address(es)",
+                        from,
+                        addrs.len()
+                    );
+                    let _ = peer_tx.try_send(Message::Addr(addrs));
+                }
+            }
+
+            // Addr: peer is sharing addresses it knows about — add them all
+            // to our address book so we can connect to them later.
+            Message::Addr(addresses) => {
+                let count = addresses.len();
+                println!("📬 Addr from {} — {} address(es)", from, count);
+                if count > 0 {
+                    discovery
+                        .write()
+                        .await
+                        .add_addresses(addresses.clone());
+                }
+            }
+            // ────────────────────────────────────────────────────────────
+
             Message::Inv(inv_vectors) => {
                 println!("📋 Inventory from {}: {} item(s)", from, inv_vectors.len());
                 for inv in inv_vectors {
@@ -514,7 +650,6 @@ impl SimplePeerManager {
                         _ => {}
                     }
                 }
-                // Send event (with backpressure)
                 let _ = event_tx.try_send(PeerEvent::InventoryReceived {
                     from,
                     inv: inv_vectors.clone(),
@@ -538,9 +673,7 @@ impl SimplePeerManager {
                     tx: tx.clone(),
                 });
             }
-            _ => {
-                // Handle other message types
-            }
+            _ => {}
         }
     }
 
@@ -642,11 +775,113 @@ impl SimplePeerManager {
     pub async fn disconnect_peer(&self, addr: &SocketAddr) -> bool {
         let removed = self.peers.write().await.remove(addr).is_some();
         if removed {
+            self.outbound_peers.write().await.remove(addr);
             let mut tracker = self.connection_tracker.write().await;
             tracker.remove_connection(addr);
-            println!("🔌 Manually disconnected peer: {}", addr);
+            println!("Manually disconnected peer: {}", addr);
         }
         removed
+    }
+
+    /// Get number of outbound (node-initiated) connections
+    pub async fn outbound_count(&self) -> usize {
+        self.outbound_peers.read().await.len()
+    }
+
+    /// Check if we need more outbound connections for eclipse attack resistance.
+    /// Returns `true` if outbound count is below MIN_OUTBOUND_CONNECTIONS.
+    pub async fn needs_outbound_connections(&self) -> bool {
+        self.outbound_count().await < MIN_OUTBOUND_CONNECTIONS
+    }
+
+    // ── Bitcoin-style connection manager ────────────────────────────────────
+    //
+    // Runs as a background task.  Every 30 seconds it checks whether we have
+    // fewer than MIN_OUTBOUND_CONNECTIONS (8) and tries to open new ones from
+    // the address book.  This mirrors Bitcoin Core's `ThreadOpenConnections`.
+
+    /// Start the background outbound-connection manager.
+    ///
+    /// Must be called with an `Arc<SimplePeerManager>` so the task can call
+    /// `connect_to_peer` without requiring exclusive ownership.
+    pub fn start_connection_manager(manager: Arc<SimplePeerManager>) {
+        use tokio::time::{interval, Duration};
+
+        tokio::spawn(async move {
+            // Initial delay — give the node a moment to start listening first.
+            tokio::time::sleep(Duration::from_secs(5)).await;
+
+            let mut ticker = interval(Duration::from_secs(30));
+            loop {
+                ticker.tick().await;
+
+                if !manager.needs_outbound_connections().await {
+                    continue;
+                }
+
+                let needed = MIN_OUTBOUND_CONNECTIONS
+                    .saturating_sub(manager.outbound_count().await);
+
+                // Fetch a few extra candidates in case some fail
+                let candidates = manager
+                    .discovery
+                    .write()
+                    .await
+                    .get_peers(needed + 5, ServiceFlags::NETWORK);
+
+                let already_connected: std::collections::HashSet<SocketAddr> =
+                    manager.peers.read().await.keys().cloned().collect();
+
+                for addr in candidates {
+                    if !manager.needs_outbound_connections().await {
+                        break;
+                    }
+                    if already_connected.contains(&addr) {
+                        continue;
+                    }
+                    // Fire-and-forget; errors are logged inside connect_to_peer
+                    let _ = manager.connect_to_peer(addr).await;
+                }
+
+                // If we still have no peers at all, re-query DNS seeds
+                if manager.peer_count().await == 0 {
+                    println!("🔍 No peers — re-querying DNS seeds...");
+                    let _ = manager.discovery.write().await.query_dns_seeds().await;
+                }
+            }
+        });
+    }
+
+    // ── Peers.dat persistence ────────────────────────────────────────────────
+
+    /// Save the current address book to `path` (peers.dat equivalent).
+    ///
+    /// Call this periodically (e.g. every 15 minutes) and on clean shutdown.
+    pub async fn save_peers(&self, path: &std::path::Path) {
+        match self.discovery.read().await.save_to_disk(path) {
+            Ok(()) => println!("💾 Saved peers to {}", path.display()),
+            Err(e) => eprintln!("⚠️  Failed to save peers.dat: {}", e),
+        }
+    }
+
+    /// Load a previously-saved address book from `path` (peers.dat equivalent).
+    ///
+    /// Call this once at startup, before `start_connection_manager`.
+    pub async fn load_peers(&self, path: &std::path::Path) {
+        self.discovery.write().await.load_from_disk(path);
+    }
+
+    /// Spawn a background task that saves peers.dat every `interval_secs` seconds.
+    pub fn start_peer_saver(manager: Arc<SimplePeerManager>, path: std::path::PathBuf) {
+        use tokio::time::{interval, Duration};
+
+        tokio::spawn(async move {
+            let mut ticker = interval(Duration::from_secs(900)); // every 15 minutes
+            loop {
+                ticker.tick().await;
+                manager.save_peers(&path).await;
+            }
+        });
     }
 }
 

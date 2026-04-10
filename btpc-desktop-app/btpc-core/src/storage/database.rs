@@ -223,10 +223,21 @@ impl Database {
 
     /// Get database statistics
     pub fn get_statistics(&self) -> DatabaseStatistics {
-        // For RocksDB statistics, we'll use default values as property_value
-        // API may vary across versions
-        let stats = 0u64; // Default until we implement proper stats collection
-        let keys = 0u64; // Default until we implement proper stats collection
+        // Get total SST files size using RocksDB property API
+        let total_size = self.db
+            .property_value("rocksdb.total-sst-files-size")
+            .ok()
+            .flatten()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0);
+
+        // Get estimated number of keys
+        let keys = self.db
+            .property_value("rocksdb.estimate-num-keys")
+            .ok()
+            .flatten()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0);
 
         // RocksDB doesn't directly provide cache hit rate, approximate from stats
         let cache_hit_rate = if self.config.enable_statistics {
@@ -236,7 +247,7 @@ impl Database {
         };
 
         DatabaseStatistics {
-            total_size: stats,
+            total_size,
             total_keys: keys,
             cache_hit_rate,
         }

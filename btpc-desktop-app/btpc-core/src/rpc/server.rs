@@ -1876,6 +1876,5 @@ mod tests {
         let _mainnet = RpcConfig::for_network(Network::Mainnet);
 
         // If this test compiles, the API exists as expected
-        assert!(true, "Network-specific config API exists");
     }
 }

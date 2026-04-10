@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BTPC Professional Icon Set - Demo</title>
+    <link rel="stylesheet" href="icons-professional.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e0e0e0;
+            padding: 40px 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            color: #a0a0a0;
+            margin-bottom: 3rem;
+            font-size: 1.1rem;
+        }
+
+        .section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .section h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+        }
+
+        .icon-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .icon-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .icon-card:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: #667eea;
+            transform: translateY(-2px);
+        }
+
+        .icon-display {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+
+        .icon-name {
+            font-size: 0.9rem;
+            color: #e0e0e0;
+            margin-bottom: 5px;
+        }
+
+        .icon-usage {
+            font-size: 0.75rem;
+            color: #808080;
+        }
+
+        .size-demo {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 6px;
+        }
+
+        .size-label {
+            font-size: 0.85rem;
+            color: #a0a0a0;
+            min-width: 80px;
+        }
+
+        .theme-demo {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 6px;
+            margin-bottom: 10px;
+        }
+
+        .theme-label {
+            font-size: 0.85rem;
+            color: #a0a0a0;
+            min-width: 100px;
+        }
+
+        .navigation-demo {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 12px 15px;
+            border-radius: 6px;
+            color: #e0e0e0;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .nav-item:hover {
+            background: rgba(102, 126, 234, 0.2);
+            color: #667eea;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 500;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #e0e0e0;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        code {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.9em;
+            color: #f8f8f2;
+        }
+
+        .code-block {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin-top: 10px;
+        }
+
+        .code-block code {
+            background: none;
+            padding: 0;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .stat-card {
+            background: rgba(102, 126, 234, 0.1);
+            border: 1px solid rgba(102, 126, 234, 0.3);
+            border-radius: 6px;
+            padding: 15px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            color: #a0a0a0;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>BTPC Professional Icon Set</h1>
+        <p class="subtitle">Bold, high-contrast icons optimized for cryptocurrency wallet applications</p>
+
+        <!-- Statistics -->
+        <div class="section">
+            <h2>Icon Set Statistics</h2>
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-value">12</div>
+                    <div class="stat-label">Total Icons</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">2.5px</div>
+                    <div class="stat-label">Stroke Weight</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">24×24</div>
+                    <div class="stat-label">ViewBox</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">16px+</div>
+                    <div class="stat-label">Min Size</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- All Icons -->
+        <div class="section">
+            <h2>Complete Icon Collection</h2>
+            <div class="icon-grid">
+                <div class="icon-card">
+                    <div class="icon-display">
+                        <span class="icon-home-pro icon-lg"></span>
+                    </div>
+                    <div class="icon-name">icon-home-pro</div>
+                    <div class="icon-usage">Dashboard / Home</div>
+                </div>
+                <div class="icon-card">
+                    <div class="icon-display">
+                        <span class="icon-wallet-pro icon-lg"></span>
+                    </div>
+                    <div class="icon-name">icon-wallet-pro</div>
+                    <div class="icon-usage">Wallet / Portfolio</div>
+                </div>
+                <div class="icon-card">
+                    <div class="icon-display">
+                        <span class="icon-transactions-pro icon-lg"></span>
+                    </div>
+                    <div class="icon-name">icon-transactions-pro</div>
+                    <div class="icon-usage">Transactions / History</div>
+                </div>
+                <div class="icon-card">
+                    <div class="icon-display">
+                        <span class="icon-mining-pro icon-lg"></span>
+                    </div>
+                    <div class="icon-name">icon-mining-pro</div>
+                    <div class="icon-usage">Mining Operations</div>
+                </div>
+                <div class="icon-card">
+                    <div class="icon-display">
+                        <span class="icon-node-pro icon-lg"></span>
+                    </div>
+                    <div class="icon-name">icon-node-pro</div>
+                    <div class="icon-usage">Node / Network</div>
+                </div>
+                <div class="icon-card">
+                    <div class="icon-display">
+                        <span class="icon-settings-pro icon-lg"></span>
+                    </div>
+                    <div class="icon-name">icon-settings-pro</div>
+                    <div class="icon-usage">Settings / Config</div>
+                </div>
+                <div class="icon-card">
+                    <div class="icon-display">
+                        <span class="icon-send-pro icon-lg"></span>
+                    </div>
+                    <div class="icon-name">icon-send-pro</div>
+                    <div class="icon-usage">Send / Transfer</div>
+                </div>
+                <div class="icon-card">
+                    <div class="icon-display">
+                        <span class="icon-receive-pro icon-lg"></span>
+                    </div>
+                    <div class="icon-name">icon-receive-pro</div>
+                    <div class="icon-usage">Receive Funds</div>
+                </div>
+                <div class="icon-card">
+                    <div class="icon-display">
+                        <span class="icon-address-pro icon-lg"></span>
+                    </div>
+                    <div class="icon-name">icon-address-pro</div>
+                    <div class="icon-usage">Address / QR Code</div>
+                </div>
+                <div class="icon-card">
+                    <div class="icon-display">
+                        <span class="icon-balance-pro icon-lg"></span>
+                    </div>
+                    <div class="icon-name">icon-balance-pro</div>
+                    <div class="icon-usage">Balance / Funds</div>
+                </div>
+                <div class="icon-card">
+                    <div class="icon-display">
+                        <span class="icon-status-pro icon-lg"></span>
+                    </div>
+                    <div class="icon-name">icon-status-pro</div>
+                    <div class="icon-usage">Status / Info</div>
+                </div>
+                <div class="icon-card">
+                    <div class="icon-display">
+                        <span class="icon-security-pro icon-lg"></span>
+                    </div>
+                    <div class="icon-name">icon-security-pro</div>
+                    <div class="icon-usage">Security / Lock</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Size Variations -->
+        <div class="section">
+            <h2>Size Variations</h2>
+            <div class="size-demo">
+                <span class="size-label">Small (16px):</span>
+                <span class="icon-wallet-pro icon-sm"></span>
+                <span class="icon-send-pro icon-sm"></span>
+                <span class="icon-receive-pro icon-sm"></span>
+                <span class="icon-mining-pro icon-sm"></span>
+            </div>
+            <div class="size-demo">
+                <span class="size-label">Base (20px):</span>
+                <span class="icon-wallet-pro icon-base"></span>
+                <span class="icon-send-pro icon-base"></span>
+                <span class="icon-receive-pro icon-base"></span>
+                <span class="icon-mining-pro icon-base"></span>
+            </div>
+            <div class="size-demo">
+                <span class="size-label">Medium (24px):</span>
+                <span class="icon-wallet-pro icon-md"></span>
+                <span class="icon-send-pro icon-md"></span>
+                <span class="icon-receive-pro icon-md"></span>
+                <span class="icon-mining-pro icon-md"></span>
+            </div>
+            <div class="size-demo">
+                <span class="size-label">Large (32px):</span>
+                <span class="icon-wallet-pro icon-lg"></span>
+                <span class="icon-send-pro icon-lg"></span>
+                <span class="icon-receive-pro icon-lg"></span>
+                <span class="icon-mining-pro icon-lg"></span>
+            </div>
+        </div>
+
+        <!-- Theme Variations -->
+        <div class="section">
+            <h2>Theme Variations</h2>
+            <div class="theme-demo">
+                <span class="theme-label">Default:</span>
+                <span class="icon-wallet-pro icon-md"></span>
+                <span class="icon-send-pro icon-md"></span>
+                <span class="icon-receive-pro icon-md"></span>
+            </div>
+            <div class="theme-demo">
+                <span class="theme-label">Primary:</span>
+                <span class="icon-wallet-pro icon-md icon-primary"></span>
+                <span class="icon-send-pro icon-md icon-primary"></span>
+                <span class="icon-receive-pro icon-md icon-primary"></span>
+            </div>
+            <div class="theme-demo">
+                <span class="theme-label">Success:</span>
+                <span class="icon-wallet-pro icon-md icon-success"></span>
+                <span class="icon-send-pro icon-md icon-success"></span>
+                <span class="icon-receive-pro icon-md icon-success"></span>
+            </div>
+            <div class="theme-demo">
+                <span class="theme-label">Warning:</span>
+                <span class="icon-wallet-pro icon-md icon-warning"></span>
+                <span class="icon-send-pro icon-md icon-warning"></span>
+                <span class="icon-receive-pro icon-md icon-warning"></span>
+            </div>
+            <div class="theme-demo">
+                <span class="theme-label">Danger:</span>
+                <span class="icon-wallet-pro icon-md icon-danger"></span>
+                <span class="icon-send-pro icon-md icon-danger"></span>
+                <span class="icon-receive-pro icon-md icon-danger"></span>
+            </div>
+        </div>
+
+        <!-- Navigation Example -->
+        <div class="section">
+            <h2>Navigation Menu Example</h2>
+            <div class="navigation-demo">
+                <a href="#" class="nav-item">
+                    <span class="icon-home-pro icon-base icon-interactive"></span>
+                    <span>Dashboard</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <span class="icon-wallet-pro icon-base icon-interactive"></span>
+                    <span>Wallet</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <span class="icon-transactions-pro icon-base icon-interactive"></span>
+                    <span>Transactions</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <span class="icon-mining-pro icon-base icon-interactive"></span>
+                    <span>Mining</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <span class="icon-node-pro icon-base icon-interactive"></span>
+                    <span>Node</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <span class="icon-settings-pro icon-base icon-interactive"></span>
+                    <span>Settings</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- Action Buttons Example -->
+        <div class="section">
+            <h2>Action Buttons Example</h2>
+            <div class="action-buttons">
+                <button class="btn btn-primary">
+                    <span class="icon-send-pro icon-base"></span>
+                    <span>Send BTPC</span>
+                </button>
+                <button class="btn btn-primary">
+                    <span class="icon-receive-pro icon-base"></span>
+                    <span>Receive BTPC</span>
+                </button>
+                <button class="btn btn-secondary">
+                    <span class="icon-address-pro icon-base"></span>
+                    <span>Show Address</span>
+                </button>
+                <button class="btn btn-secondary">
+                    <span class="icon-security-pro icon-base"></span>
+                    <span>Security</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Usage Code -->
+        <div class="section">
+            <h2>Usage Examples</h2>
+
+            <h3 style="color: #a0a0a0; font-size: 1.1rem; margin-top: 20px; margin-bottom: 10px;">HTML</h3>
+            <div class="code-block">
+                <code>&lt;span class="icon-wallet-pro icon-base"&gt;&lt;/span&gt;</code>
+            </div>
+
+            <h3 style="color: #a0a0a0; font-size: 1.1rem; margin-top: 20px; margin-bottom: 10px;">React Component</h3>
+            <div class="code-block">
+                <code>const Icon = ({ name, size = 'base' }) => (
+  &lt;span className={`icon-${name}-pro icon-${size}`} /&gt;
+);
+
+&lt;Icon name="wallet" size="md" /&gt;</code>
+            </div>
+
+            <h3 style="color: #a0a0a0; font-size: 1.1rem; margin-top: 20px; margin-bottom: 10px;">With Themes</h3>
+            <div class="code-block">
+                <code>&lt;span class="icon-send-pro icon-base icon-primary"&gt;&lt;/span&gt;
+&lt;span class="icon-receive-pro icon-md icon-success"&gt;&lt;/span&gt;</code>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

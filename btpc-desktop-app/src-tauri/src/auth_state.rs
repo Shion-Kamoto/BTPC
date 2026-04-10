@@ -19,7 +19,8 @@ use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
-use uuid::Uuid;
+use rand::rngs::OsRng;
+use rand::RngCore;
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -91,7 +92,17 @@ pub struct SessionState {
 
     /// Last activity timestamp for session timeout (REM-C002)
     pub last_activity: Option<SystemTime>,
+
+    /// FIX 2026-02-21 (H4): Failed login attempt counter for brute-force protection
+    pub failed_attempts: u32,
+    /// FIX 2026-02-21 (H4): Lockout expiry (Unix timestamp). None = not locked.
+    pub locked_until: Option<u64>,
 }
+
+/// Maximum failed login attempts before lockout
+pub const MAX_LOGIN_ATTEMPTS: u32 = 5;
+/// Lockout duration in seconds (15 minutes)
+pub const LOCKOUT_DURATION_SECS: u64 = 15 * 60;
 
 impl SessionState {
     /// Creates a new unauthenticated session state
@@ -101,6 +112,8 @@ impl SessionState {
             login_timestamp: None,
             session_token: None,
             last_activity: None,
+            failed_attempts: 0,
+            locked_until: None,
         }
     }
 
@@ -108,12 +121,15 @@ impl SessionState {
     pub fn login(&mut self) {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .expect("System time before UNIX epoch - clock misconfiguration")
             .as_secs();
 
         self.authenticated = true;
         self.login_timestamp = Some(now);
-        self.session_token = Some(Uuid::new_v4().to_string());
+        // FIX 2026-02-21 (C3): Use CSPRNG for session token instead of UUID v4
+        let mut token_bytes = [0u8; 32];
+        OsRng.fill_bytes(&mut token_bytes);
+        self.session_token = Some(hex::encode(token_bytes));
         self.last_activity = Some(SystemTime::now()); // REM-C002
     }
 
@@ -130,6 +146,37 @@ impl SessionState {
         self.authenticated
     }
 
+    /// FIX 2026-02-21 (H4): Check if account is currently locked out
+    pub fn is_locked_out(&self) -> bool {
+        if let Some(locked_until) = self.locked_until {
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            now < locked_until
+        } else {
+            false
+        }
+    }
+
+    /// FIX 2026-02-21 (H4): Record a failed login attempt
+    pub fn record_failed_attempt(&mut self) {
+        self.failed_attempts += 1;
+        if self.failed_attempts >= MAX_LOGIN_ATTEMPTS {
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            self.locked_until = Some(now + LOCKOUT_DURATION_SECS);
+        }
+    }
+
+    /// FIX 2026-02-21 (H4): Reset failed attempts on successful login
+    pub fn clear_failed_attempts(&mut self) {
+        self.failed_attempts = 0;
+        self.locked_until = None;
+    }
+
     /// Gets the session token if authenticated
     pub fn get_session_token(&self) -> Option<String> {
         self.session_token.clone()
@@ -143,6 +190,10 @@ impl SessionState {
     /// # Returns
     /// * `true` if session is expired (inactive for longer than timeout_secs)
     /// * `false` if session is still valid or not authenticated
+    ///
+    /// NOTE: Currently unused - session timeout was removed (2025-12-04) to prevent
+    /// mining interruption. Retained for potential future "lock after inactivity" feature.
+    #[allow(dead_code)]
     pub fn is_expired(&self, timeout_secs: u64) -> bool {
         if !self.authenticated {
             return false; // Not authenticated sessions can't expire
@@ -232,7 +283,7 @@ impl MasterCredentials {
     ) -> Self {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .expect("System time before UNIX epoch - clock misconfiguration")
             .as_secs();
 
         MasterCredentials {
@@ -253,7 +304,7 @@ impl MasterCredentials {
     pub fn update_last_used(&mut self) {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .expect("System time before UNIX epoch - clock misconfiguration")
             .as_secs();
         self.last_used_at = now;
     }

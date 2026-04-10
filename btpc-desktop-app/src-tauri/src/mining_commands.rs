@@ -6,6 +6,7 @@ use crate::mining_thread_pool::{MiningStats, MiningThreadPool};
 use anyhow::Result;
 use btpc_desktop_app::embedded_node::EmbeddedNode;
 use btpc_desktop_app::rpc_client::{BlockTemplate, RpcClientInterface};
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, State};
 use tokio::sync::RwLock;
@@ -27,6 +28,7 @@ impl RpcClientInterface for EmbeddedNodeRpcWrapper {
 }
 
 /// Global mining pool state (shared across all commands)
+#[allow(dead_code)] // Reserved for external crate access
 pub type MiningHandle = Arc<Mutex<MiningThreadPool>>;
 
 /// Mining configuration from frontend
@@ -36,6 +38,28 @@ pub struct MiningConfig {
     pub enable_gpu: bool,
     pub cpu_threads: Option<u32>,
     pub mining_address: String,
+    /// Mining mode: "solo" (default) or "pool"
+    #[serde(default = "default_mining_mode")]
+    pub mining_mode: String,
+    /// Pool configuration (only used when mining_mode == "pool")
+    #[serde(default)]
+    pub pool_config: Option<PoolMiningConfig>,
+}
+
+fn default_mining_mode() -> String {
+    "solo".to_string()
+}
+
+/// Pool mining configuration
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PoolMiningConfig {
+    /// Pool URL (host:port)
+    pub url: String,
+    /// Worker name
+    pub worker: String,
+    /// Worker password
+    #[serde(default)]
+    pub password: String,
 }
 
 /// Start mining
@@ -64,10 +88,47 @@ pub async fn start_mining(
     config: MiningConfig,
     app: tauri::AppHandle,
 ) -> Result<bool, String> {
+    // FR-058: Check disk space before starting mining
+    // Mining is prevented if available space is below 2GB threshold
+    use btpc_desktop_app::disk_space_monitor::{DiskSpaceAlertLevel, DiskSpaceMonitor};
+
+    let disk_check = state.disk_space_monitor.check().await;
+    if let Ok(disk_info) = &disk_check {
+        let alert_level = state.disk_space_monitor.get_alert_level().await;
+
+        if alert_level == DiskSpaceAlertLevel::MiningPrevented {
+            let formatted_space = DiskSpaceMonitor::format_bytes(disk_info.available_bytes);
+
+            // Emit disk space event to frontend
+            app.emit("disk:mining_prevented", serde_json::json!({
+                "available_bytes": disk_info.available_bytes,
+                "available_formatted": formatted_space,
+                "threshold_bytes": btpc_desktop_app::disk_space_monitor::THRESHOLD_PREVENT_MINING_BYTES,
+                "message": format!("Mining prevented: only {} available (minimum 2GB required)", formatted_space)
+            })).ok();
+
+            return Err(format!(
+                "Insufficient disk space for mining: {} available (minimum 2GB required)",
+                formatted_space
+            ));
+        }
+
+        // Emit warning if disk space is low but not critical
+        if alert_level == DiskSpaceAlertLevel::Warning
+            || alert_level == DiskSpaceAlertLevel::SyncPaused {
+            let formatted_space = DiskSpaceMonitor::format_bytes(disk_info.available_bytes);
+            app.emit("disk:space_warning", serde_json::json!({
+                "available_bytes": disk_info.available_bytes,
+                "available_formatted": formatted_space,
+                "message": format!("Low disk space warning: {} available", formatted_space)
+            })).ok();
+        }
+    }
+
     // Clone config fields for use after lock drop
-    let enable_cpu = config.enable_cpu;
+    let _enable_cpu = config.enable_cpu; // Reserved for future CPU mining
     let enable_gpu = config.enable_gpu;
-    let cpu_threads = config.cpu_threads;
+    let _cpu_threads = config.cpu_threads; // Reserved for future CPU mining
     let mining_address = config.mining_address.clone();
 
     // REM-C002: Emit mining_started event
@@ -84,8 +145,40 @@ pub async fn start_mining(
     {
         let mut mining_pool_guard = state.mining_pool.write().await;
         if mining_pool_guard.is_none() {
-            // Initialize mining pool on first use
-            *mining_pool_guard = Some(MiningThreadPool::new());
+            // Load persistent blocks_found from mining_stats
+            let mut lifetime_blocks_found = {
+                let stats_guard = state.mining_stats.lock()
+                    .expect("Failed to lock mining_stats");
+                stats_guard.blocks_found
+            };
+
+            // Sync counter to chain height if chain is ahead (handles historical blocks
+            // mined before persistence was implemented, or counter resets)
+            let chain_height = {
+                let node = state.embedded_node.read().await;
+                node.get_blockchain_state().await
+                    .map(|s| s.current_height)
+                    .unwrap_or(0)
+            };
+            if chain_height > lifetime_blocks_found {
+                println!(
+                    "[MiningStats] Chain height {} > counter {} — syncing counter to chain height",
+                    chain_height, lifetime_blocks_found
+                );
+                lifetime_blocks_found = chain_height;
+                // Persist the corrected value immediately
+                let mut stats_guard = state.mining_stats.lock()
+                    .expect("Failed to lock mining_stats");
+                stats_guard.blocks_found = lifetime_blocks_found;
+                stats_guard.save_to_disk();
+            }
+
+            // Get network fork_id for replay protection
+            let network_fork_id = state.active_network.read().await.fork_id();
+            println!("Initializing mining pool with {} lifetime blocks found (fork_id={})", lifetime_blocks_found, network_fork_id);
+
+            // Initialize mining pool on first use with persistent counter
+            *mining_pool_guard = Some(MiningThreadPool::new(lifetime_blocks_found, network_fork_id));
         }
     }
 
@@ -116,6 +209,16 @@ pub async fn start_mining(
                     crate::mining_thread_pool::MiningEvent::GpuError { .. } => {
                         app_clone.emit("gpu_error", &event).ok();
                     }
+                    // FIX 2025-12-08: Forward MiningActivity events for real-time UI updates
+                    // This replaces the polling-based approach that caused console freezing
+                    crate::mining_thread_pool::MiningEvent::MiningActivity { .. } => {
+                        app_clone.emit("mining_activity", &event).ok();
+                    }
+                    // FIX 2025-12-08: Forward BlockConstruction events for live console display
+                    // Shows COINBASE, MERKLE, HEADER entries during block construction
+                    crate::mining_thread_pool::MiningEvent::BlockConstruction { .. } => {
+                        app_clone.emit("block_construction", &event).ok();
+                    }
                 }
             }
         });
@@ -124,17 +227,17 @@ pub async fn start_mining(
         let logs_for_receiver = logs_clone.clone();
         let test_tx = log_tx.clone();
         tokio::spawn(async move {
-            eprintln!("[GPU LOG RECEIVER] Started waiting for GPU mining log events");
+            // Note: Debug eprintln! removed - was causing 200+ stderr writes/sec at high hashrates
+            // which blocked I/O and caused WebView freezing
             while let Some((level, message)) = log_rx.recv().await {
-                eprintln!("[GPU LOG RECEIVER] Received log: {} - {}", level, message);
-                if let Ok(mut logs) = logs_for_receiver.lock() {
-                    logs.add_entry(level.clone(), message.clone());
-                    eprintln!("[GPU LOG RECEIVER] Added to mining_logs buffer");
-                } else {
-                    eprintln!("[GPU LOG RECEIVER] FAILED to lock mining_logs");
+                // Use try_lock() instead of lock() to avoid blocking the async runtime
+                // If the mutex is currently held (e.g., by get_mining_logs), skip this message
+                // rather than blocking. At 100 MH/s we get 100 messages/sec, missing a few is fine.
+                if let Ok(mut logs) = logs_for_receiver.try_lock() {
+                    logs.add_entry(level, message);
                 }
+                // Silently skip if mutex is locked - prevents async runtime starvation
             }
-            eprintln!("[GPU LOG RECEIVER] Channel closed");
         });
 
         // TEST: Send a test message AFTER spawning receiver
@@ -151,6 +254,8 @@ pub async fn start_mining(
         // Use embedded node for block template requests (Feature 013: Self-contained app)
         // Replaces external RPC client with direct blockchain access
         let embedded_node = state.embedded_node.clone();
+        let mining_mode = config.mining_mode.clone();
+        let pool_config = config.pool_config.clone();
 
         // Spawn GPU initialization asynchronously (don't block UI thread)
         tokio::spawn(async move {
@@ -161,15 +266,47 @@ pub async fn start_mining(
                     // REM-C002: Set mining event channel before starting
                     pool.set_event_channel(mining_event_tx);
 
-                    // Wrap the embedded_node with our RpcClientInterface implementation
-                    let rpc_wrapper = Arc::new(EmbeddedNodeRpcWrapper(embedded_node));
-                    pool.start_gpu_mining(
-                        gpu_address,
-                        rpc_wrapper,
-                        Some(log_tx),
-                        Some(logs_clone.clone()),
-                    )
-                    .await
+                    // Create RPC backend based on mining mode
+                    if mining_mode == "pool" {
+                        if let Some(ref pc) = pool_config {
+                            // Pool mining via Stratum V2
+                            let stratum_config = btpc_desktop_app::stratum::pool_client::PoolConfig {
+                                url: pc.url.clone(),
+                                worker: pc.worker.clone(),
+                                password: pc.password.clone(),
+                            };
+                            let mut stratum_client = btpc_desktop_app::stratum::StratumPoolClient::new(stratum_config);
+                            // B5: Set embedded node for dual-mode block submission
+                            stratum_client.set_embedded_node(embedded_node.clone());
+                            let stratum_arc = Arc::new(tokio::sync::RwLock::new(stratum_client));
+
+                            // Start the pool client background tasks
+                            if let Err(e) = stratum_arc.read().await.start().await {
+                                eprintln!("Failed to start pool client: {}", e);
+                            }
+
+                            let backend = Arc::new(btpc_desktop_app::rpc_client::MiningBackend::Pool(stratum_arc));
+                            pool.start_gpu_mining(
+                                gpu_address,
+                                backend,
+                                Some(log_tx),
+                                Some(logs_clone.clone()),
+                            )
+                            .await
+                        } else {
+                            Err(anyhow::anyhow!("Pool config required for pool mining mode"))
+                        }
+                    } else {
+                        // Solo mining via embedded node (default)
+                        let rpc_wrapper = Arc::new(EmbeddedNodeRpcWrapper(embedded_node));
+                        pool.start_gpu_mining(
+                            gpu_address,
+                            rpc_wrapper,
+                            Some(log_tx),
+                            Some(logs_clone.clone()),
+                        )
+                        .await
+                    }
                 } else {
                     Err(anyhow::anyhow!("Mining pool not initialized"))
                 }
@@ -207,6 +344,92 @@ pub async fn start_mining(
         }
     }
 
+    // Spawn internet connectivity monitor (all networks)
+    // Pauses mining when internet connection is lost to prevent orphaned blocks
+    {
+        let monitor_active = state.network_monitor_active.clone();
+
+        // Kill any existing monitor before spawning a new one
+        if monitor_active.load(Ordering::SeqCst) {
+            monitor_active.store(false, Ordering::SeqCst);
+            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+        }
+        monitor_active.store(true, Ordering::SeqCst);
+
+        let monitor_pool = state.mining_pool.clone();
+        let monitor_app = app.clone();
+        let monitor_logs = state.mining_logs.clone();
+        let monitor_override = state.network_pause_override.clone();
+
+        tokio::spawn(async move {
+            let check_interval = tokio::time::Duration::from_secs(10);
+            let mut paused_by_monitor = false;
+
+            loop {
+                tokio::time::sleep(check_interval).await;
+
+                if !monitor_active.load(Ordering::SeqCst) {
+                    eprintln!("[NetMonitor] Monitor deactivated, exiting");
+                    break;
+                }
+
+                let has_internet = check_internet_connectivity().await;
+
+                let is_mining = {
+                    let pool_guard = monitor_pool.read().await;
+                    pool_guard.as_ref().is_some_and(|p| p.get_stats().is_mining)
+                };
+
+                if !has_internet && is_mining && !paused_by_monitor
+                    && !monitor_override.load(Ordering::SeqCst)
+                {
+                    eprintln!("[NetMonitor] Internet connection lost - pausing mining");
+                    paused_by_monitor = true;
+
+                    {
+                        let mut pool_guard = monitor_pool.write().await;
+                        if let Some(ref mut pool) = *pool_guard {
+                            let _ = pool.stop_all().await;
+                        }
+                    }
+
+                    if let Ok(mut logs) = monitor_logs.try_lock() {
+                        logs.add_entry("WARN".to_string(),
+                            "Mining paused - internet connection lost.".to_string());
+                    }
+
+                    monitor_app.emit("mining_paused", serde_json::json!({
+                        "reason": "no_internet",
+                        "message": "Mining paused - internet connection lost. Blocks mined offline will be orphaned when the network produces a longer chain."
+                    })).ok();
+
+                } else if has_internet && paused_by_monitor {
+                    eprintln!("[NetMonitor] Internet restored - signaling mining resume");
+                    paused_by_monitor = false;
+                    monitor_override.store(false, Ordering::SeqCst);
+
+                    if let Ok(mut logs) = monitor_logs.try_lock() {
+                        logs.add_entry("INFO".to_string(),
+                            "Internet restored - mining will resume automatically.".to_string());
+                    }
+
+                    monitor_app.emit("mining_resumed", serde_json::json!({
+                        "reason": "internet_restored",
+                        "message": "Internet connection restored - mining resumed automatically."
+                    })).ok();
+
+                } else if !is_mining && !paused_by_monitor {
+                    eprintln!("[NetMonitor] Mining stopped externally, exiting monitor");
+                    break;
+                }
+            }
+
+            monitor_active.store(false, Ordering::SeqCst);
+        });
+
+        eprintln!("[Mining] Internet connectivity monitor started (checks every 10s)");
+    }
+
     Ok(true)
 }
 
@@ -223,6 +446,9 @@ pub async fn start_mining(
 /// ```
 #[tauri::command]
 pub async fn stop_mining(state: State<'_, crate::AppState>, app: tauri::AppHandle) -> Result<bool, String> {
+    // Deactivate internet monitor so it exits on next check
+    state.network_monitor_active.store(false, Ordering::SeqCst);
+
     // Get stats before stopping for logging, then stop mining
     let final_stats = {
         let mut mining_pool_guard = state.mining_pool.write().await;
@@ -315,6 +541,15 @@ pub async fn get_mining_stats(state: State<'_, crate::AppState>) -> Result<Minin
             uptime_seconds: 0,
         })
     }
+}
+
+/// Override network-pause protection so mining continues despite no internet
+/// Called when user clicks "Resume Mining" on the warning banner
+#[tauri::command]
+pub async fn override_network_pause(state: State<'_, crate::AppState>) -> Result<bool, String> {
+    state.network_pause_override.store(true, Ordering::SeqCst);
+    eprintln!("[NetMonitor] User overrode network-pause protection");
+    Ok(true)
 }
 
 /// Mining session information (historical record)
@@ -483,19 +718,39 @@ pub async fn get_mining_history(
     })
 }
 
+/// Check internet connectivity by attempting TCP connections to well-known DNS servers
+/// Returns true if at least one connection succeeds within 3 seconds
+async fn check_internet_connectivity() -> bool {
+    use tokio::net::TcpStream;
+    use tokio::time::{timeout, Duration};
+
+    let targets = ["8.8.8.8:53", "1.1.1.1:53"];
+    let connect_timeout = Duration::from_secs(3);
+
+    for target in &targets {
+        if let Ok(Ok(_)) = timeout(connect_timeout, TcpStream::connect(target)).await {
+            return true;
+        }
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
     async fn test_start_stop_mining_command() {
         // Arrange
-        let pool = Arc::new(Mutex::new(MiningThreadPool::new()));
-        let config = MiningConfig {
+        let pool = Arc::new(Mutex::new(MiningThreadPool::new(0, 2)));
+        let _config = MiningConfig {
             enable_cpu: true,
             enable_gpu: false,
             cpu_threads: Some(1),
             mining_address: "bcrt1qtest".to_string(),
+            mining_mode: "solo".to_string(),
+            pool_config: None,
         };
 
         // Act: Start mining
@@ -532,7 +787,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_mining_stats_command() {
         // Arrange
-        let pool = Arc::new(Mutex::new(MiningThreadPool::new()));
+        let pool = Arc::new(Mutex::new(MiningThreadPool::new(0, 2)));
 
         // Act
         let stats = {

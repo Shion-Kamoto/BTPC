@@ -7,11 +7,11 @@
 //! - T022: Input/output validation (dust limits, address format)
 //!
 //! Usage:
-//! ```rust
+//! ```rust,ignore
 //! let tx = TransactionBuilder::new()
 //!     .add_recipient("btpc1q...", 50_000_000)
 //!     .select_utxos(&utxos)
-//!     .set_fee_rate(100)
+//!     .set_fee_rate_per_kb(10)  // 10 crd/KB default
 //!     .set_change_address("btpc1q...")
 //!     .build()?;
 //! ```
@@ -24,18 +24,30 @@ use serde::{Deserialize, Serialize};
 use crate::error::TransactionError;
 use crate::utxo_manager::{Transaction, TxInput, TxOutput, UTXO};
 
-/// Minimum output value to prevent dust (1000 satoshis / 0.00001 BTPC)
+/// Minimum output value to prevent dust (1000 credits / 0.00001 BTPC)
 pub const DUST_LIMIT: u64 = 1000;
 
-/// Default fee rate (satoshis per byte)
-pub const DEFAULT_FEE_RATE: u64 = 100;
+/// FIX 2026-02-23: Fee rates are now in credits per KILOBYTE (crd/KB).
+/// ML-DSA-87 signatures are ~7300 bytes per input, making per-byte rates too coarse.
+/// Per-KB granularity allows sub-1-crd/byte fees while keeping u64 integer math.
+///
+/// Default: 10 crd/KB → a 1-input TX (7,410 bytes) costs ~73 credits (0.00000073 BTPC)
+/// During high congestion, mempool can push this to 1000+ crd/KB (≈1 crd/byte)
+pub const DEFAULT_FEE_RATE_PER_KB: u64 = 10;
 
-/// Estimated size per input (bytes) - ML-DSA signature is large
-/// ML-DSA-87 signature: ~4627 bytes
-/// Previous output: ~36 bytes
-/// Script length: 1 byte
-/// Total: ~4664 bytes per input
-pub const ESTIMATED_INPUT_SIZE: usize = 4700;
+/// Maximum fee rate to prevent fee manipulation (10,000,000 crd/KB ≈ 10,000 crd/byte)
+pub const MAX_FEE_RATE_PER_KB: u64 = 10_000_000;
+
+/// Maximum total fee per transaction (1 BTPC = 100,000,000 credits)
+pub const MAX_TOTAL_FEE: u64 = 100_000_000;
+
+/// Estimated size per input (bytes) - ML-DSA-87 (Dilithium5) signature + pubkey
+/// ML-DSA-87 signature: ~4595 bytes
+/// ML-DSA-87 public key: ~2592 bytes
+/// Previous output ref: ~36 bytes
+/// Script length + sequence: ~5 bytes
+/// Total: ~7228 bytes per input (padded to 7300)
+pub const ESTIMATED_INPUT_SIZE: usize = 7300;
 
 /// Estimated size per output (bytes)
 /// Value: 8 bytes
@@ -54,27 +66,48 @@ pub struct TransactionBuilder {
     inputs: Vec<UTXO>,
     /// Outputs (recipients)
     outputs: Vec<(String, u64)>, // (address, amount)
-    /// Fee rate in satoshis per byte
-    fee_rate: u64,
+    /// Fee rate in credits per kilobyte (crd/KB)
+    fee_rate_per_kb: u64,
     /// Change address (where excess funds go)
     change_address: Option<String>,
     /// Transaction version
     version: u32,
     /// Lock time
     lock_time: u32,
+    /// Fork ID for replay protection (0=mainnet, 1=testnet, 2=regtest)
+    /// FIX 2025-12-03: Added network-aware fork_id instead of hardcoded value
+    fork_id: u8,
 }
 
 impl TransactionBuilder {
     /// Create a new transaction builder
+    ///
+    /// Note: fork_id defaults to 2 (regtest) for backward compatibility.
+    /// Call set_fork_id() to set the correct network value:
+    /// - 0 = Mainnet
+    /// - 1 = Testnet
+    /// - 2 = Regtest
     pub fn new() -> Self {
         Self {
             inputs: Vec::new(),
             outputs: Vec::new(),
-            fee_rate: DEFAULT_FEE_RATE,
+            fee_rate_per_kb: DEFAULT_FEE_RATE_PER_KB,
             change_address: None,
             version: 1,
             lock_time: 0,
+            fork_id: 2, // Default to regtest for backward compatibility
         }
+    }
+
+    /// Set fork ID for replay protection
+    ///
+    /// FIX 2025-12-03: Critical for cross-network transaction validity
+    /// - 0 = Mainnet
+    /// - 1 = Testnet
+    /// - 2 = Regtest
+    pub fn set_fork_id(mut self, fork_id: u8) -> Self {
+        self.fork_id = fork_id;
+        self
     }
 
     /// Add a recipient to the transaction
@@ -89,9 +122,9 @@ impl TransactionBuilder {
         self
     }
 
-    /// Set the fee rate (satoshis per byte)
-    pub fn set_fee_rate(mut self, rate: u64) -> Self {
-        self.fee_rate = rate;
+    /// Set the fee rate (credits per kilobyte), clamped to MAX_FEE_RATE_PER_KB
+    pub fn set_fee_rate_per_kb(mut self, rate: u64) -> Self {
+        self.fee_rate_per_kb = rate.clamp(1, MAX_FEE_RATE_PER_KB);
         self
     }
 
@@ -109,19 +142,22 @@ impl TransactionBuilder {
 
     /// T020: Calculate transaction fee based on size
     ///
-    /// Fee = transaction_size * fee_rate
-    /// Transaction size is estimated based on:
-    /// - Base transaction overhead
-    /// - Number of inputs (with ML-DSA signatures)
-    /// - Number of outputs
+    /// Fee = (transaction_size_bytes * fee_rate_per_kb + 1023) / 1024
+    /// Ceiling division ensures minimum 1 credit fee for any non-zero rate.
     pub fn calculate_fee(&self) -> Result<u64> {
         let estimated_size = self.estimate_transaction_size();
-        let fee = estimated_size as u64 * self.fee_rate;
+        // Ceiling division: (size * rate + 1023) / 1024
+        let fee = ((estimated_size as u64)
+            .saturating_mul(self.fee_rate_per_kb)
+            + 1023)
+            / 1024;
+
+        let fee = fee.min(MAX_TOTAL_FEE);
 
         println!("📊 Fee calculation:");
         println!("  Estimated size: {} bytes", estimated_size);
-        println!("  Fee rate: {} sat/byte", self.fee_rate);
-        println!("  Total fee: {} satoshis", fee);
+        println!("  Fee rate: {} crd/KB", self.fee_rate_per_kb);
+        println!("  Total fee: {} credits", fee);
 
         Ok(fee)
     }
@@ -144,7 +180,7 @@ impl TransactionBuilder {
                 let estimated_size = BASE_TX_SIZE
                     + (num_inputs * ESTIMATED_INPUT_SIZE)
                     + (num_outputs * ESTIMATED_OUTPUT_SIZE);
-                let estimated_fee = estimated_size as u64 * self.fee_rate;
+                let estimated_fee = (estimated_size as u64 * self.fee_rate_per_kb + 1023) / 1024;
 
                 let change = total_input.saturating_sub(total_output + estimated_fee);
                 return change > DUST_LIMIT;
@@ -180,7 +216,7 @@ impl TransactionBuilder {
                 .ok_or_else(|| anyhow!("Change address required but not set"))?;
 
             println!("💰 Change output:");
-            println!("  Amount: {} satoshis", change);
+            println!("  Amount: {} credits", change);
             println!("  Address: {}", change_addr);
 
             Ok(Some((change_addr.clone(), change)))
@@ -290,9 +326,11 @@ impl TransactionBuilder {
                     reason: format!("{}", e),
                 })?;
 
+            // Create proper P2PKH script (not just the hash)
+            let script = btpc_core::crypto::Script::new_p2pkh(addr.hash160());
             tx_outputs.push(TxOutput {
                 value: *amount,
-                script_pubkey: addr.hash160().to_vec(),
+                script_pubkey: script.serialize(),
             });
         }
 
@@ -305,9 +343,11 @@ impl TransactionBuilder {
                 }
             })?;
 
+            // Create proper P2PKH script for change output (not just the hash)
+            let script = btpc_core::crypto::Script::new_p2pkh(addr.hash160());
             tx_outputs.push(TxOutput {
                 value: change_amount,
-                script_pubkey: addr.hash160().to_vec(),
+                script_pubkey: script.serialize(),
             });
         }
 
@@ -320,14 +360,18 @@ impl TransactionBuilder {
             inputs,
             outputs: tx_outputs,
             lock_time: self.lock_time,
-            fork_id: 2, // Regtest network (quick fix - should be configurable)
+            fork_id: self.fork_id, // FIX 2025-12-03: Use network-aware fork_id
             block_height: None,
             confirmed_at: None,
             is_coinbase: false,
+            // FIX 2025-12-10: sender_address set during create_transaction via TransactionState
+            // TransactionBuilder doesn't know the sender address - it's set by the caller
+            sender_address: None,
         };
 
         println!("✅ Transaction built:");
         println!("  TX ID: {}", transaction.txid);
+        println!("  Fork ID: {} ({})", self.fork_id, match self.fork_id { 0 => "mainnet", 1 => "testnet", _ => "regtest" });
         println!("  Inputs: {}", transaction.inputs.len());
         println!("  Outputs: {}", transaction.outputs.len());
 
@@ -429,13 +473,15 @@ mod tests {
         let utxo = create_test_utxo(100_000_000);
 
         let builder = TransactionBuilder::new()
-            .add_recipient(&generate_test_address(2), 50_000_000) // Use deterministic seed 2
+            .add_recipient(&generate_test_address(2), 50_000_000)
             .select_utxos(&[utxo])
-            .set_fee_rate(100);
+            .set_fee_rate_per_kb(10); // 10 crd/KB
 
         let fee = builder.calculate_fee().unwrap();
         assert!(fee > 0);
-        println!("Calculated fee: {} satoshis", fee);
+        // 1 input + 2 outputs (recipient + change) = 10 + 7300 + 100 = 7410 bytes
+        // Fee = (7410 * 10 + 1023) / 1024 = 73 credits
+        println!("Calculated fee: {} credits", fee);
     }
 
     #[test]

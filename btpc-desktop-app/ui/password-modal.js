@@ -66,11 +66,14 @@ const PasswordModal = {
      * Attach event listeners to modal elements
      */
     attachEventListeners() {
-        // Show/hide password toggle
+        // Show/hide password toggle - uses SVG icons
         this.toggleBtn.addEventListener('click', () => {
             const type = this.input.type === 'password' ? 'text' : 'password';
             this.input.type = type;
-            this.toggleBtn.textContent = type === 'password' ? '👁️' : '🙈';
+            // Toggle between eye (show) and eye-off (hide) SVG icons
+            const iconSrc = type === 'password' ? 'src/assets/icons-svg/eye.svg' : 'src/assets/icons-svg/eye-off.svg';
+            const altText = type === 'password' ? 'Show password' : 'Hide password';
+            this.toggleBtn.innerHTML = `<img src="${iconSrc}" alt="${altText}" style="width: 20px; height: 20px; filter: brightness(0);">`;
         });
 
         // Unlock button
@@ -147,17 +150,24 @@ const PasswordModal = {
     showModal(migrationMode = false) {
         this.isMigrationMode = migrationMode;
 
+        // Get icon element
+        const iconEmoji = document.getElementById('password-modal-emoji');
+
         if (migrationMode) {
             // Migration Mode: Encrypt plaintext wallet metadata
-            this.modalTitle.textContent = '⚡ Upgrade to Encrypted Wallets';
+            if (iconEmoji) iconEmoji.textContent = '⚡';
+            this.modalTitle.textContent = 'Upgrade to Encrypted Wallets';
             this.modalDescription.textContent = 'Create a master password to encrypt your wallet metadata.';
             this.migrationNotice.classList.add('show');
             this.unlockBtn.textContent = 'Encrypt & Unlock';
             this.cancelBtn.style.display = 'block'; // Show cancel button
         } else {
-            // Unlock Mode: Normal password prompt
-            this.modalTitle.textContent = '🔒 Unlock Your Wallets';
-            this.modalDescription.textContent = 'Enter your master password to access your encrypted wallet metadata.';
+            // Unlock Mode: Normal password prompt - use SVG icon matching login page
+            if (iconEmoji) {
+                iconEmoji.innerHTML = '<img src="src/assets/icons-svg/lock.svg" alt="Lock" style="width: 32px; height: 32px;">';
+            }
+            this.modalTitle.textContent = 'Unlock Your Wallets';
+            this.modalDescription.textContent = 'Enter your master password to access your wallet data.';
             this.migrationNotice.classList.remove('show');
             this.unlockBtn.textContent = 'Unlock Wallets';
             this.cancelBtn.style.display = 'none'; // Hide cancel button
@@ -169,7 +179,7 @@ const PasswordModal = {
         // Clear previous state
         this.input.value = '';
         this.input.type = 'password';
-        this.toggleBtn.textContent = '👁️';
+        this.toggleBtn.innerHTML = '<img src="src/assets/icons-svg/eye.svg" alt="Show password" style="width: 20px; height: 20px; filter: brightness(0);">';
         this.hideError();
         this.hideLoading();
 
@@ -326,22 +336,31 @@ const PasswordModal = {
 window.PasswordModal = PasswordModal;
 
 /**
- * Lock wallets and show password modal
+ * Lock wallets and show password modal to re-authenticate
  * Called from settings page or lock button
+ *
+ * FIX 2025-12-20: This must NOT redirect to login.html because:
+ * - login.html stops the node and mining
+ * - Lock Wallets should only lock VIEW access, node+mining continue
+ *
+ * Instead, we initialize and show the PasswordModal on the current page.
  */
 window.lockWallets = async function() {
     try {
         const result = await window.invoke('lock_wallets');
         console.log('[PasswordModal] Wallets locked:', result);
 
-        // Show password modal
-        PasswordModal.showModal(false);
+        // Initialize PasswordModal if not already done (it's disabled by default)
+        // This sets up DOM references so showModal() works
+        if (!PasswordModal.overlay) {
+            PasswordModal.init();
+        }
 
-        // Optional: Reload page to clear wallet data from UI
-        // window.location.reload();
+        // Show password modal to re-authenticate
+        PasswordModal.showModal(false);
     } catch (error) {
         console.error('[PasswordModal] Failed to lock wallets:', error);
-        alert('Failed to lock wallets: ' + error);
+        throw error; // Re-throw so caller can handle and show error message
     }
 };
 
@@ -365,12 +384,23 @@ window.changeMasterPassword = async function(oldPassword, newPassword) {
     }
 };
 
-// Auto-initialize on page load
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        PasswordModal.init();
-    });
-} else {
-    // DOM already loaded
-    PasswordModal.init();
-}
+// FIX 2025-12-10: DISABLED - This modal conflicts with login.html authentication
+// The login page now handles all authentication via create_master_password / unlock_wallets.
+// This password-modal was a legacy "wallet encryption" feature that is now redundant.
+// The login.html flow:
+//   1. Fresh install: Shows "Create Master Password" → calls create_master_password
+//   2. Existing user: Shows "Welcome Back" → calls unlock_wallets
+// Both set SessionState.authenticated = true and unlock wallets.
+//
+// To re-enable for a separate wallet-level encryption feature in the future,
+// uncomment the code below and ensure it doesn't conflict with login.html.
+//
+// if (document.readyState === 'loading') {
+//     document.addEventListener('DOMContentLoaded', () => {
+//         PasswordModal.init();
+//     });
+// } else {
+//     // DOM already loaded
+//     PasswordModal.init();
+// }
+console.log('[PasswordModal] DISABLED - Authentication handled by login.html');

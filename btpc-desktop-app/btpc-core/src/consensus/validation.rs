@@ -231,8 +231,8 @@ mod tests {
         if let Ok(proof) = ProofOfWork::mine(&test_block.header, &target) {
             test_block.header.nonce = proof.nonce() as u32;
             // Update bits to match the easy target (bits should encode the same difficulty)
-            // For now, use a bits value that corresponds to easy mining
-            test_block.header.bits = 0x207fffff; // Already set, but keeping it explicit
+            // FIX 2025-12-27: Updated to SHA-512 compatible value
+            test_block.header.bits = 0x407fffff; // SHA-512 instant mining
         }
 
         // Should pass all validations for a properly constructed test block with valid PoW

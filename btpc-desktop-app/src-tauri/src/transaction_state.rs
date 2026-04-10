@@ -32,6 +32,11 @@ pub struct TransactionState {
     /// Wallet ID for this transaction
     #[serde(skip_serializing_if = "Option::is_none")]
     pub wallet_id: Option<String>,
+    /// FIX 2025-12-10: Sender address for reliable SENT transaction indexing
+    /// Stored during create_transaction, used during broadcast_transaction
+    /// This avoids fragile UTXO lookups that often fail
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sender_address: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -80,6 +85,7 @@ impl TransactionStateManager {
                 reservation_token: None,
                 utxo_keys: None,
                 wallet_id: None,
+                sender_address: None,
             });
     }
 
@@ -108,10 +114,13 @@ impl TransactionStateManager {
                 reservation_token: None,
                 utxo_keys: None,
                 wallet_id: None,
+                sender_address: None,
             });
     }
 
-    /// Set transaction with full details including reservation info
+    /// Set transaction with full details including reservation info and sender address
+    /// FIX 2025-12-10: Added sender_address parameter for reliable SENT transaction indexing
+    #[allow(clippy::too_many_arguments)]
     pub fn set_transaction_with_reservation(
         &self,
         tx_id: String,
@@ -120,6 +129,7 @@ impl TransactionStateManager {
         reservation_token: String,
         utxo_keys: Vec<String>,
         wallet_id: String,
+        sender_address: String,
     ) {
         let mut txs = self.transactions.lock();
         let now = Utc::now().timestamp();
@@ -132,6 +142,7 @@ impl TransactionStateManager {
                 state.reservation_token = Some(reservation_token.clone());
                 state.utxo_keys = Some(utxo_keys.clone());
                 state.wallet_id = Some(wallet_id.clone());
+                state.sender_address = Some(sender_address.clone());
             })
             .or_insert(TransactionState {
                 transaction_id: tx_id,
@@ -143,6 +154,7 @@ impl TransactionStateManager {
                 reservation_token: Some(reservation_token),
                 utxo_keys: Some(utxo_keys),
                 wallet_id: Some(wallet_id),
+                sender_address: Some(sender_address),
             });
     }
 
@@ -159,6 +171,22 @@ impl TransactionStateManager {
 
     pub fn remove_state(&self, tx_id: &str) {
         self.transactions.lock().remove(tx_id);
+    }
+
+    /// Migrate transaction state from old ID to new ID
+    /// Used when broadcast returns the real txid (replacing temp ID)
+    pub fn migrate_transaction_id(&self, old_tx_id: &str, new_tx_id: String) {
+        let mut txs = self.transactions.lock();
+        if let Some(mut state) = txs.remove(old_tx_id) {
+            state.transaction_id = new_tx_id.clone();
+            state.updated_at = Utc::now().timestamp();
+            // Also update the transaction's txid if present
+            if let Some(ref mut tx) = state.transaction {
+                tx.txid = new_tx_id.clone();
+            }
+            txs.insert(new_tx_id, state);
+            println!("📝 Migrated transaction state: {} -> {}", old_tx_id, &txs.keys().last().unwrap_or(&String::new())[..16.min(txs.keys().last().unwrap_or(&String::new()).len())]);
+        }
     }
 
     /// Get all transactions that are in Broadcast or Confirming state

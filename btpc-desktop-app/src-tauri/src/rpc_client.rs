@@ -31,6 +31,47 @@ pub trait RpcClientInterface {
     ) -> impl std::future::Future<Output = Result<String>> + Send;
 }
 
+/// Mining backend that can be either solo (embedded node) or pool (Stratum V2).
+///
+/// Uses enum dispatch instead of dynamic dispatch (`dyn RpcClientInterface`)
+/// to avoid object safety issues with async traits.
+pub enum MiningBackend {
+    /// Solo mining via embedded node
+    Solo(std::sync::Arc<tokio::sync::RwLock<crate::embedded_node::EmbeddedNode>>),
+    /// Pool mining via Stratum V2 client
+    Pool(std::sync::Arc<tokio::sync::RwLock<crate::stratum::StratumPoolClient>>),
+}
+
+impl RpcClientInterface for MiningBackend {
+    async fn get_block_template(&self) -> Result<BlockTemplate> {
+        match self {
+            MiningBackend::Solo(node) => {
+                let n = node.read().await;
+                n.get_block_template().await
+            }
+            MiningBackend::Pool(client) => {
+                // Delegates to the RpcClientInterface impl on Arc<RwLock<StratumPoolClient>>
+                // defined in stratum/pool_client.rs
+                RpcClientInterface::get_block_template(client).await
+            }
+        }
+    }
+
+    async fn submit_block(&self, block_hex: &str) -> Result<String> {
+        match self {
+            MiningBackend::Solo(node) => {
+                let mut n = node.write().await;
+                n.submit_block(block_hex).await
+            }
+            MiningBackend::Pool(client) => {
+                // Delegates to the RpcClientInterface impl on Arc<RwLock<StratumPoolClient>>
+                // which handles pool share submission + B5 dual-mode local node submission
+                RpcClientInterface::submit_block(client, block_hex).await
+            }
+        }
+    }
+}
+
 /// JSON-RPC 2.0 Request
 #[derive(Debug, Clone, Serialize)]
 struct JsonRpcRequest {
@@ -42,6 +83,7 @@ struct JsonRpcRequest {
 
 /// JSON-RPC 2.0 Response
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 struct JsonRpcResponse {
     jsonrpc: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -53,6 +95,7 @@ struct JsonRpcResponse {
 
 /// JSON-RPC 2.0 Error
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 struct JsonRpcError {
     code: i32,
     message: String,
@@ -172,10 +215,11 @@ impl RpcClient {
         }
     }
 
-    /// Create RPC client with default settings (localhost:18360 regtest)
+    /// Create RPC client with default settings (localhost:18340 mainnet)
     /// Note: Use explicit new() for production with proper network detection
+    #[allow(clippy::should_implement_trait)]
     pub fn default() -> Self {
-        Self::new("127.0.0.1", 18360) // Regtest default for desktop app development
+        Self::new("127.0.0.1", 18340) // Default mainnet RPC port
     }
 
     /// Get next request ID
@@ -403,7 +447,7 @@ impl RpcClient {
     /// # Arguments
     /// * `conf_target` - Confirmation target in blocks (e.g., 6 for ~1 hour)
     ///
-    /// Returns estimated fee rate in satoshis per byte
+    /// Returns estimated fee rate in credits per byte
     pub async fn estimate_smart_fee(&self, conf_target: u64) -> Result<f64> {
         let result = self
             .call("estimatesmartfee", Some(json!([conf_target])))
@@ -416,18 +460,16 @@ impl RpcClient {
                 .ok_or_else(|| anyhow!("Invalid feerate in response"))
         } else {
             // Fallback to conservative default if RPC doesn't support estimatesmartfee
-            Ok(0.00001) // 1000 satoshis per byte default
+            Ok(0.00001) // 1000 credits per byte default
         }
     }
 }
 
 // Implement the trait for RpcClient
 impl RpcClientInterface for RpcClient {
-    fn get_block_template(
+    async fn get_block_template(
         &self,
-    ) -> impl std::future::Future<Output = Result<BlockTemplate>> + Send {
-        async move { self.get_block_template().await }
-    }
+    ) -> Result<BlockTemplate> { self.get_block_template().await }
 
     fn submit_block(
         &self,
@@ -463,7 +505,7 @@ mod tests {
     #[tokio::test]
     async fn test_default_client() {
         let client = RpcClient::default();
-        assert_eq!(client.endpoint, "http://127.0.0.1:18360"); // Updated for regtest default
+        assert_eq!(client.endpoint, "http://127.0.0.1:18340"); // Mainnet default
     }
 
     #[tokio::test]

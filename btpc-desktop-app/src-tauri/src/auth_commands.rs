@@ -137,6 +137,10 @@ pub fn create_master_password(
     password: String,
     password_confirm: String,
 ) -> CreatePasswordResponse {
+    // FIX 2026-02-21 (C2): Immediately zeroize passwords on function scope exit
+    let password = Zeroizing::new(password);
+    let password_confirm = Zeroizing::new(password_confirm);
+
     // Validation: password length >= 8
     if password.len() < 8 {
         return CreatePasswordResponse {
@@ -222,7 +226,7 @@ pub fn create_master_password(
     // Encrypt the password hash with AES-256-GCM
     // We use a simple key derivation: SHA-256 hash of the password as encryption key
     use sha2::{Digest, Sha256};
-    let encryption_key_material = Zeroizing::new(format!("{}:encryption", password));
+    let encryption_key_material = Zeroizing::new(format!("{}:encryption", &*password));
     let mut hasher = Sha256::new();
     hasher.update(encryption_key_material.as_bytes());
     let encryption_key_vec = hasher.finalize();
@@ -262,16 +266,20 @@ pub fn create_master_password(
 
     // Update session state (login)
     {
-        let mut state = session.write().unwrap();
+        let mut state = session
+            .write()
+            .expect("SessionState RwLock poisoned - indicates prior panic in auth module");
         state.login();
 
         // Emit session:login event
         let timestamp = SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .expect("System time before UNIX epoch - clock misconfiguration")
             .as_secs();
         let event = SessionLoginEvent {
-            session_token: state.get_session_token().unwrap(),
+            session_token: state
+                .get_session_token()
+                .expect("Session token missing after login() - internal state error"),
             timestamp,
         };
         let _ = app.emit("session:login", event);
@@ -306,8 +314,27 @@ pub fn create_master_password(
 pub fn login(
     app: AppHandle,
     session: State<RwLock<SessionState>>,
+    app_state: State<'_, crate::AppState>,
     password: String,
 ) -> LoginResponse {
+    // FIX 2026-02-21 (C2): Immediately wrap password in Zeroizing to ensure
+    // it's wiped from memory when this function returns or on any early exit.
+    let password = Zeroizing::new(password);
+
+    // FIX 2026-02-21 (H4): Check brute-force lockout before any work
+    {
+        let state = session
+            .read()
+            .expect("SessionState RwLock poisoned");
+        if state.is_locked_out() {
+            return LoginResponse {
+                success: false,
+                message: None,
+                error: Some("ACCOUNT_LOCKED".to_string()),
+            };
+        }
+    }
+
     let creds_path = get_credentials_path();
 
     // Load credentials from file
@@ -337,7 +364,7 @@ pub fn login(
 
     // Decrypt stored password hash
     use sha2::{Digest, Sha256};
-    let encryption_key_material = Zeroizing::new(format!("{}:encryption", password));
+    let encryption_key_material = Zeroizing::new(format!("{}:encryption", &*password));
     let mut hasher = Sha256::new();
     hasher.update(encryption_key_material.as_bytes());
     let encryption_key_vec = hasher.finalize();
@@ -362,11 +389,19 @@ pub fn login(
 
     // Compare derived key with stored hash using constant-time comparison
     if !constant_time_compare(derived_key.as_ref(), stored_hash.as_ref()) {
+        // FIX 2026-02-21 (H4): Record failed attempt for brute-force protection
+        {
+            let mut state = session
+                .write()
+                .expect("SessionState RwLock poisoned");
+            state.record_failed_attempt();
+        }
+
         // REM-C002: Emit login_failed event
         app.emit("login_failed", serde_json::json!({
             "timestamp": SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
+                .expect("System time before UNIX epoch - clock misconfiguration")
                 .as_millis(),
             "reason": "incorrect_password"
         })).ok();
@@ -378,26 +413,41 @@ pub fn login(
         };
     }
 
-    // Password matches! Update last_used_at and save
+    // Password matches! Clear failed attempts counter
+    {
+        let mut state = session
+            .write()
+            .expect("SessionState RwLock poisoned");
+        state.clear_failed_attempts();
+    }
+
+    // Update last_used_at and save
     credentials.update_last_used();
     let _ = credentials.save_to_file(&creds_path); // Ignore errors on metadata update
 
     // Update session state (login)
     {
-        let mut state = session.write().unwrap();
+        let mut state = session
+            .write()
+            .expect("SessionState RwLock poisoned - indicates prior panic in auth module");
         state.login();
 
         // Emit session:login event
         let timestamp = SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .expect("System time before UNIX epoch - clock misconfiguration")
             .as_secs();
         let event = SessionLoginEvent {
-            session_token: state.get_session_token().unwrap(),
+            session_token: state
+                .get_session_token()
+                .expect("Session token missing after login() - internal state error"),
             timestamp,
         };
         let _ = app.emit("session:login", event);
     }
+
+    // Re-enable background polling loops (stopped during logout)
+    app_state.node_active.store(true, std::sync::atomic::Ordering::SeqCst);
 
     LoginResponse {
         success: true,
@@ -410,35 +460,91 @@ pub fn login(
 // T040: logout Command
 // ============================================================================
 
-/// Ends user session
+/// Ends user session and locks wallets
 ///
 /// # Contract
 /// - No input
 /// - Always succeeds
-/// - Side Effects: Emits session:logout, updates SessionState (authenticated=false)
+/// - Side Effects: Emits session:logout, updates SessionState (authenticated=false), locks wallets
 ///
 /// # Returns
 /// `{ success: true, message: "Logged out successfully" }`
 #[tauri::command(rename_all = "snake_case")]
-pub fn logout(app: AppHandle, session: State<RwLock<SessionState>>) -> LogoutResponse {
+pub async fn logout(
+    app: AppHandle,
+    session: State<'_, RwLock<SessionState>>,
+    app_state: State<'_, crate::AppState>,
+) -> Result<LogoutResponse, String> {
+    eprintln!("[BTPC::Auth] Logout initiated - stopping node and mining...");
+
     // Update session state (logout)
     {
-        let mut state = session.write().unwrap();
+        let mut state = session
+            .write()
+            .expect("SessionState RwLock poisoned - indicates prior panic in auth module");
         state.logout();
 
         // Emit session:logout event
         let timestamp = SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .expect("System time before UNIX epoch - clock misconfiguration")
             .as_secs();
         let event = SessionLogoutEvent { timestamp };
         let _ = app.emit("session:logout", event);
     }
 
-    LogoutResponse {
+    // Lock wallets so user must re-authenticate
+    {
+        let mut locked = app_state.wallets_locked.write().await;
+        *locked = true;
+    }
+
+    // Stop background polling loops so they release locks on embedded_node
+    app_state.node_active.store(false, std::sync::atomic::Ordering::SeqCst);
+
+    // Stop mining if active
+    {
+        app_state.network_monitor_active.store(false, std::sync::atomic::Ordering::SeqCst);
+
+        let mut pool_guard = app_state.mining_pool.write().await;
+        if let Some(ref mut pool) = *pool_guard {
+            if pool.get_stats().is_mining {
+                eprintln!("[BTPC::Auth] Logout - stopping mining...");
+                let _ = pool.stop_all().await;
+            }
+        }
+    }
+
+    // Disconnect embedded node (clear peers, flush DB)
+    {
+        let mut node = app_state.embedded_node.write().await;
+        node.clear_peers();
+        if let Err(e) = node.shutdown().await {
+            eprintln!("[BTPC::Auth] Node shutdown error on logout: {}", e);
+        } else {
+            eprintln!("[BTPC::Auth] Node disconnected on logout");
+        }
+    }
+
+    // Update node status to stopped (emits node_status_changed event for UI)
+    let _ = app_state.node_status.update(|status| {
+        status.running = false;
+        status.pid = None;
+        status.peer_count = 0;
+        status.sync_progress = 0.0;
+    }, &app);
+    eprintln!("[BTPC::Auth] Node status set to stopped");
+
+    // Also stop the external node process if running
+    if app_state.process_manager.is_running("node") {
+        let _ = app_state.process_manager.kill("node");
+        eprintln!("[BTPC::Auth] External node process stopped");
+    }
+
+    Ok(LogoutResponse {
         success: true,
         message: "Logged out successfully".to_string(),
-    }
+    })
 }
 
 // ============================================================================
@@ -457,7 +563,9 @@ pub fn logout(app: AppHandle, session: State<RwLock<SessionState>>) -> LogoutRes
 /// `{ authenticated: boolean, session_token: string | null }`
 #[tauri::command(rename_all = "snake_case")]
 pub fn check_session(session: State<RwLock<SessionState>>) -> CheckSessionResponse {
-    let mut state = session.write().unwrap();
+    let mut state = session
+        .write()
+        .expect("SessionState RwLock poisoned - indicates prior panic in auth module");
 
     // REM-C002: Refresh activity timestamp on each check
     state.refresh_activity();

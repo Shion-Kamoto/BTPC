@@ -17,10 +17,8 @@ pub mod rpc_client;
 pub mod transaction_builder;
 pub mod transaction_commands_core; // TD-001: Testable business logic (no Tauri deps)
 pub mod transaction_state; // TD-001: Transaction state management (moved from transaction_commands.rs)
-                           // Note: transaction_commands is in main.rs only (needs access to AppState)
 
 // Authentication modules (Feature 006: Application-Level Login/Logout)
-pub mod auth_commands;
 pub mod auth_crypto;
 pub mod auth_state;
 
@@ -29,13 +27,13 @@ pub mod gpu_health_monitor; // GPU health monitoring and thermal management
 pub mod gpu_miner; // OpenCL GPU mining implementation
 pub mod gpu_stats_persistence; // GPU stats persistence and historical tracking
 pub mod gpu_stats_types;
-pub mod mining_thread_pool; // Unified CPU+GPU mining thread pool // Feature 011: GPU stats types (shared for testing)
-                                                                  // Note: gpu_stats_commands is in main.rs only (needs AppState)
+pub mod mining_thread_pool; // Unified CPU+GPU mining thread pool
+pub mod thermal_throttle; // Thermal throttling for GPU mining
 pub mod debug_logger; // Comprehensive debug event logger
 
 // Embedded blockchain node modules
 pub mod embedded_node;
-pub mod unified_database; // Unified RocksDB database for blockchain and UTXO data // In-process blockchain node (eliminates external btpc_node dependency)
+pub mod unified_database; // Unified RocksDB database for blockchain and UTXO data
 pub mod security; // Security manager for wallet encryption
 pub mod btpc_integration; // BTPC node integration
 pub mod wallet_manager; // Wallet management and balance caching (depends on security)
@@ -43,8 +41,32 @@ pub mod wallet_manager; // Wallet management and balance caching (depends on sec
 // Persistent settings storage
 pub mod settings_storage; // RocksDB-based settings persistence
 
-// Transaction storage for history
-pub mod tx_storage; // RocksDB-based transaction history storage
+// Transaction history storage
+pub mod tx_history; // SQLite-based transaction history storage (replaces RocksDB tx_storage)
+
+// Disk space monitoring (FR-058)
+pub mod disk_space_monitor; // System disk space monitoring and alerts
+
+// Chain reorganization handling (FR-057)
+pub mod reorg_handler; // Chain reorg detection, execution, and UTXO rollback
+
+// Stratum V2-BTPC pool mining protocol
+pub mod stratum;
+
+// Note: fee_estimator is NOT exported here because it depends on EmbeddedNode
+// which creates circular import issues. It's declared in main.rs instead.
+
+// Test-compatible command stubs (for integration tests)
+// These provide the same API as production commands but without Tauri AppState
+#[path = "commands_test/mod.rs"]
+pub mod commands;
+
+// Wallet and auth command stubs for integration tests
+#[path = "wallet_commands_stub.rs"]
+pub mod wallet_commands;
+
+#[path = "auth_commands_stub.rs"]
+pub mod auth_commands;
 
 // Also re-export common items for convenience
 pub use embedded_node::{

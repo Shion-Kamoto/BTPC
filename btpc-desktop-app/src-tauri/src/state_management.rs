@@ -13,7 +13,7 @@
 //!
 //! # Usage
 //!
-//! ```rust
+//! ```rust,ignore
 //! use state_management::StateManager;
 //!
 //! // Create managed state
@@ -53,7 +53,7 @@ impl<T: Clone + Serialize + Send + 'static> StateManager<T> {
     /// * `initial_state` - The initial value for the managed state
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,ignore
     /// let node_status = StateManager::new("node_status", NodeStatus::default());
     /// ```
     pub fn new(event_prefix: impl Into<String>, initial_state: T) -> Self {
@@ -70,7 +70,7 @@ impl<T: Clone + Serialize + Send + 'static> StateManager<T> {
     /// Returns `BtpcError::MutexPoisoned` if another thread panicked while holding the lock.
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,ignore
     /// let status = node_status.read()?;
     /// println!("Node running: {}", status.running);
     /// ```
@@ -94,7 +94,7 @@ impl<T: Clone + Serialize + Send + 'static> StateManager<T> {
     /// Returns the updated state copy on success, or `BtpcError::MutexPoisoned` on lock failure.
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,ignore
     /// node_status.update(|status| {
     ///     status.running = true;
     ///     status.block_height = 12345;
@@ -158,7 +158,7 @@ impl<T: Clone + Serialize + Send + 'static> StateManager<T> {
     /// Replace the entire state with a new value and emit event
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,ignore
     /// let new_status = NodeStatus { running: true, ..Default::default() };
     /// node_status.set(new_status, &app_handle)?;
     /// ```
@@ -188,7 +188,7 @@ impl<T: Clone + Serialize + Send + 'static> StateManager<T> {
 /// Helper macro for creating multiple StateManagers
 ///
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// state_managers! {
 ///     app_handle,
 ///     node_status: NodeStatus = NodeStatus::default(),

@@ -29,7 +29,8 @@ pub enum ProcessStatus {
 
 pub struct ProcessManager {
     processes: Arc<Mutex<HashMap<String, ProcessInfo>>>,
-    auto_restart: bool,
+    #[allow(dead_code)]
+    auto_restart: bool, // Reserved for auto-restart functionality
 }
 
 impl ProcessManager {

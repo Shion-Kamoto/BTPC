@@ -56,12 +56,12 @@ impl ProofOfWork {
         header: &crate::blockchain::BlockHeader,
         target: &MiningTarget,
     ) -> Result<Self, PoWError> {
-        use rand::Rng;
+        use rand::{rngs::OsRng, Rng};
 
         let mut mining_header = header.clone();
 
         // Start from random nonce to avoid miners competing on same nonces (Issue #10)
-        let start_nonce = rand::thread_rng().gen::<u32>();
+        let start_nonce = OsRng.gen::<u32>();
         let mut nonce = start_nonce;
 
         // Try different nonce values until we find a valid hash

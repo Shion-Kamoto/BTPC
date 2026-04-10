@@ -53,6 +53,7 @@ pub const SALT_SIZE: usize = 16; // 128 bits
 /// Error type for cryptography operations
 #[derive(Debug)]
 #[allow(dead_code)]
+#[allow(clippy::enum_variant_names)]
 pub enum CryptoError {
     Argon2Error(String),
     AesGcmError(String),
@@ -153,7 +154,10 @@ pub fn generate_random_salt() -> Result<[u8; SALT_SIZE], CryptoError> {
 // T172: Password Entropy Calculation (NIST SP 800-63B)
 // ============================================================================
 
-/// Minimum entropy required in bits per NIST SP 800-63B and FR-001
+/// Minimum entropy required in bits per NIST SP 800-63B
+/// Requirement FR-001: 80 bits minimum for master password
+/// Note: Achieving 80 bits requires ~14+ chars with mixed case, numbers, symbols
+/// Example: "X9$mK#pL2@vN8!" = ~85 bits
 pub const MINIMUM_ENTROPY_BITS: f64 = 80.0;
 
 /// Calculates Shannon entropy of a password in bits
@@ -170,7 +174,7 @@ pub const MINIMUM_ENTROPY_BITS: f64 = 80.0;
 /// Entropy value in bits
 ///
 /// # Examples
-/// ```
+/// ```rust,ignore
 /// let weak_password = "password123";
 /// let entropy = calculate_password_entropy(weak_password);
 /// assert!(entropy < 80.0); // Too weak

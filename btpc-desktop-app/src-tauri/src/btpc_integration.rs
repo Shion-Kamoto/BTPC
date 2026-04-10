@@ -38,9 +38,12 @@ impl BtpcIntegration {
     pub fn execute_binary(&self, name: &str, args: &[&str]) -> Result<Output> {
         let binary_path = self.binary_path(name);
 
-        println!("Attempting to execute binary: {}", binary_path.display());
-        println!("Binary exists: {}", binary_path.exists());
-        println!("Arguments: {:?}", args);
+        #[cfg(debug_assertions)]
+        {
+            eprintln!("Attempting to execute binary: {}", binary_path.display());
+            eprintln!("Binary exists: {}", binary_path.exists());
+            eprintln!("Arguments: {:?}", args);
+        }
 
         if !binary_path.exists() {
             return Err(anyhow!(
@@ -52,13 +55,15 @@ impl BtpcIntegration {
 
         let output = Command::new(&binary_path).args(args).output()?;
 
-        println!("Command executed successfully");
-        println!("Exit code: {:?}", output.status.code());
-        println!("Stdout length: {}", output.stdout.len());
-        println!("Stderr length: {}", output.stderr.len());
-
-        if !output.stderr.is_empty() {
-            println!("Stderr: {}", String::from_utf8_lossy(&output.stderr));
+        #[cfg(debug_assertions)]
+        {
+            eprintln!("Command executed successfully");
+            eprintln!("Exit code: {:?}", output.status.code());
+            eprintln!("Stdout length: {}", output.stdout.len());
+            eprintln!("Stderr length: {}", output.stderr.len());
+            if !output.stderr.is_empty() {
+                eprintln!("Stderr: {}", String::from_utf8_lossy(&output.stderr));
+            }
         }
 
         Ok(output)
@@ -102,11 +107,22 @@ impl BtpcIntegration {
 
     /// Create wallet by generating ML-DSA keypair with compressed address and encrypted private key
     /// Returns (address, seed_phrase, private_key_hex)
+    ///
+    /// # Arguments
+    ///
+    /// * `wallet_file` - Path to save the wallet file
+    /// * `password` - Password for wallet encryption
+    /// * `network` - Network type (Mainnet, Testnet, Regtest) - affects address prefix
+    ///
+    /// Create a new wallet with ML-DSA keypair
+    /// Returns: (address, seed_phrase, private_key_hex, seed_hex)
+    /// FIX 2025-12-03: Added seed_hex (64 chars) for private key import
     pub fn create_wallet(
         &self,
         wallet_file: &Path,
         password: &str,
-    ) -> Result<(String, String, String)> {
+        network: Network,
+    ) -> Result<(String, String, String, String)> {
         // Ensure wallet directory exists
         if let Some(wallet_dir) = wallet_file.parent() {
             fs::create_dir_all(wallet_dir)?;
@@ -114,9 +130,10 @@ impl BtpcIntegration {
 
         // T015 FIX: Generate deterministic seed for key generation
         // This enables signing capability after wallet load
-        use rand::RngCore;
+        // SECURITY: Use OsRng (OS entropy) instead of thread_rng for cryptographic key material
+        use rand::{rngs::OsRng, RngCore};
         let mut seed = [0u8; 32];
-        rand::thread_rng().fill_bytes(&mut seed);
+        OsRng.fill_bytes(&mut seed);
 
         // T015 FIX: Generate ML-DSA keypair from seed (enables signing after load)
         let private_key = PrivateKey::from_seed(&seed)
@@ -124,8 +141,12 @@ impl BtpcIntegration {
         let public_key = private_key.public_key();
 
         // Create compressed Base58 address (20 bytes hashed, ~34 chars encoded)
-        let address = Address::from_public_key(&public_key, Network::Regtest);
+        // FIX 2025-12-01: Use network parameter for correct address prefix
+        let address = Address::from_public_key(&public_key, network);
         let address_string = address.to_string();
+
+        eprintln!("   Network: {:?}", network);
+        eprintln!("   Address: {}", address_string);
 
         // Get private key bytes
         let private_key_bytes = private_key.to_bytes();
@@ -160,7 +181,7 @@ impl BtpcIntegration {
         // Create WalletData structure with wallet_id
         let wallet_data = WalletData {
             wallet_id, // ← KEY FIX: Include wallet_id for backups
-            network: "mainnet".to_string(),
+            network: network.as_str().to_string(),
             keys: vec![key_entry],
             created_at: now,
             modified_at: now,
@@ -177,12 +198,87 @@ impl BtpcIntegration {
             .save_to_file(&wallet_dat_file)
             .map_err(|e| anyhow!("Failed to save encrypted wallet: {}", e))?;
 
-        // Return address, seed phrase, and hex key for display
-        Ok((address_string, seed_phrase, private_key_hex))
+        // FIX 2025-12-03: Also return seed_hex (64 chars) for private key import
+        let seed_hex = hex::encode(seed);
+
+        // Return address, seed phrase, private key hex, and seed hex for display
+        Ok((address_string, seed_phrase, private_key_hex, seed_hex))
     }
 
     // Legacy SHA-256 encryption methods removed (replaced by Argon2id EncryptedWallet)
     // See SESSION_SUMMARY_2025-10-19_ARGON2ID_GREEN_PHASE.md for migration details
+
+    /// Create wallet from existing seed (for mnemonic/key import)
+    /// FIX 2025-12-14: This method enables proper wallet import without regenerating keys
+    /// Returns: (address, private_key_hex)
+    pub fn create_wallet_from_seed(
+        &self,
+        wallet_file: &Path,
+        password: &str,
+        seed: [u8; 32],
+        network: Network,
+    ) -> Result<(String, String)> {
+        // Ensure wallet directory exists
+        if let Some(wallet_dir) = wallet_file.parent() {
+            fs::create_dir_all(wallet_dir)?;
+        }
+
+        // Generate ML-DSA keypair from provided seed
+        let private_key = PrivateKey::from_seed(&seed)
+            .map_err(|e| anyhow!("Failed to generate private key from seed: {}", e))?;
+        let public_key = private_key.public_key();
+
+        // Create compressed Base58 address
+        let address = Address::from_public_key(&public_key, network);
+        let address_string = address.to_string();
+
+        eprintln!("   Network: {:?}", network);
+        eprintln!("   Address: {}", address_string);
+
+        // Get private key bytes
+        let private_key_bytes = private_key.to_bytes();
+        let private_key_hex = hex::encode(private_key_bytes);
+
+        // Create encrypted wallet file with Argon2id
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        let key_entry = KeyEntry::from_private_key_with_seed(
+            &private_key,
+            seed,
+            "main".to_string(),
+            address_string.clone(),
+        );
+
+        use uuid::Uuid;
+        let wallet_id = Uuid::new_v4().to_string();
+
+        let wallet_data = WalletData {
+            wallet_id,
+            network: match network {
+                Network::Mainnet => "mainnet".to_string(),
+                Network::Testnet => "testnet".to_string(),
+                Network::Regtest => "regtest".to_string(),
+            },
+            keys: vec![key_entry],
+            created_at: now,
+            modified_at: now,
+        };
+
+        let secure_password = SecurePassword::new(password.to_string());
+        let encrypted = EncryptedWallet::encrypt(&wallet_data, &secure_password)
+            .map_err(|e| anyhow!("Argon2id encryption failed: {}", e))?;
+
+        let wallet_dat_file = wallet_file.with_extension("dat");
+        encrypted
+            .save_to_file(&wallet_dat_file)
+            .map_err(|e| anyhow!("Failed to save encrypted wallet: {}", e))?;
+
+        eprintln!("✅ Wallet created from seed: {}", address_string);
+        Ok((address_string, private_key_hex))
+    }
 
     /// Get wallet balance
     pub fn get_wallet_balance(&self, wallet_file: &Path) -> Result<String> {
@@ -382,3 +478,5 @@ fn get_platform_info() -> String {
     format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH)
 }
 
+#[cfg(test)]
+mod tests;

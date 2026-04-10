@@ -8,6 +8,8 @@
 //! - T030: cancel_transaction - Cancel pending transaction
 //! - T031: estimate_fee - Calculate transaction fee
 
+use crate::auth_state::SessionState;
+use crate::config::NetworkType;
 use crate::events::{ReleaseReason, TransactionEvent, UTXOEvent};
 use crate::AppState;
 use btpc_core::crypto::{Address, Script};
@@ -19,7 +21,19 @@ use btpc_desktop_app::transaction_state::{
 use btpc_desktop_app::utxo_manager::Transaction;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use std::sync::RwLock;
 use tauri::{AppHandle, Emitter, State};
+
+// FIX 2026-02-21 (H1): Helper to verify session is authenticated before transaction operations
+fn require_authenticated_session(session: &RwLock<SessionState>) -> Result<(), String> {
+    let state = session
+        .read()
+        .expect("SessionState RwLock poisoned");
+    if !state.is_authenticated() {
+        return Err("SESSION_NOT_AUTHENTICATED: Login required for transaction operations".to_string());
+    }
+    Ok(())
+}
 
 /// Request to create a transaction
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,27 +63,18 @@ pub struct CreateTransactionResponse {
 #[tauri::command]
 pub async fn create_transaction(
     state: State<'_, AppState>,
-    wallet_id: String,
-    from_address: String,
-    to_address: String,
-    amount: u64,
-    fee_rate: Option<u64>,
+    session: State<'_, RwLock<SessionState>>,
+    request: CreateTransactionRequest,
     app: AppHandle,
 ) -> Result<CreateTransactionResponse, String> {
-    // Reconstruct request from flattened parameters
-    let request = CreateTransactionRequest {
-        wallet_id: wallet_id.clone(),
-        from_address: from_address.clone(),
-        to_address: to_address.clone(),
-        amount,
-        fee_rate,
-    };
+    // FIX 2026-02-21 (H1): Verify session is authenticated before creating transaction
+    require_authenticated_session(&session)?;
 
     println!("🔨 Creating transaction:");
-    println!("  Wallet: {}", wallet_id);
-    println!("  From: {}", from_address);
-    println!("  To: {}", to_address);
-    println!("  Amount: {} satoshis", amount);
+    println!("  Wallet: {}", request.wallet_id);
+    println!("  From: {}", request.from_address);
+    println!("  To: {}", request.to_address);
+    println!("  Amount: {} credits", request.amount);
 
     // Emit transaction initiated event
     let _ = app.emit(
@@ -93,13 +98,19 @@ pub async fn create_transaction(
     // Get tx_state from AppState
     let tx_state = &state.tx_state_manager;
 
+    // Get current blockchain height for coinbase maturity check
+    let current_height = {
+        let node = state.embedded_node.read().await;
+        node.get_height()
+    };
+
     // Scope the utxo_manager lock to ensure it's dropped before async operations
     let (utxos, utxo_keys, reservation, temp_tx_id, total_utxo_value, inputs_count) = {
         let utxo_manager = state.utxo_manager.lock().expect("Mutex poisoned");
 
-        // Select UTXOs
+        // Select UTXOs (with coinbase maturity enforcement)
         let utxos = utxo_manager
-            .select_utxos_for_amount(&request.from_address, request.amount + 500_000) // Add buffer for fee
+            .select_utxos_for_amount(&request.from_address, request.amount + 500_000, current_height) // Add buffer for fee
             .map_err(|e| format!("Failed to select UTXOs: {}", e))?;
 
         if utxos.is_empty() {
@@ -170,17 +181,29 @@ pub async fn create_transaction(
         );
 
         println!(
-            "💰 Dynamic fee estimation: {} sat/byte (estimated {} satoshis for {} bytes)",
+            "💰 Dynamic fee estimation: {} crd/KB (estimated {} credits for {} bytes)",
             fee_estimate.fee_rate, fee_estimate.estimated_fee, fee_estimate.estimated_size
         );
 
         fee_estimate.fee_rate
     };
 
+    // FIX 2025-12-03: Get fork_id from active network for cross-network transaction validity
+    let fork_id = {
+        let network = state.active_network.read().await;
+        match *network {
+            NetworkType::Mainnet => 0,
+            NetworkType::Testnet => 1,
+            NetworkType::Regtest => 2,
+        }
+    };
+    println!("  Fork ID: {} (network-aware)", fork_id);
+
     let builder = TransactionBuilder::new()
+        .set_fork_id(fork_id) // FIX 2025-12-03: Critical for cross-network validity
         .add_recipient(&request.to_address, request.amount)
         .select_utxos(&utxos)
-        .set_fee_rate(fee_rate)
+        .set_fee_rate_per_kb(fee_rate)
         .set_change_address(&request.from_address);
 
     // Validate transaction
@@ -201,6 +224,7 @@ pub async fn create_transaction(
     let transaction_id = transaction.txid.clone();
 
     // Store transaction with state and reservation info for later cleanup
+    // FIX 2025-12-10: Include sender_address for reliable SENT transaction indexing
     tx_state.set_transaction_with_reservation(
         transaction_id.clone(),
         transaction.clone(),
@@ -208,6 +232,7 @@ pub async fn create_transaction(
         reservation.id.clone(),
         utxo_keys.clone(),
         request.wallet_id.clone(),
+        request.from_address.clone(), // Sender address for broadcast indexing
     );
 
     // Emit transaction validated event
@@ -263,9 +288,13 @@ pub struct SignTransactionResponse {
 #[tauri::command]
 pub async fn sign_transaction(
     state: State<'_, AppState>,
+    session: State<'_, RwLock<SessionState>>,
     request: SignTransactionRequest,
     app: AppHandle,
 ) -> Result<SignTransactionResponse, String> {
+    // FIX 2026-02-21 (H1): Verify session is authenticated before signing
+    require_authenticated_session(&session)?;
+
     println!("✍️ Signing transaction: {}", request.transaction_id);
 
     let tx_state = &state.tx_state_manager;
@@ -293,8 +322,19 @@ pub async fn sign_transaction(
     );
 
     // Load encrypted wallet file (.dat format with Argon2id encryption)
-    let wallet_path = std::path::PathBuf::from(&request.wallet_id).with_extension("dat");
-    let encrypted_wallet = btpc_core::crypto::EncryptedWallet::load_from_file(&wallet_path)
+    // Get wallet info from wallet manager to find the correct file path
+    let wallet_manager = state.wallet_manager.lock().map_err(|e| {
+        format!("Failed to lock wallet manager: {}", e)
+    })?;
+
+    let wallet_info = wallet_manager
+        .get_wallet(&request.wallet_id)
+        .ok_or_else(|| format!("Wallet {} not found", request.wallet_id))?;
+
+    let wallet_path = &wallet_info.file_path;
+    println!("📂 Loading wallet from: {}", wallet_path.display());
+
+    let encrypted_wallet = btpc_core::crypto::EncryptedWallet::load_from_file(wallet_path)
         .map_err(|e| format!("Failed to load encrypted wallet: {}", e))?;
 
     // Decrypt wallet with Argon2id
@@ -304,7 +344,7 @@ pub async fn sign_transaction(
         .map_err(|e| format!("Failed to decrypt wallet (wrong password?): {}", e))?;
 
     // T015.1: Validate wallet integrity before signing
-    validate_wallet_integrity(&wallet_data, &wallet_path).map_err(|e| {
+    validate_wallet_integrity(&wallet_data, wallet_path).map_err(|e| {
         // Emit wallet corruption failure event
         let _ = app.emit(
             "transaction:failed",
@@ -413,9 +453,13 @@ pub struct BroadcastTransactionResponse {
 #[tauri::command]
 pub async fn broadcast_transaction(
     state: State<'_, AppState>,
+    session: State<'_, RwLock<SessionState>>,
     request: BroadcastTransactionRequest,
     app: AppHandle,
 ) -> Result<BroadcastTransactionResponse, String> {
+    // FIX 2026-02-21 (H1): Verify session is authenticated before broadcasting
+    require_authenticated_session(&session)?;
+
     println!("📡 Broadcasting transaction: {}", request.transaction_id);
 
     let tx_state = &state.tx_state_manager;
@@ -427,13 +471,19 @@ pub async fn broadcast_transaction(
         None,
     );
 
-    // Load signed transaction
-    let transaction = tx_state
-        .get_transaction(&request.transaction_id)
+    // Load signed transaction and sender address from state
+    let tx_status = tx_state
+        .get_state(&request.transaction_id)
         .ok_or_else(|| format!("Transaction {} not found", request.transaction_id))?;
 
-    // Feature 013: Use embedded node instead of RPC client (self-contained app)
-    let embedded_node = state.embedded_node.read().await;
+    let transaction = tx_status
+        .transaction
+        .clone()
+        .ok_or_else(|| format!("Transaction {} has no transaction data", request.transaction_id))?;
+
+    // FIX 2025-12-10: Get sender address from state (stored during create_transaction)
+    // This is much more reliable than UTXO lookups which often fail
+    let sender_address = tx_status.sender_address.clone();
 
     // Verify transaction is signed
     let all_signed = transaction
@@ -449,28 +499,114 @@ pub async fn broadcast_transaction(
         return Err("Transaction not fully signed - cannot broadcast".to_string());
     }
 
-    // Convert desktop app Transaction to btpc-core Transaction for submission
+    // Convert desktop app Transaction to btpc-core Transaction for embedded node submission
     let core_transaction = convert_to_core_transaction(&transaction)?;
 
-    // Submit transaction to embedded node's mempool
+    // Submit transaction to embedded node's mempool (Feature 013: Self-contained app)
+    // This replaces the external RPC broadcast with direct mempool access
+    let embedded_node = state.embedded_node.read().await;
     match embedded_node.submit_transaction(core_transaction).await {
         Ok(txid) => {
-            // Update state to Broadcast
+            // FIX 2025-11-27: Migrate transaction state from temp ID to real txid
+            // The temp ID (tx_timestamp) is replaced with the real blockchain txid
+            tx_state.migrate_transaction_id(&request.transaction_id, txid.clone());
+
+            // Update state to Broadcast (using new txid)
             tx_state.set_state(
-                request.transaction_id.clone(),
+                txid.clone(),
                 TransactionStatus::Broadcast,
                 None,
             );
 
             println!("✅ Transaction broadcast successful: {}", txid);
+            println!("   (migrated from temp ID: {})", request.transaction_id);
+
+            // FIX 2025-12-04: Save transaction to tx_storage for transaction history
+            // This ensures sent transactions appear in the transaction list immediately
+            {
+                // Create a copy with the real txid for storage
+                let mut storage_tx = transaction.clone();
+                storage_tx.txid = txid.clone();
+                storage_tx.block_height = None; // Pending - not yet confirmed
+                storage_tx.confirmed_at = None;
+                storage_tx.is_coinbase = false;
+                // FIX 2025-12-10: Set sender_address for reliable SENT/RECEIVED detection
+                // This allows frontend to determine if tx is SENT (sender == wallet) or RECEIVED
+                storage_tx.sender_address = sender_address.clone();
+
+                // Get network for address decoding
+                let network = state.active_network.read().await.clone();
+
+                // Collect all involved addresses (sender + recipients)
+                let mut involved_addresses: Vec<String> = Vec::new();
+
+                // Decode addresses from script_pubkey in outputs (recipients)
+                for output in &storage_tx.outputs {
+                    // Deserialize script and extract pubkey hash
+                    if let Ok(script) = Script::deserialize(&output.script_pubkey) {
+                        if let Some(pubkey_hash) = script.extract_pubkey_hash() {
+                            let address = Address::from_hash(
+                                pubkey_hash,
+                                network.clone().into(),
+                                btpc_core::crypto::address::AddressType::P2PKH,
+                            ).to_string();
+                            if !involved_addresses.contains(&address) {
+                                involved_addresses.push(address);
+                            }
+                        }
+                    }
+                }
+
+                // FIX 2025-12-10: Use sender_address from TransactionState (stored during create_transaction)
+                // This replaces the fragile UTXO lookups that often fail
+                // The sender address is known at creation time and stored reliably in tx_state
+                if let Some(ref sender_addr) = sender_address {
+                    if !involved_addresses.contains(sender_addr) {
+                        involved_addresses.push(sender_addr.clone());
+                        println!("📝 Added sender address {} from tx_state for broadcast tx", &sender_addr[..20.min(sender_addr.len())]);
+                    }
+                } else {
+                    // Fallback: Try UTXO lookups if sender_address wasn't stored (legacy transactions)
+                    eprintln!("⚠️ No sender_address in tx_state, trying UTXO fallback");
+                    if let Ok(utxo_manager) = state.utxo_manager.lock() {
+                        for input in &storage_tx.inputs {
+                            if let Some(utxo) = utxo_manager.get_utxo(&input.prev_txid, input.prev_vout) {
+                                if !involved_addresses.contains(&utxo.address) {
+                                    involved_addresses.push(utxo.address.clone());
+                                    println!("📝 Added sender address {} from UTXO fallback", &utxo.address[..20.min(utxo.address.len())]);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Save to tx_storage for each involved address
+                // FIX 2025-12-05: Use .read().await for RwLock access
+                let tx_storage_guard = state.tx_storage.read().await;
+                for address in &involved_addresses {
+                    if let Err(e) = tx_storage_guard.add_transaction(&storage_tx, address) {
+                        eprintln!("⚠️ Failed to save broadcast tx to storage for {}: {}", address, e);
+                    } else {
+                        println!("📝 Saved broadcast tx {} for address {}", &txid[..16.min(txid.len())], address);
+                    }
+                }
+
+                // FIX 2025-12-05: Flush tx_storage to disk for crash safety
+                // Ensures broadcast transactions persist even if app crashes
+                if let Err(e) = tx_storage_guard.flush() {
+                    eprintln!("⚠️ Failed to flush tx_storage after broadcast: {}", e);
+                } else {
+                    println!("💾 tx_storage flushed after broadcast tx {}", &txid[..16.min(txid.len())]);
+                }
+            }
 
             // Emit transaction broadcast event (Tauri-specific)
             let _ = app.emit(
                 "transaction:broadcast",
                 TransactionEvent::TransactionBroadcast {
                     transaction_id: txid.clone(),
-                    broadcast_to_peers: 1, // Direct to embedded node mempool
-                    network_response: "accepted by embedded node mempool".to_string(),
+                    broadcast_to_peers: 1, // Direct to external RPC node
+                    network_response: "accepted by external node mempool".to_string(),
                 },
             );
 
@@ -484,9 +620,24 @@ pub async fn broadcast_transaction(
                 },
             );
 
-            // Note: UTXO reservations are automatically released by the transaction monitor
-            // (transaction_monitor.rs) when the transaction is confirmed.
-            // See transaction_monitor.rs:163 for implementation.
+            // FIX 2026-02-21 (C5): Mark input UTXOs as spent IMMEDIATELY on successful broadcast
+            // This closes the double-spend race window where another transaction could select
+            // the same UTXOs between broadcast and block confirmation.
+            // Previously, UTXOs stayed "reserved" but could be selected by other wallets.
+            {
+                let mut utxo_manager = state.utxo_manager.lock().expect("UTXO mutex poisoned");
+                for input in &transaction.inputs {
+                    let _ = utxo_manager.mark_utxo_as_spent(&input.prev_txid, input.prev_vout);
+                }
+                // Also release the reservation since UTXOs are now spent
+                let utxo_keys: Vec<String> = transaction
+                    .inputs
+                    .iter()
+                    .map(|i| format!("{}:{}", i.prev_txid, i.prev_vout))
+                    .collect();
+                utxo_manager.release_utxos(&utxo_keys);
+                println!("🔒 Marked {} input UTXOs as spent after broadcast", transaction.inputs.len());
+            }
 
             println!("✅ Transaction broadcast to network");
 
@@ -708,8 +859,8 @@ fn validate_wallet_integrity(
 
     // Check 4: Validate each key entry structure
     for (i, key_entry) in wallet_data.keys.iter().enumerate() {
-        // Check private key bytes size (ML-DSA-65 = 4000 bytes)
-        const EXPECTED_PRIVATE_KEY_SIZE: usize = 4000;
+        // Check private key bytes size (ML-DSA-87 = 4864 bytes)
+        const EXPECTED_PRIVATE_KEY_SIZE: usize = 4864;
         if key_entry.private_key_bytes.len() != EXPECTED_PRIVATE_KEY_SIZE {
             return Err(format!(
                 "Wallet corruption detected: key {} has invalid private key size (expected {}, got {}). File may be truncated.",
@@ -719,8 +870,8 @@ fn validate_wallet_integrity(
             ));
         }
 
-        // Check public key bytes size (ML-DSA-65 = 1952 bytes)
-        const EXPECTED_PUBLIC_KEY_SIZE: usize = 1952;
+        // Check public key bytes size (ML-DSA-87 = 2592 bytes)
+        const EXPECTED_PUBLIC_KEY_SIZE: usize = 2592;
         if key_entry.public_key_bytes.len() != EXPECTED_PUBLIC_KEY_SIZE {
             return Err(format!(
                 "Wallet corruption detected: key {} has invalid public key size (expected {}, got {}). File may be truncated.",
@@ -836,9 +987,13 @@ pub async fn get_transaction_status(
 #[tauri::command]
 pub async fn cancel_transaction(
     state: State<'_, AppState>,
+    session: State<'_, RwLock<SessionState>>,
     transaction_id: String,
     app: AppHandle,
 ) -> Result<(), String> {
+    // FIX 2026-02-21 (H1): Verify session is authenticated before cancelling
+    require_authenticated_session(&session)?;
+
     println!("❌ Cancelling transaction: {}", transaction_id);
 
     // Call core business logic (TD-001: testable without Tauri!)
@@ -918,32 +1073,51 @@ pub async fn estimate_fee(
     request: EstimateFeeRequest,
 ) -> Result<EstimateFeeResponse, String> {
     println!("💰 Estimating fee:");
-    println!("  Amount: {} satoshis", request.amount);
+    println!("  Amount: {} credits", request.amount);
+
+    // FIX 2025-12-03: Get fork_id from active network for consistent fee estimation
+    // Get this BEFORE locking utxo_manager to avoid deadlock
+    let fork_id = {
+        let network = state.active_network.read().await;
+        match *network {
+            NetworkType::Mainnet => 0,
+            NetworkType::Testnet => 1,
+            NetworkType::Regtest => 2,
+        }
+    };
+
+    // Get current blockchain height for coinbase maturity check
+    let current_height = {
+        let node = state.embedded_node.read().await;
+        node.get_height()
+    };
 
     let utxo_manager = state.utxo_manager.lock().expect("Mutex poisoned");
 
-    // Select UTXOs (without reserving)
+    // Select UTXOs (without reserving, with maturity check)
     let utxos = utxo_manager
-        .select_utxos_for_amount(&request.from_address, request.amount + 500_000)
+        .select_utxos_for_amount(&request.from_address, request.amount + 500_000, current_height)
         .map_err(|e| format!("Failed to select UTXOs: {}", e))?;
 
     if utxos.is_empty() {
         return Err("No UTXOs available".to_string());
     }
 
-    // Build transaction to get fee estimate
-    let fee_rate = request.fee_rate.unwrap_or(100);
+    // Build transaction to get fee estimate (default 10 crd/KB)
+    let fee_rate = request.fee_rate.unwrap_or(10);
+
     let builder = TransactionBuilder::new()
+        .set_fork_id(fork_id)
         .add_recipient(&request.to_address, request.amount)
         .select_utxos(&utxos)
-        .set_fee_rate(fee_rate)
+        .set_fee_rate_per_kb(fee_rate)
         .set_change_address(&request.from_address);
 
     let summary = builder
         .summary()
         .map_err(|e| format!("Failed to estimate: {}", e))?;
 
-    println!("✅ Estimated fee: {} satoshis", summary.fee);
+    println!("✅ Estimated fee: {} credits", summary.fee);
 
     Ok(EstimateFeeResponse {
         estimated_fee: summary.fee,

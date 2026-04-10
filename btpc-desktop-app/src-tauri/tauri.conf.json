@@ -14,16 +14,30 @@
         "minWidth": 800,
         "minHeight": 600,
         "resizable": true,
-        "center": true
+        "center": true,
+        "focus": true
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'"
     },
     "withGlobalTauri": true
   },
   "bundle": {
     "active": false,
-    "icon": []
+    "icon": [
+      "icons/btpc-icon-32.png",
+      "icons/btpc-icon-64.png",
+      "icons/btpc-icon-128.png",
+      "icons/btpc-icon-256.png",
+      "icons/btpc-icon-512.png"
+    ],
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": false
+      },
+      "deb": {},
+      "rpm": {}
+    }
   }
 }

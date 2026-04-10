@@ -102,6 +102,23 @@ impl BlockchainRpcHandlers {
                 Self::get_block_template(&blockchain_db, network, params)
             })
             .await;
+
+        // Transaction methods
+        let blockchain_db = Arc::clone(&self.blockchain_db);
+        let utxo_db = Arc::clone(&self.utxo_db);
+        server
+            .register_method("sendrawtransaction", move |params| {
+                Self::send_raw_transaction(&blockchain_db, &utxo_db, params)
+            })
+            .await;
+
+        // Get raw transaction (for transaction monitoring)
+        let blockchain_db = Arc::clone(&self.blockchain_db);
+        server
+            .register_method("getrawtransaction", move |params| {
+                Self::get_raw_transaction(&blockchain_db, params)
+            })
+            .await;
     }
 
     /// Get blockchain information
@@ -322,7 +339,7 @@ impl BlockchainRpcHandlers {
                     "value": utxo.output.value as f64 / 100_000_000.0, // Convert to BTC
                     "scriptPubKey": {
                         "asm": "", // Would decode script
-                        "hex": hex::encode(&utxo.output.script_pubkey),
+                        "hex": hex::encode(utxo.output.script_pubkey.to_bytes()),
                         "type": "unknown" // Would determine script type
                     },
                     "coinbase": utxo.is_coinbase
@@ -562,6 +579,185 @@ impl BlockchainRpcHandlers {
         Ok(Value::Null)
     }
 
+    /// Send raw transaction
+    fn send_raw_transaction(
+        blockchain_db: &Arc<RwLock<BlockchainDb>>,
+        utxo_db: &Arc<RwLock<UtxoDb>>,
+        params: Option<Value>,
+    ) -> Result<Value, RpcServerError> {
+        use crate::blockchain::Transaction;
+        use crate::consensus::TransactionValidator;
+
+        eprintln!("[SENDRAWTRANSACTION] Called with params: {:?}", params);
+
+        let params = params.ok_or(RpcServerError::InvalidParams(
+            "Missing transaction hex".to_string(),
+        ))?;
+
+        // Get transaction hex from params
+        let tx_hex = if let Value::Array(ref arr) = params {
+            eprintln!("[SENDRAWTRANSACTION] Params is array with {} elements", arr.len());
+            if arr.is_empty() {
+                return Err(RpcServerError::InvalidParams(
+                    "Empty array - transaction hex required".to_string(),
+                ));
+            }
+            let first = arr.first().unwrap();
+            eprintln!("[SENDRAWTRANSACTION] First element type: {:?}", first);
+            first
+                .as_str()
+                .ok_or(RpcServerError::InvalidParams(
+                    "Transaction hex must be a string".to_string(),
+                ))?
+        } else if let Value::String(ref hex) = params {
+            eprintln!("[SENDRAWTRANSACTION] Params is string");
+            hex.as_str()
+        } else {
+            eprintln!("[SENDRAWTRANSACTION] Params is neither array nor string");
+            return Err(RpcServerError::InvalidParams(
+                "Expected hex string or array with hex string".to_string(),
+            ));
+        };
+
+        eprintln!("[SENDRAWTRANSACTION] Transaction hex length: {}", tx_hex.len());
+
+        // Decode hex to bytes
+        let tx_bytes = hex::decode(tx_hex).map_err(|e| {
+            RpcServerError::InvalidParams(format!("Invalid transaction hex: {}", e))
+        })?;
+
+        // Deserialize transaction
+        let transaction = Transaction::deserialize(&tx_bytes).map_err(|e| {
+            RpcServerError::InvalidParams(format!("Invalid transaction format: {}", e))
+        })?;
+
+        // Validate transaction
+        let tx_validator = TransactionValidator::new();
+        tx_validator
+            .validate_transaction(&transaction)
+            .map_err(|e| RpcServerError::InvalidParams(format!("Transaction validation failed: {}", e)))?;
+
+        // Get transaction hash
+        let txid = transaction.hash();
+
+        // In a real implementation, this would add the transaction to the mempool
+        // and broadcast to peers. For now, just return the transaction ID
+        Ok(json!(txid.to_hex()))
+    }
+
+    /// Get raw transaction by txid
+    ///
+    /// Returns transaction info if found in the blockchain.
+    /// Used by transaction monitor to check confirmation status.
+    fn get_raw_transaction(
+        blockchain_db: &Arc<RwLock<BlockchainDb>>,
+        params: Option<Value>,
+    ) -> Result<Value, RpcServerError> {
+        use crate::storage::BlockchainDatabase;
+
+        let params = params.ok_or_else(|| {
+            RpcServerError::InvalidParams("Missing transaction ID parameter".to_string())
+        })?;
+
+        // Extract txid from params (can be [txid, verbose] or just txid)
+        let txid_str = match &params {
+            Value::Array(arr) => arr
+                .first()
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| RpcServerError::InvalidParams("Invalid txid in array".to_string()))?,
+            Value::String(s) => s.as_str(),
+            _ => {
+                return Err(RpcServerError::InvalidParams(
+                    "Expected txid string or array".to_string(),
+                ))
+            }
+        };
+
+        // Get verbose flag (default true for Bitcoin compatibility)
+        let verbose = match &params {
+            Value::Array(arr) => arr.get(1).and_then(|v| v.as_bool()).unwrap_or(true),
+            _ => true,
+        };
+
+        // Search for transaction in blockchain
+        let blockchain_guard = blockchain_db
+            .try_read()
+            .map_err(|e| RpcServerError::Internal(format!("Lock error: {}", e)))?;
+
+        // Get chain tip to start traversal
+        let tip_block = match (*blockchain_guard).get_chain_tip() {
+            Ok(Some(tip)) => tip,
+            _ => {
+                return Err(RpcServerError::InvalidParams(format!(
+                    "Transaction {} not found - blockchain empty",
+                    txid_str
+                )))
+            }
+        };
+
+        let tip_height = (*blockchain_guard)
+            .get_block_height(&tip_block.hash())
+            .unwrap_or(0);
+
+        // Traverse backwards from chain tip (up to 1000 blocks)
+        let mut current_block = Some(tip_block);
+        let mut blocks_checked = 0u32;
+
+        while let Some(block) = current_block {
+            if blocks_checked >= 1000 {
+                break;
+            }
+
+            let block_height = (*blockchain_guard)
+                .get_block_height(&block.hash())
+                .unwrap_or(0);
+
+            // Search transactions in this block
+            for tx in &block.transactions {
+                let tx_hash = tx.hash();
+                let tx_hex = hex::encode(tx_hash.as_bytes());
+
+                // Check if this is the transaction we're looking for
+                if tx_hex == txid_str || txid_str.starts_with(&tx_hex[..8.min(tx_hex.len())]) {
+                    let confirmations = tip_height.saturating_sub(block_height) + 1;
+                    let block_hash = hex::encode(block.hash().as_bytes());
+
+                    if verbose {
+                        return Ok(json!({
+                            "txid": tx_hex,
+                            "hash": tx_hex,
+                            "version": tx.version,
+                            "size": tx.serialize().len(),
+                            "confirmations": confirmations,
+                            "blockheight": block_height,
+                            "blockhash": block_hash,
+                            "blocktime": block.header.timestamp,
+                            "time": block.header.timestamp,
+                            "hex": hex::encode(tx.serialize())
+                        }));
+                    } else {
+                        return Ok(json!(hex::encode(tx.serialize())));
+                    }
+                }
+            }
+
+            // Move to previous block
+            let prev_hash = block.header.prev_hash;
+            if prev_hash == crate::crypto::Hash::zero() {
+                break; // Reached genesis
+            }
+
+            current_block = (*blockchain_guard).get_block(&prev_hash).ok().flatten();
+            blocks_checked += 1;
+        }
+
+        // Transaction not found
+        Err(RpcServerError::InvalidParams(format!(
+            "Transaction {} not found in blockchain",
+            txid_str
+        )))
+    }
+
     /// Get block template for mining
     fn get_block_template(
         blockchain_db: &Arc<RwLock<BlockchainDb>>,
@@ -709,7 +905,7 @@ mod tests {
         let result = BlockchainRpcHandlers::help(None).unwrap();
 
         if let Value::Array(commands) = result {
-            assert!(commands.len() > 0);
+            assert!(!commands.is_empty());
             assert!(commands.contains(&json!("help")));
         } else {
             panic!("Expected array of commands");

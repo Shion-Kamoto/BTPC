@@ -76,7 +76,7 @@ impl Network {
         match self {
             Network::Mainnet => 0,
             Network::Testnet => 1,
-            Network::Regtest => 255,
+            Network::Regtest => 2,
         }
     }
 }

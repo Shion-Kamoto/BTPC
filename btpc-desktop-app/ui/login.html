@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- FIX: Prevent WebView from caching old page content -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>BTPC Wallet - Login</title>
     <link rel="stylesheet" href="btpc-styles.css">
     <style>
@@ -187,11 +191,73 @@
             font-size: 0.75rem;
             color: var(--text-muted);
         }
+
+        /* Password Strength Meter (T174 - FR-001) */
+        .password-strength-container {
+            margin-top: 8px;
+        }
+
+        .password-strength-bar {
+            height: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 6px;
+        }
+
+        .password-strength-fill {
+            height: 100%;
+            width: 0%;
+            transition: all 0.3s ease;
+            border-radius: 3px;
+        }
+
+        .password-strength-fill.weak {
+            width: 25%;
+            background: #ef4444;
+        }
+
+        .password-strength-fill.fair {
+            width: 50%;
+            background: #f59e0b;
+        }
+
+        .password-strength-fill.good {
+            width: 75%;
+            background: #3b82f6;
+        }
+
+        .password-strength-fill.strong {
+            width: 100%;
+            background: #10b981;
+        }
+
+        .password-strength-text {
+            font-size: 0.75rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .password-strength-label {
+            font-weight: 500;
+        }
+
+        .password-strength-label.weak { color: #ef4444; }
+        .password-strength-label.fair { color: #f59e0b; }
+        .password-strength-label.good { color: #3b82f6; }
+        .password-strength-label.strong { color: #10b981; }
+
+        .entropy-bits {
+            color: var(--text-muted);
+            font-family: 'SF Mono', monospace;
+        }
     </style>
 </head>
 <body>
     <div class="login-container">
-        <div class="login-card">
+        <!-- FIX: Hide card initially to prevent flash of cached old content -->
+        <div class="login-card" id="login-card" style="opacity: 0; transition: opacity 0.15s ease-in;">
             <div class="login-header">
                 <div class="login-icon">
                     <img src="src/assets/icons-svg/lock.svg" alt="Lock Icon">
@@ -219,6 +285,16 @@
                         minlength="8"
                         required
                     >
+                    <!-- Password Strength Meter (T174 - FR-001: 80 bits entropy required) -->
+                    <div class="password-strength-container" id="strength-container" style="display: none;">
+                        <div class="password-strength-bar">
+                            <div class="password-strength-fill" id="strength-fill"></div>
+                        </div>
+                        <div class="password-strength-text">
+                            <span class="password-strength-label" id="strength-label">Weak</span>
+                            <span class="entropy-bits" id="entropy-bits">0 bits</span>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="form-group">
@@ -277,6 +353,7 @@
     <script src="btpc-event-listeners.js"></script>
     <script src="btpc-navigation-guard.js"></script>
     <script>
+
         // Import Tauri API
         const { invoke } = window.btpcInvoke || window.__TAURI__.core;
 
@@ -308,6 +385,92 @@
             successMessage.classList.remove('show');
         }
 
+        // T174 - Password Entropy Calculator (FR-001: 80 bits minimum)
+        // Uses NIST SP 800-63B inspired entropy estimation
+        function calculatePasswordEntropy(password) {
+            if (!password || password.length === 0) return 0;
+
+            // Character set size calculation
+            let charsetSize = 0;
+            if (/[a-z]/.test(password)) charsetSize += 26; // lowercase
+            if (/[A-Z]/.test(password)) charsetSize += 26; // uppercase
+            if (/[0-9]/.test(password)) charsetSize += 10; // digits
+            if (/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(password)) charsetSize += 32; // special chars
+            if (/\s/.test(password)) charsetSize += 1; // space
+
+            // Basic entropy: log2(charsetSize^length) = length * log2(charsetSize)
+            const basicEntropy = password.length * Math.log2(charsetSize || 1);
+
+            // Penalty for common patterns (reduces entropy)
+            let penalty = 0;
+
+            // Repeated characters penalty
+            const repeats = password.match(/(.)\1{2,}/g);
+            if (repeats) penalty += repeats.length * 5;
+
+            // Sequential characters penalty (abc, 123, etc.)
+            const sequences = password.match(/(abc|bcd|cde|def|efg|fgh|ghi|hij|ijk|jkl|klm|lmn|mno|nop|opq|pqr|qrs|rst|stu|tuv|uvw|vwx|wxy|xyz|012|123|234|345|456|567|678|789)/gi);
+            if (sequences) penalty += sequences.length * 5;
+
+            // Keyboard patterns penalty (qwerty, asdf, etc.)
+            const keyboard = password.match(/(qwert|asdf|zxcv|qazwsx|1qaz|2wsx)/gi);
+            if (keyboard) penalty += keyboard.length * 10;
+
+            // Common words penalty
+            const commonWords = ['password', 'bitcoin', 'wallet', '123456', 'qwerty', 'admin', 'letmein', 'welcome'];
+            for (const word of commonWords) {
+                if (password.toLowerCase().includes(word)) penalty += 20;
+            }
+
+            return Math.max(0, basicEntropy - penalty);
+        }
+
+        function updatePasswordStrength(password) {
+            const container = document.getElementById('strength-container');
+            const fill = document.getElementById('strength-fill');
+            const label = document.getElementById('strength-label');
+            const bits = document.getElementById('entropy-bits');
+
+            if (!password || password.length === 0) {
+                container.style.display = 'none';
+                return;
+            }
+
+            container.style.display = 'block';
+            const entropy = calculatePasswordEntropy(password);
+
+            // Update entropy display
+            bits.textContent = `${Math.round(entropy)} bits`;
+
+            // Clear previous classes
+            fill.className = 'password-strength-fill';
+            label.className = 'password-strength-label';
+
+            // FR-001: 80 bits is the threshold for "strong"
+            if (entropy < 40) {
+                fill.classList.add('weak');
+                label.classList.add('weak');
+                label.textContent = 'Weak';
+            } else if (entropy < 60) {
+                fill.classList.add('fair');
+                label.classList.add('fair');
+                label.textContent = 'Fair';
+            } else if (entropy < 80) {
+                fill.classList.add('good');
+                label.classList.add('good');
+                label.textContent = 'Good';
+            } else {
+                fill.classList.add('strong');
+                label.classList.add('strong');
+                label.textContent = 'Strong (80+ bits)';
+            }
+        }
+
+        // Attach real-time password strength meter
+        document.getElementById('new-password').addEventListener('input', (e) => {
+            updatePasswordStrength(e.target.value);
+        });
+
         // Check if master password exists (first launch vs subsequent launch)
         // T011-001: Updated to use check_wallet_lock_status (existing command)
         async function checkFirstLaunch() {
@@ -328,9 +491,32 @@
                     createPasswordForm.style.display = 'flex';
                     loginForm.style.display = 'none';
                 }
+
+                // FIX: Reveal card after determining correct view (prevents cached content flash)
+                document.getElementById('login-card').style.opacity = '1';
+
+                // FIX: Explicitly request GTK-level keyboard focus for the WebView.
+                // On Linux/WebKitGTK the window may have OS focus while the WebView
+                // widget doesn't hold GTK keyboard focus, blocking all keystrokes.
+                try {
+                    if (window.__TAURI__?.window?.getCurrent) {
+                        await window.__TAURI__.window.getCurrent().setFocus();
+                    } else if (window.__TAURI__?.window?.appWindow) {
+                        await window.__TAURI__.window.appWindow.setFocus();
+                    }
+                } catch (_) { /* non-fatal */ }
+
+                // Focus the visible password input after the window grabs focus
+                // 200ms gives WebKitGTK time to settle after setFocus() before focusing the input
+                setTimeout(() => {
+                    const visibleInput = document.querySelector('.login-form[style*="flex"] input[type="password"]');
+                    if (visibleInput) visibleInput.focus();
+                }, 200);
             } catch (error) {
                 console.error('Failed to check wallet lock status:', error);
                 showError('Failed to initialize authentication system');
+                // Still show the card on error so user sees the error message
+                document.getElementById('login-card').style.opacity = '1';
             }
         }
 
@@ -359,14 +545,35 @@
             createBtn.innerHTML = '<span class="loading-spinner"></span>Creating...';
 
             try {
-                // T011-001: Use migrate_to_encrypted (existing command) instead of create_master_password
-                const result = await invoke('migrate_to_encrypted', { password });
+                // FIX 2025-12-10: Use create_master_password for fresh installs
+                // migrate_to_encrypted requires wallets_metadata.json which doesn't exist on fresh install
+                const result = await invoke('create_master_password', {
+                    password: password,
+                    password_confirm: confirmPassword
+                });
 
-                // migrate_to_encrypted returns string "Migration successful" on success
-                showSuccess('Master password created successfully! Redirecting...');
-                setTimeout(() => {
-                    window.location.href = 'index.html';
-                }, 1500);
+                // create_master_password returns { success: bool, message?: string, error?: string }
+                if (result.success) {
+                    showSuccess('Master password created successfully! Redirecting...');
+                    setTimeout(() => {
+                        window.location.href = 'index.html';
+                    }, 1500);
+                } else {
+                    // Map error codes to user-friendly messages
+                    const errorMessages = {
+                        'PASSWORD_TOO_SHORT': 'Password must be at least 8 characters',
+                        'PASSWORDS_DONT_MATCH': 'Passwords do not match',
+                        'CREDENTIALS_ALREADY_EXIST': 'Master password already exists. Please login instead.',
+                        'ENCRYPTION_FAILED': 'Failed to encrypt credentials. Please try again.',
+                    };
+                    const errorKey = result.error || '';
+                    const errorMsg = errorKey.startsWith('PASSWORD_TOO_WEAK')
+                        ? 'Password is too weak. Use a stronger password with mix of characters.'
+                        : (errorMessages[errorKey] || result.error || 'An unexpected error occurred');
+                    showError(errorMsg);
+                    createBtn.disabled = false;
+                    createBtn.textContent = 'Create Master Password';
+                }
             } catch (error) {
                 console.error('Create password error:', error);
                 // Error is thrown as string by backend
@@ -405,7 +612,9 @@
             } catch (error) {
                 console.error('Login error:', error);
                 // Error is thrown as string by backend (e.g., "Incorrect password")
-                showError('Authentication failed. Please check your password.');
+                // Show the actual backend error message instead of generic message
+                const errorStr = typeof error === 'string' ? error : (error.message || error.toString());
+                showError(errorStr || 'Authentication failed. Please check your password.');
                 loginBtn.disabled = false;
                 loginBtn.textContent = 'Login';
                 // Clear password field on error

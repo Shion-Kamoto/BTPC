@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::mining_thread_pool;
 
@@ -48,32 +48,36 @@ pub struct MiningStats {
 }
 
 impl MiningStats {
-    pub fn new(data_dir: &PathBuf) -> Self {
+    pub fn new(data_dir: &Path) -> Self {
         let stats_file = data_dir.join("mining_stats.json");
+
+        // FIX 2025-01-25: Log full path for network isolation debugging
+        eprintln!("[MiningStats] Loading from: {:?}", stats_file);
 
         // Load lifetime blocks_found from disk if it exists
         let blocks_found = if stats_file.exists() {
             match std::fs::read_to_string(&stats_file) {
                 Ok(json) => match serde_json::from_str::<MiningStatsData>(&json) {
                     Ok(data) => {
-                        println!(
-                            "Loaded lifetime mining stats: {} blocks found",
-                            data.lifetime_blocks_found
+                        eprintln!(
+                            "[MiningStats] Loaded: {} blocks found from {:?}",
+                            data.lifetime_blocks_found,
+                            stats_file
                         );
                         data.lifetime_blocks_found
                     }
                     Err(e) => {
-                        println!("Failed to parse mining stats: {}, starting from 0", e);
+                        eprintln!("[MiningStats] Failed to parse {:?}: {}, starting from 0", stats_file, e);
                         0
                     }
                 },
                 Err(e) => {
-                    println!("Failed to read mining stats: {}, starting from 0", e);
+                    eprintln!("[MiningStats] Failed to read {:?}: {}, starting from 0", stats_file, e);
                     0
                 }
             }
         } else {
-            println!("No existing mining stats found, starting from 0");
+            eprintln!("[MiningStats] No existing stats at {:?}, starting from 0", stats_file);
             0
         };
 
@@ -108,13 +112,13 @@ impl MiningStats {
         match serde_json::to_string_pretty(&data) {
             Ok(json) => {
                 if let Err(e) = std::fs::write(&self.stats_file, json) {
-                    println!("Failed to save mining stats: {}", e);
+                    eprintln!("[MiningStats] Failed to save to {:?}: {}", self.stats_file, e);
                 } else {
-                    println!("Saved mining stats: {} blocks found", self.blocks_found);
+                    eprintln!("[MiningStats] Saved: {} blocks found to {:?}", self.blocks_found, self.stats_file);
                 }
             }
             Err(e) => {
-                println!("Failed to serialize mining stats: {}", e);
+                eprintln!("[MiningStats] Failed to serialize: {}", e);
             }
         }
     }
@@ -163,6 +167,16 @@ impl MiningLogBuffer {
 
     pub fn get_entries(&self) -> Vec<MiningLogEntry> {
         self.entries.iter().cloned().collect()
+    }
+
+    /// Get only the most recent N entries (more efficient than get_entries for large buffers)
+    pub fn get_recent_entries(&self, limit: usize) -> Vec<MiningLogEntry> {
+        let len = self.entries.len();
+        if limit >= len {
+            self.entries.iter().cloned().collect()
+        } else {
+            self.entries.iter().skip(len - limit).cloned().collect()
+        }
     }
 
     pub fn clear(&mut self) {

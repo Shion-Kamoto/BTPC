@@ -9,16 +9,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Generate new wallet
     println!("🔐 Generating ML-DSA key pair...");
-    let private_key = PrivateKey::generate_ml_dsa()?;
+    let private_key = PrivateKey::generate()?;
     let public_key = private_key.public_key();
     let address = Address::from_public_key(&public_key, Network::Regtest);
     println!("✅ Key pair generated");
 
     // Generate mnemonic (24 words)
     println!("📝 Generating recovery seed phrase...");
-    let mut entropy = [0u8; 32]; // 256 bits = 24 BIP39 words
-    rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut entropy);
-    let mnemonic = bip39::Mnemonic::from_entropy(&entropy)?;
+    let mut rng = rand::thread_rng();
+    let mnemonic = bip39::Mnemonic::generate_in_with(&mut rng, bip39::Language::English, 24)?;
     let seed_phrase = mnemonic.to_string();
     println!("✅ Seed phrase generated");
 

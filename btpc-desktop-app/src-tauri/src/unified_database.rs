@@ -49,7 +49,14 @@ impl UnifiedDatabase {
     /// Open or create unified database with all column families
     ///
     /// # Arguments
-    /// * `data_dir` - Base data directory (e.g., ~/.btpc)
+    /// * `data_dir` - Base data directory (e.g., ~/.btpc/data)
+    /// * `network` - Network name ("mainnet", "testnet", "regtest") for path isolation
+    ///
+    /// # Network Isolation
+    /// Each network gets its own database directory:
+    /// - Mainnet: `data_dir/mainnet/blockchain.db`
+    /// - Testnet: `data_dir/testnet/blockchain.db`
+    /// - Regtest: `data_dir/regtest/blockchain.db`
     ///
     /// # Returns
     /// * `Ok(UnifiedDatabase)` - Successfully opened/created database
@@ -59,8 +66,12 @@ impl UnifiedDatabase {
     /// - 512MB block cache (shared across all column families)
     /// - LZ4 compression for blocks/transactions (reduce disk I/O)
     /// - Bloom filters for UTXO lookups (reduce read amplification)
-    pub fn open<P: AsRef<Path>>(data_dir: P) -> Result<Self> {
-        let data_path = data_dir.as_ref().join("blockchain.db");
+    pub fn open<P: AsRef<Path>>(data_dir: P, network: &str) -> Result<Self> {
+        // FIX 2025-12-01: Network isolation - each network gets its own subdirectory
+        let network_dir = data_dir.as_ref().join(network);
+        std::fs::create_dir_all(&network_dir)
+            .with_context(|| format!("Failed to create network directory: {:?}", network_dir))?;
+        let data_path = network_dir.join("blockchain.db");
 
         // Create database options with performance tuning
         let mut db_opts = Options::default();
@@ -154,9 +165,13 @@ impl UnifiedDatabase {
         // Use a WriteBatch for atomic updates
         let mut batch = WriteBatch::default();
 
-        // Store block in CF_BLOCKS: hash -> serialized block
+        // Store block in CF_BLOCKS: "block:" + hash -> serialized block
+        // IMPORTANT: Must match the key format used in get_block() lookup
         if let Some(cf) = self.cf_handle(CF_BLOCKS) {
-            batch.put_cf(&cf, block_hash_bytes, &block_serialized);
+            let mut block_key = Vec::with_capacity(6 + 64);
+            block_key.extend_from_slice(b"block:");
+            block_key.extend_from_slice(block_hash_bytes);
+            batch.put_cf(&cf, &block_key, &block_serialized);
         } else {
             return Err(anyhow::anyhow!("CF_BLOCKS column family not found"));
         }
@@ -166,7 +181,7 @@ impl UnifiedDatabase {
         height_key.extend_from_slice(b"height:");
         height_key.extend_from_slice(block_hash_bytes);
         let height_bytes = height.to_le_bytes();
-        batch.put(&height_key, &height_bytes);
+        batch.put(&height_key, height_bytes);
 
         // Store block number mapping in DEFAULT: "block:" + height (4-byte LE) -> hash
         let mut block_num_key = Vec::with_capacity(6 + 4);
@@ -322,9 +337,9 @@ impl UnifiedDatabase {
                             block_key.extend_from_slice(block_hash_bytes);
 
                             if let Some(block_bytes) = self.db.get_cf(&blocks_cf, &block_key)? {
-                                // Deserialize block from JSON (btpc-core format)
-                                let block: Block = serde_json::from_slice(&block_bytes)
-                                    .context("Failed to deserialize block from JSON")?;
+                                // Deserialize block from binary format (btpc-core format)
+                                let block: Block = Block::deserialize(&block_bytes)
+                                    .map_err(|e| anyhow::anyhow!("Failed to deserialize block: {}", e))?;
                                 return Ok(Some(block));
                             }
                         }
@@ -337,6 +352,33 @@ impl UnifiedDatabase {
 
         // No block found at this height
         Ok(None)
+    }
+
+    /// Get block hash at a specific height (fast O(1) lookup)
+    ///
+    /// # Arguments
+    /// * `height` - Block height to look up
+    ///
+    /// # Returns
+    /// * `Ok(Some(Vec<u8>))` - Block hash (64 bytes) at this height
+    /// * `Ok(None)` - No block at this height
+    /// * `Err(anyhow::Error)` - Database error
+    ///
+    /// # Database Schema
+    /// Uses direct key lookup: "block:" + height (4-byte LE) -> block_hash (64 bytes)
+    /// This is much faster than get_block() which scans all height entries.
+    pub fn get_block_hash_at_height(&self, height: u32) -> Result<Option<Vec<u8>>> {
+        // Build key: "block:" + height (4-byte LE)
+        let height_bytes = height.to_le_bytes();
+        let mut block_num_key = Vec::with_capacity(6 + 4);
+        block_num_key.extend_from_slice(b"block:");
+        block_num_key.extend_from_slice(&height_bytes);
+
+        // Direct lookup in default column family
+        match self.db.get(&block_num_key)? {
+            Some(hash_bytes) => Ok(Some(hash_bytes)),
+            None => Ok(None),
+        }
     }
 
     /// Get transaction by txid hash
@@ -636,6 +678,14 @@ impl UnifiedDatabase {
                 .with_context(|| format!("Failed to create backup parent directory: {:?}", parent))?;
         }
 
+        // Flush memtable and WAL to ensure all data is persisted before checkpoint
+        self.db
+            .flush()
+            .with_context(|| "Failed to flush memtable before backup")?;
+        self.db
+            .flush_wal(true)
+            .with_context(|| "Failed to flush WAL before backup")?;
+
         // Create checkpoint (atomic snapshot)
         let checkpoint = Checkpoint::new(&self.db)
             .with_context(|| "Failed to create Checkpoint")?;
@@ -823,8 +873,8 @@ mod tests {
         // Arrange
         let temp_dir = tempdir().expect("Failed to create temp dir");
 
-        // Act
-        let db = UnifiedDatabase::open(temp_dir.path()).expect("Failed to open database");
+        // Act - FIX 2025-12-01: Pass network for network isolation
+        let db = UnifiedDatabase::open(temp_dir.path(), "regtest").expect("Failed to open database");
 
         // Assert
         assert!(db.cf_handle(CF_BLOCKS).is_some(), "CF_BLOCKS should exist");
@@ -847,7 +897,7 @@ mod tests {
     fn test_database_stats() {
         // Arrange
         let temp_dir = tempdir().expect("Failed to create temp dir");
-        let db = UnifiedDatabase::open(temp_dir.path()).expect("Failed to open database");
+        let db = UnifiedDatabase::open(temp_dir.path(), "regtest").expect("Failed to open database");
 
         // Act
         let stats = db.get_stats().expect("Failed to get stats");
@@ -865,7 +915,7 @@ mod tests {
     fn test_flush_wal() {
         // Arrange
         let temp_dir = tempdir().expect("Failed to create temp dir");
-        let db = UnifiedDatabase::open(temp_dir.path()).expect("Failed to open database");
+        let db = UnifiedDatabase::open(temp_dir.path(), "regtest").expect("Failed to open database");
 
         // Act
         let result = db.flush_wal();
@@ -878,12 +928,28 @@ mod tests {
     fn test_compact() {
         // Arrange
         let temp_dir = tempdir().expect("Failed to create temp dir");
-        let db = UnifiedDatabase::open(temp_dir.path()).expect("Failed to open database");
+        let db = UnifiedDatabase::open(temp_dir.path(), "regtest").expect("Failed to open database");
 
         // Act
         let result = db.compact();
 
         // Assert
         assert!(result.is_ok(), "Compaction should succeed");
+    }
+
+    #[test]
+    fn test_network_isolation() {
+        // Arrange - Create databases for different networks
+        let temp_dir = tempdir().expect("Failed to create temp dir");
+
+        // Act - Open databases for different networks
+        let db_mainnet = UnifiedDatabase::open(temp_dir.path(), "mainnet").expect("Failed to open mainnet db");
+        let db_testnet = UnifiedDatabase::open(temp_dir.path(), "testnet").expect("Failed to open testnet db");
+        let db_regtest = UnifiedDatabase::open(temp_dir.path(), "regtest").expect("Failed to open regtest db");
+
+        // Assert - Each network has its own directory
+        assert!(db_mainnet.path().to_string_lossy().contains("mainnet"));
+        assert!(db_testnet.path().to_string_lossy().contains("testnet"));
+        assert!(db_regtest.path().to_string_lossy().contains("regtest"));
     }
 }

@@ -43,6 +43,8 @@ pub trait BlockchainDatabase {
         txid: &crate::crypto::Hash,
         block_hash: &crate::crypto::Hash,
     ) -> Result<(), BlockchainDbError>;
+    /// Get database disk usage in bytes
+    fn get_disk_usage(&self) -> u64;
 }
 
 impl BlockchainDb {
@@ -380,6 +382,10 @@ impl BlockchainDatabase for BlockchainDb {
         self.db
             .put(&tx_key, &tx_value)
             .map_err(|e| BlockchainDbError::DatabaseError(e.to_string()))
+    }
+
+    fn get_disk_usage(&self) -> u64 {
+        self.db.get_statistics().total_size
     }
 }
 

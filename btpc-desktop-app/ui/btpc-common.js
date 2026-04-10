@@ -8,6 +8,20 @@
 // All functions in this file use window.invoke directly
 
 /**
+ * FIX 2026-02-21 (H8): HTML escape to prevent XSS in innerHTML assignments
+ * Use this for ANY user-supplied data (wallet nicknames, address book labels, etc.)
+ */
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+/**
  * Show status message in a specified element
  */
 function showStatus(elementId, message, type = 'info') {
@@ -214,18 +228,39 @@ function toggleElement(elementId) {
  * Update network status footer using the centralized update manager
  * This function is called by the update manager when blockchain state changes
  */
-function updateNetworkFooter(blockchainData) {
+async function updateNetworkFooter(blockchainData) {
     try {
-        // Update network name
+        // Update network name from backend config (not blockchain data)
+        // This ensures the sidebar shows the user's selected network, not the chain's genesis network
         const networkNameEl = document.getElementById('network-name');
-        if (networkNameEl) {
+        if (networkNameEl && window.invoke) {
+            try {
+                const networkConfig = await window.invoke('get_network_config');
+                if (networkConfig && networkConfig.network) {
+                    const networkName = networkConfig.network.charAt(0).toUpperCase() + networkConfig.network.slice(1);
+                    networkNameEl.textContent = networkName;
+                } else {
+                    networkNameEl.textContent = blockchainData.chain || 'Mainnet';
+                }
+            } catch (e) {
+                // Fallback to blockchain data if config fetch fails
+                networkNameEl.textContent = blockchainData.chain || 'Mainnet';
+            }
+        } else if (networkNameEl) {
             networkNameEl.textContent = blockchainData.chain || 'Mainnet';
         }
 
-        // Update sync status
+        // Update sync status - check if node is running first
         const syncStatusEl = document.getElementById('sync-status');
         if (syncStatusEl) {
-            if (blockchainData.is_synced) {
+            // Get node status from updateManager state
+            const nodeRunning = window.btpcUpdateManager && window.btpcUpdateManager.state.node.running;
+
+            if (!nodeRunning) {
+                // Node is off - show offline status
+                syncStatusEl.textContent = 'Offline';
+                syncStatusEl.style.color = 'var(--text-muted)';
+            } else if (blockchainData.is_synced) {
                 syncStatusEl.textContent = 'Synced';
                 syncStatusEl.style.color = 'var(--status-success)';
             } else {
@@ -366,7 +401,19 @@ function addDateTimeDisplay() {
     dateTimeDisplay.id = 'datetime-display';
     dateTimeDisplay.className = 'datetime-display';
 
-    document.body.appendChild(dateTimeDisplay);
+    // Insert into sidebar, before the network-status-footer
+    const networkFooter = document.querySelector('.network-status-footer');
+    if (networkFooter && networkFooter.parentNode) {
+        networkFooter.parentNode.insertBefore(dateTimeDisplay, networkFooter);
+    } else {
+        // Fallback: append to sidebar nav
+        const sidebar = document.querySelector('.sidebar');
+        if (sidebar) {
+            sidebar.appendChild(dateTimeDisplay);
+        } else {
+            document.body.appendChild(dateTimeDisplay);
+        }
+    }
 
     // Update immediately
     updateDateTime();
@@ -397,6 +444,7 @@ function updateDateTime() {
 
     display.innerHTML = `
         <span class="datetime-date">${dateStr}</span>
+        <span style="color: var(--border-color);">|</span>
         <span class="datetime-time">${timeStr}</span>
     `;
 }
@@ -419,9 +467,45 @@ function addLogoutButton() {
     document.body.appendChild(logoutBtn);
 }
 
+/**
+ * Show network warning banner on non-mainnet networks (or mainnet caution notice).
+ * Called on DOMContentLoaded for all pages.
+ */
+function showNetworkBanner() {
+    if (document.getElementById('network-warning-banner')) return;
+
+    const networkEl = document.getElementById('network-name');
+    if (!networkEl) return;
+
+    const net = (networkEl.textContent || 'Mainnet').toLowerCase();
+    if (net === 'mainnet') return; // No banner needed on mainnet
+
+    const banner = document.createElement('div');
+    banner.id = 'network-warning-banner';
+
+    if (net === 'testnet') {
+        banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;padding:6px 16px;text-align:center;font-size:0.8125rem;font-weight:600;background:rgba(245,158,11,0.15);color:#f59e0b;border-bottom:1px solid rgba(245,158,11,0.3);pointer-events:none;';
+        banner.textContent = 'TESTNET — Coins on this network have no real value';
+    } else if (net === 'regtest') {
+        banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;padding:6px 16px;text-align:center;font-size:0.8125rem;font-weight:600;background:rgba(59,130,246,0.15);color:#3b82f6;border-bottom:1px solid rgba(59,130,246,0.3);pointer-events:none;';
+        banner.textContent = 'REGTEST — Local development network';
+    }
+
+    if (banner.textContent) {
+        document.body.prepend(banner);
+        // Shift page content down to avoid overlap
+        document.body.style.paddingTop = '32px';
+    }
+}
+
 // Store unlisten functions for proper cleanup (prevents memory leaks)
 let unlistenNetworkConfig = null;
 let unlistenNodeStatus = null;
+let unlistenReorgDetected = null;
+let unlistenReorgInProgress = null;
+let unlistenReorgCompleted = null;
+let unlistenReorgFailed = null;
+let unlistenDiskSpaceWarning = null;
 
 /**
  * Set up Tauri event listeners for unified state management
@@ -456,9 +540,49 @@ async function setupTauriEventListeners() {
                 networkTypeEl.textContent = networkName;
             }
 
+            // Update chain info in Blockchain Info tab (node page)
+            const infoChainEl = document.getElementById('info-chain');
+            if (infoChainEl) {
+                const networkName = network.charAt(0).toUpperCase() + network.slice(1);
+                infoChainEl.textContent = networkName;
+                console.log(`Updated info-chain display to: ${networkName}`);
+            }
+
             // Show toast notification
             if (window.Toast) {
                 Toast.info(`Network changed to ${network.charAt(0).toUpperCase() + network.slice(1)}`);
+            }
+
+            // FIX 2025-12-09: Reload wallets and transactions when network changes
+            // Without this, pages still have cached wallet IDs from the previous network
+            // which causes transaction queries to fail (wallet ID not found in new network)
+            console.log('🔄 Network changed - triggering data reload...');
+
+            // Dispatch custom event for pages to handle network change
+            window.dispatchEvent(new CustomEvent('btpc:network-changed', {
+                detail: { network, rpc_port, p2p_port }
+            }));
+
+            // If page has loadWallets function, call it to refresh wallet list
+            if (typeof window.loadWallets === 'function') {
+                console.log('🔄 Reloading wallets for new network...');
+                window.loadWallets();
+            }
+
+            // If page has loadTransactions function, call it to refresh transactions
+            if (typeof window.loadTransactions === 'function') {
+                console.log('🔄 Reloading transactions for new network...');
+                // Reset any cached wallet ID first
+                if (typeof window.selectedWalletId !== 'undefined') {
+                    window.selectedWalletId = null;
+                }
+                window.loadTransactions();
+            }
+
+            // If page has loadMiningAddresses function (mining.html), call it
+            if (typeof window.loadMiningAddresses === 'function') {
+                console.log('🔄 Reloading mining addresses for new network...');
+                window.loadMiningAddresses();
             }
         });
 
@@ -520,9 +644,310 @@ async function setupTauriEventListeners() {
             console.log(`Updated node status display: ${status} (PID: ${pid || 'none'})`);
         });
 
-        console.log('Tauri event listeners registered');
+        // FR-057: Listen for chain reorganization events
+        unlistenReorgDetected = await listen('chain:reorg_detected', (event) => {
+            console.log('Chain reorganization detected:', event.payload);
+            showReorgBanner('detecting', event.payload);
+            if (window.Toast) {
+                Toast.warning(`Chain reorganization detected at height ${event.payload.fork_point_height}`);
+            }
+        });
+
+        unlistenReorgInProgress = await listen('chain:reorg_in_progress', (event) => {
+            console.log('Chain reorganization in progress:', event.payload);
+            updateReorgProgress(event.payload);
+        });
+
+        unlistenReorgCompleted = await listen('chain:reorg_completed', (event) => {
+            console.log('Chain reorganization completed:', event.payload);
+            hideReorgBanner();
+            if (window.Toast) {
+                Toast.success(`Chain reorganization complete: ${event.payload.blocks_disconnected} blocks replaced`);
+            }
+        });
+
+        unlistenReorgFailed = await listen('chain:reorg_failed', (event) => {
+            console.error('Chain reorganization failed:', event.payload);
+            hideReorgBanner();
+            if (window.Toast) {
+                Toast.error(`Chain reorganization failed: ${event.payload.error}`);
+            }
+        });
+
+        // FR-058: Listen for disk space warning events
+        unlistenDiskSpaceWarning = await listen('disk:space_warning', (event) => {
+            console.warn('Low disk space warning:', event.payload);
+            if (window.Toast) {
+                Toast.warning(`Low disk space: ${event.payload.available_formatted} remaining`, 10000);
+            }
+        });
+
+        await listen('disk:sync_paused', (event) => {
+            console.warn('Sync paused due to low disk space:', event.payload);
+            if (window.Toast) {
+                Toast.error(`Blockchain sync paused: Only ${event.payload.available_formatted} disk space remaining. Free up space to continue.`, 0);
+            }
+        });
+
+        await listen('disk:mining_prevented', (event) => {
+            console.warn('Mining prevented due to low disk space:', event.payload);
+            if (window.Toast) {
+                Toast.error(`Mining disabled: Only ${event.payload.available_formatted} disk space remaining. Free up space to mine.`, 0);
+            }
+        });
+
+        console.log('Tauri event listeners registered (including reorg and disk space events)');
     } catch (error) {
         console.error('Failed to set up Tauri event listeners:', error);
+    }
+}
+
+/**
+ * FR-057: Show chain reorganization banner
+ */
+function showReorgBanner(status, data) {
+    // Remove existing banner if any
+    hideReorgBanner();
+
+    const banner = document.createElement('div');
+    banner.id = 'reorg-banner';
+    banner.className = 'reorg-banner';
+    banner.innerHTML = `
+        <div class="reorg-banner-content">
+            <span class="reorg-icon">🔄</span>
+            <span class="reorg-text">Chain Reorganization in Progress</span>
+            <span class="reorg-details" id="reorg-details">
+                Detecting fork at height ${data.fork_point_height || '...'}
+            </span>
+        </div>
+    `;
+
+    // Insert at top of main content area
+    const mainContent = document.querySelector('.main-content') || document.body;
+    mainContent.insertBefore(banner, mainContent.firstChild);
+}
+
+/**
+ * FR-057: Update reorg progress indicator
+ */
+function updateReorgProgress(data) {
+    const details = document.getElementById('reorg-details');
+    if (details) {
+        details.textContent = `Disconnecting ${data.blocks_to_disconnect} blocks, connecting ${data.blocks_to_connect} blocks (${data.current_progress}/${data.blocks_to_disconnect + data.blocks_to_connect})`;
+    }
+}
+
+/**
+ * FR-057: Hide chain reorganization banner
+ */
+function hideReorgBanner() {
+    const banner = document.getElementById('reorg-banner');
+    if (banner) {
+        banner.classList.add('removing');
+        setTimeout(() => banner.remove(), 300);
+    }
+}
+
+/**
+ * Check and execute auto-start settings (node and mining)
+ * Only runs once per session to prevent multiple starts on page navigation
+ */
+/**
+ * Get mining configuration for auto-start
+ * Retrieves saved mining address or first available wallet address
+ */
+async function getAutoStartMiningConfig() {
+    try {
+        // Try to get saved mining address from miningConfig
+        const miningConfig = window.btpcStorage.getMiningConfig();
+        let miningAddress = miningConfig.address || '';
+
+        // If no saved address, try to get first wallet
+        if (!miningAddress) {
+            const wallets = await window.invoke('list_wallets');
+            if (wallets && wallets.length > 0) {
+                miningAddress = wallets[0].address;
+            }
+        }
+
+        if (!miningAddress) {
+            console.warn('Auto-start mining: No wallet address available');
+            return null;
+        }
+
+        const config = {
+            enable_cpu: false,
+            enable_gpu: true,
+            cpu_threads: null,
+            mining_address: miningAddress,
+            mining_mode: miningConfig.mining_mode || 'solo',
+            pool_config: null
+        };
+
+        // Include pool config if in pool mode
+        if (config.mining_mode === 'pool' && miningConfig.pool_url) {
+            config.pool_config = {
+                url: miningConfig.pool_url,
+                worker: miningConfig.pool_worker || 'default',
+                password: miningConfig.pool_password || 'x'
+            };
+        }
+
+        return config;
+    } catch (e) {
+        console.error('Failed to get mining config for auto-start:', e);
+        return null;
+    }
+}
+
+async function checkAutoStartSettings() {
+    // FIX 2025-12-13: Use sessionStorage flag - persists for entire browser session
+    // Only run auto-start ONCE per app launch, not on every page navigation
+    const AUTOSTART_KEY = 'btpc_autostart_done';
+    const NODE_START_TIME_KEY = 'btpc_node_start_time';
+
+    // Check if already ran this session
+    if (sessionStorage.getItem(AUTOSTART_KEY) === 'true') {
+        console.log('[Auto-Start] Already ran this session, skipping');
+        return;
+    }
+
+    // FIX 2025-12-27: Fresh app launch - clear stale node uptime data
+    // This prevents the "3+ days uptime" bug when app restarts
+    // The correct uptime will be set when node actually starts
+    const storedUptime = localStorage.getItem(NODE_START_TIME_KEY);
+    if (storedUptime) {
+        console.log('[Auto-Start] Clearing stale node uptime from previous session');
+        localStorage.removeItem(NODE_START_TIME_KEY);
+    }
+
+    // Mark as done for this session
+    sessionStorage.setItem(AUTOSTART_KEY, 'true');
+    console.log('[Auto-Start] Fresh app launch detected, checking settings...');
+
+    if (!window.invoke) {
+        console.warn('[Auto-Start] ❌ Tauri API (window.invoke) not ready');
+        return;
+    }
+
+    // FIX 2025-12-13: Wait for btpcStorage to be ready (retry up to 5 times)
+    let retryCount = 0;
+    while (!window.btpcStorage && retryCount < 5) {
+        console.log('[Auto-Start] Waiting for btpcStorage... attempt', retryCount + 1);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        retryCount++;
+    }
+
+    if (!window.btpcStorage) {
+        console.warn('[Auto-Start] ❌ btpcStorage not ready after 5 attempts');
+        return;
+    }
+    console.log('[Auto-Start] ✅ btpcStorage ready');
+
+    try {
+        const nodeConfig = window.btpcStorage.getNodeConfig();
+        const miningConfig = window.btpcStorage.getMiningConfig();
+
+        // FIX 2025-12-08: Enhanced debugging for auto-start issues
+        console.log('[Auto-Start] ========================================');
+        console.log('[Auto-Start] Reading settings from localStorage...');
+        console.log('[Auto-Start] Node config:', JSON.stringify(nodeConfig, null, 2));
+        console.log('[Auto-Start] Mining config:', JSON.stringify(miningConfig, null, 2));
+        console.log('[Auto-Start] autoConnect value:', nodeConfig.autoConnect, '(type:', typeof nodeConfig.autoConnect + ')');
+        console.log('[Auto-Start] autoStart value:', miningConfig.autoStart, '(type:', typeof miningConfig.autoStart + ')');
+
+        // Check if node should auto-start
+        if (nodeConfig.autoConnect) {
+            // Check if node is already running
+            try {
+                const nodeStatus = await window.invoke('get_node_status');
+                if (!nodeStatus.running) {
+                    console.log('Auto-starting node on application launch...');
+                    // FIX 2025-12-27: Clear old uptime and set fresh start time
+                    // This fixes the "3+ days uptime" bug when auto-starting
+                    const NODE_START_TIME_KEY = 'btpc_node_start_time';
+                    localStorage.setItem(NODE_START_TIME_KEY, Date.now().toString());
+
+                    await window.invoke('start_node');
+                    if (window.Toast) {
+                        Toast.info('Node auto-started (Settings > Application)');
+                    }
+
+                    // If mining should also auto-start, wait for node then start mining
+                    if (miningConfig.autoStart) {
+                        // Wait a moment for node to initialize
+                        setTimeout(async () => {
+                            try {
+                                const autoMiningConfig = await getAutoStartMiningConfig();
+                                if (autoMiningConfig) {
+                                    console.log('Auto-starting mining on node start...', autoMiningConfig);
+                                    await window.invoke('start_mining', { config: autoMiningConfig });
+                                    if (window.Toast) {
+                                        Toast.info('Mining auto-started (Settings > Node)');
+                                    }
+                                } else {
+                                    console.warn('Auto-start mining skipped: No wallet address available');
+                                    if (window.Toast) {
+                                        Toast.warning('Mining not started: Create a wallet first');
+                                    }
+                                }
+                            } catch (miningErr) {
+                                console.error('Failed to auto-start mining:', miningErr);
+                            }
+                        }, 2000);
+                    }
+                } else {
+                    console.log('Node already running, skipping auto-start');
+                    // But still check if mining should auto-start
+                    if (miningConfig.autoStart) {
+                        try {
+                            const miningStatus = await window.invoke('get_mining_status');
+                            if (!miningStatus.is_mining) {
+                                const autoMiningConfig = await getAutoStartMiningConfig();
+                                if (autoMiningConfig) {
+                                    console.log('Auto-starting mining (node already running)...', autoMiningConfig);
+                                    await window.invoke('start_mining', { config: autoMiningConfig });
+                                    if (window.Toast) {
+                                        Toast.info('Mining auto-started (Settings > Node)');
+                                    }
+                                } else {
+                                    console.warn('Auto-start mining skipped: No wallet address available');
+                                }
+                            }
+                        } catch (e) {
+                            console.error('Failed to check/start mining:', e);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to check node status for auto-start:', e);
+            }
+        } else if (miningConfig.autoStart) {
+            // Mining auto-start is enabled but node auto-start is not
+            // Check if node is running and start mining if so
+            try {
+                const nodeStatus = await window.invoke('get_node_status');
+                if (nodeStatus.running) {
+                    const miningStatus = await window.invoke('get_mining_status');
+                    if (!miningStatus.is_mining) {
+                        const autoMiningConfig = await getAutoStartMiningConfig();
+                        if (autoMiningConfig) {
+                            console.log('Auto-starting mining (node already running)...', autoMiningConfig);
+                            await window.invoke('start_mining', { config: autoMiningConfig });
+                            if (window.Toast) {
+                                Toast.info('Mining auto-started (Settings > Node)');
+                            }
+                        } else {
+                            console.warn('Auto-start mining skipped: No wallet address available');
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to auto-start mining:', e);
+            }
+        }
+    } catch (error) {
+        console.error('Error checking auto-start settings:', error);
     }
 }
 
@@ -538,23 +963,33 @@ async function initCommonFeatures() {
     // Add date/time display
     addDateTimeDisplay();
 
+    // Show network warning banner for non-mainnet networks
+    showNetworkBanner();
+
     // Logout button is now in HTML (no longer dynamically created)
     // addLogoutButton(); // REMOVED: Caused duplicate buttons with HTML button
 
     // Set up Tauri event listeners for unified state management
     await setupTauriEventListeners();
 
+    // Check and execute auto-start settings (node and mining)
+    // Delayed slightly to ensure all APIs are ready
+    setTimeout(checkAutoStartSettings, 1000);
+
     // Subscribe to updates from the update manager (Article XI compliant event-driven)
     if (window.btpcUpdateManager) {
         window.btpcUpdateManager.subscribe((type, data, fullState) => {
             if (type === 'blockchain') {
                 updateNetworkFooter(data);
+            } else if (type === 'node') {
+                // When node status changes, update sync status display
+                updateNetworkFooter(fullState.blockchain);
             } else if (type === 'wallet') {
                 // Update sidebar balance when wallet state changes (event-driven)
                 updateSidebarBalance();
             }
         });
-        console.log('Subscribed to blockchain and wallet updates');
+        console.log('Subscribed to node, blockchain and wallet updates');
 
         // Article XI, Section 11.6: Start update manager globally once (singleton pattern)
         // All pages benefit from centralized polling - no page-specific intervals needed
@@ -793,4 +1228,158 @@ window.toast = toast;
 window.formatRelativeTime = formatRelativeTime;
 window.copyToClipboard = copyToClipboard;
 
-console.log('✨ UI Polish utilities loaded: loading, toast, clipboard');
+// ============================================
+// Custom Dropdown Component - Purple Theme
+// Converts native <select> to styled dropdown
+// ============================================
+
+/**
+ * Initialize a custom dropdown from a native select element
+ * @param {string} selectId - ID of the native select element
+ * @param {Object} options - Configuration options
+ * @param {Function} options.onChange - Callback when value changes
+ * @param {Function} options.formatItem - Custom item formatter (receives option element, returns HTML)
+ */
+function initBtpcDropdown(selectId, options = {}) {
+    const select = document.getElementById(selectId);
+    if (!select) {
+        console.warn(`[BtpcDropdown] Select element #${selectId} not found`);
+        return null;
+    }
+
+    // Create dropdown container
+    const container = document.createElement('div');
+    container.className = 'btpc-dropdown';
+    container.id = `${selectId}-dropdown`;
+
+    // Create dropdown button
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btpc-dropdown-btn';
+    btn.innerHTML = `<span class="selected-text">Select...</span><span class="chevron">▼</span>`;
+
+    // Create dropdown menu
+    const menu = document.createElement('div');
+    menu.className = 'btpc-dropdown-menu';
+
+    // Populate menu from select options
+    function populateMenu() {
+        menu.innerHTML = '';
+        Array.from(select.options).forEach((option, index) => {
+            if (option.value === '' && index === 0) {
+                // Skip placeholder option
+                return;
+            }
+            const item = document.createElement('div');
+            item.className = 'btpc-dropdown-item';
+            item.dataset.value = option.value;
+
+            // FIX 2025-12-30: Apply wallet color as left border if data-color exists
+            if (option.dataset.color) {
+                item.style.borderLeft = `4px solid ${option.dataset.color}`;
+                item.style.paddingLeft = '12px';
+            }
+
+            if (options.formatItem) {
+                item.innerHTML = options.formatItem(option);
+            } else {
+                item.innerHTML = `<div class="item-label">${option.textContent}</div>`;
+            }
+
+            if (option.selected && option.value !== '') {
+                item.classList.add('selected');
+                btn.querySelector('.selected-text').textContent = option.textContent;
+            }
+
+            item.addEventListener('click', () => {
+                selectItem(option.value, option.textContent);
+            });
+
+            menu.appendChild(item);
+        });
+
+        // Show placeholder if no selection
+        if (!select.value) {
+            const placeholder = select.options[0]?.textContent || 'Select...';
+            btn.querySelector('.selected-text').textContent = placeholder;
+        }
+    }
+
+    // Select an item
+    function selectItem(value, text) {
+        select.value = value;
+        btn.querySelector('.selected-text').textContent = text;
+
+        // Update selected state
+        menu.querySelectorAll('.btpc-dropdown-item').forEach(item => {
+            item.classList.toggle('selected', item.dataset.value === value);
+        });
+
+        // Close dropdown
+        closeDropdown();
+
+        // Trigger change event on original select
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+
+        // Call onChange callback
+        if (options.onChange) {
+            options.onChange(value, text);
+        }
+    }
+
+    // Toggle dropdown
+    let isOpen = false;
+    function toggleDropdown() {
+        isOpen = !isOpen;
+        btn.classList.toggle('open', isOpen);
+        menu.classList.toggle('show', isOpen);
+    }
+
+    function closeDropdown() {
+        isOpen = false;
+        btn.classList.remove('open');
+        menu.classList.remove('show');
+    }
+
+    // Event listeners
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleDropdown();
+    });
+
+    // Close when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!container.contains(e.target)) {
+            closeDropdown();
+        }
+    });
+
+    // Build dropdown
+    container.appendChild(btn);
+    container.appendChild(menu);
+
+    // Hide original select and insert dropdown
+    select.style.display = 'none';
+    select.parentNode.insertBefore(container, select.nextSibling);
+
+    // Initial population
+    populateMenu();
+
+    // Return API for external control
+    return {
+        refresh: populateMenu,
+        setValue: (value) => {
+            const option = select.querySelector(`option[value="${value}"]`);
+            if (option) {
+                selectItem(value, option.textContent);
+            }
+        },
+        getValue: () => select.value,
+        close: closeDropdown
+    };
+}
+
+// Export dropdown utility
+window.initBtpcDropdown = initBtpcDropdown;
+
+console.log('✨ UI Polish utilities loaded: loading, toast, clipboard, dropdown');

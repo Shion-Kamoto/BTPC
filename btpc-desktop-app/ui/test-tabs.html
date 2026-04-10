@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tab Manager Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 40px;
+            background: #1a1a1a;
+            color: #fff;
+        }
+        .tab-nav {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 24px;
+            border-bottom: 2px solid #444;
+        }
+        .tab-btn {
+            padding: 12px 24px;
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 16px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+        }
+        .tab-btn.active {
+            color: #d4af37;
+            border-bottom-color: #d4af37;
+        }
+        .tab-content {
+            display: none;
+            padding: 20px;
+            background: #2a2a2a;
+            border-radius: 8px;
+        }
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <h1>TabManager Test Page</h1>
+    <p>This page tests if the btpc-tab-manager.js is working correctly.</p>
+
+    <!-- Tab Navigation -->
+    <div class="tab-nav" role="tablist" aria-label="Test Sections">
+        <button class="tab-btn active" role="tab" id="tab-btn-tab1" data-tab="tab1" aria-selected="true" aria-controls="tab-panel-tab1" tabindex="0">Tab 1</button>
+        <button class="tab-btn" role="tab" id="tab-btn-tab2" data-tab="tab2" aria-selected="false" aria-controls="tab-panel-tab2" tabindex="-1">Tab 2</button>
+        <button class="tab-btn" role="tab" id="tab-btn-tab3" data-tab="tab3" aria-selected="false" aria-controls="tab-panel-tab3" tabindex="-1">Tab 3</button>
+    </div>
+
+    <!-- Tab 1 Content -->
+    <div id="tab-panel-tab1" class="tab-content active" role="tabpanel" aria-labelledby="tab-btn-tab1" tabindex="0">
+        <h2>Tab 1 Content</h2>
+        <p>This is the content of Tab 1. If you can see this and the tab button above has a gold underline, the TabManager is working!</p>
+    </div>
+
+    <!-- Tab 2 Content -->
+    <div id="tab-panel-tab2" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-tab2" tabindex="0">
+        <h2>Tab 2 Content</h2>
+        <p>This is the content of Tab 2. If clicking Tab 2 showed this content, the TabManager is working correctly!</p>
+    </div>
+
+    <!-- Tab 3 Content -->
+    <div id="tab-panel-tab3" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-tab3" tabindex="0">
+        <h2>Tab 3 Content</h2>
+        <p>This is the content of Tab 3. If clicking Tab 3 showed this content, the TabManager is working correctly!</p>
+    </div>
+
+    <div style="margin-top: 40px; padding: 20px; background: #333; border-radius: 8px;">
+        <h3>Test Results:</h3>
+        <ul id="test-results">
+            <li>Loading...</li>
+        </ul>
+    </div>
+
+    <script src="btpc-tab-manager.js"></script>
+    <script>
+        const results = document.getElementById('test-results');
+
+        document.addEventListener('DOMContentLoaded', () => {
+            results.innerHTML = '';
+
+            // Test 1: Check if TabManager is defined
+            if (typeof TabManager !== 'undefined') {
+                results.innerHTML += '<li>✅ TabManager class is loaded</li>';
+            } else {
+                results.innerHTML += '<li>❌ TabManager class NOT loaded</li>';
+                return;
+            }
+
+            // Test 2: Initialize TabManager
+            try {
+                const tabManager = new TabManager({
+                    page: 'test',
+                    defaultTab: 'tab1'
+                });
+                results.innerHTML += '<li>✅ TabManager initialized successfully</li>';
+            } catch (e) {
+                results.innerHTML += '<li>❌ TabManager initialization failed: ' + e.message + '</li>';
+                return;
+            }
+
+            // Test 3: Check if .tab-nav exists
+            const tabNav = document.querySelector('.tab-nav');
+            if (tabNav) {
+                results.innerHTML += '<li>✅ .tab-nav container found</li>';
+            } else {
+                results.innerHTML += '<li>❌ .tab-nav container NOT found</li>';
+            }
+
+            // Test 4: Check if event listeners are attached
+            setTimeout(() => {
+                const activeTab = document.querySelector('.tab-btn.active');
+                if (activeTab && activeTab.getAttribute('data-tab') === 'tab1') {
+                    results.innerHTML += '<li>✅ Default tab is active (tab1)</li>';
+                } else {
+                    results.innerHTML += '<li>❌ Default tab is NOT active</li>';
+                }
+            }, 100);
+
+            results.innerHTML += '<li>ℹ️ Click the tab buttons above to test tab switching</li>';
+        });
+    </script>
+</body>
+</html>
