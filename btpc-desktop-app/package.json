@@ -22,8 +22,8 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@tauri-apps/api": "^2.9.0",
-    "@tauri-apps/cli": "^2.9.0",
+    "@tauri-apps/api": "^2.10.0",
+    "@tauri-apps/cli": "^2.10.0",
     "update": "^0.4.2"
   },
   "devDependencies": {
