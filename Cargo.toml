@@ -10,6 +10,9 @@ members = [
     "bins/genesis_tool",
     "src-tauri"
 ]
+exclude = [
+    "btpc-desktop-app"
+]
 resolver = "2"
 
 # Workspace-wide configuration
