@@ -56,16 +56,12 @@ pub mod stratum;
 // Note: fee_estimator is NOT exported here because it depends on EmbeddedNode
 // which creates circular import issues. It's declared in main.rs instead.
 
-// Test-compatible command stubs (for integration tests)
-// These provide the same API as production commands but without Tauri AppState
-#[path = "commands_test/mod.rs"]
+// Command modules
 pub mod commands;
 
-// Wallet and auth command stubs for integration tests
-#[path = "wallet_commands_stub.rs"]
+// Wallet and auth commands
 pub mod wallet_commands;
 
-#[path = "auth_commands_stub.rs"]
 pub mod auth_commands;
 
 // Also re-export common items for convenience
