@@ -1,0 +1,1 @@
+Couldn't find the requested file /typescript-javascript/qrcodegen.js in nayuki/QR-Code-generator.

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="512" height="512"
+     viewBox="0 0 24 24"
+     fill="none"
+     stroke="#000000"
+     stroke-width="2"
+     stroke-linecap="round"
+     stroke-linejoin="round">
+  <!-- Two circular arrows representing transaction flow -->
+  <polyline points="17 1 21 5 17 9" stroke-width="1.5"/>
+  <path d="M3 11V9a4 4 0 0 1 4-4h14" stroke-width="1.5"/>
+
+  <polyline points="7 23 3 19 7 15" stroke-width="1.5"/>
+  <path d="M21 13v2a4 4 0 0 1-4 4H3" stroke-width="1.5"/>
+</svg>
