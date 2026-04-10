@@ -49,8 +49,8 @@ pub const MAX_TRANSACTION_INPUTS: usize = 1000;
 /// Maximum number of outputs in a transaction
 pub const MAX_TRANSACTION_OUTPUTS: usize = 1000;
 
-/// Minimum transaction fee in CREDITS per byte
-pub const MIN_FEE_PER_BYTE: u64 = 1;
+/// Minimum transaction fee in CREDITS per kilobyte
+pub const MIN_FEE_PER_KB: u64 = 1;
 
 /// Standard transaction fee (0.0001 BTPC)
 pub const STANDARD_FEE: u64 = 10_000;
@@ -82,23 +82,23 @@ pub const TESTNET_MAGIC: [u8; 4] = [0x74, 0x42, 0x54, 0x50]; // "tBTP"
 /// Network magic bytes for regtest
 pub const REGTEST_MAGIC: [u8; 4] = [0x72, 0x42, 0x54, 0x50]; // "rBTP"
 
-/// Default port for mainnet P2P
-pub const MAINNET_PORT: u16 = 8333;
+/// Default port for mainnet P2P (BTPC isolated from Bitcoin)
+pub const MAINNET_PORT: u16 = 18341;
 
-/// Default port for testnet P2P
-pub const TESTNET_PORT: u16 = 18333;
+/// Default port for testnet P2P (BTPC isolated from Bitcoin)
+pub const TESTNET_PORT: u16 = 18351;
 
-/// Default port for regtest P2P
-pub const REGTEST_PORT: u16 = 18444;
+/// Default port for regtest P2P (BTPC isolated from Bitcoin)
+pub const REGTEST_PORT: u16 = 18361;
 
-/// Default RPC port for mainnet
-pub const MAINNET_RPC_PORT: u16 = 8332;
+/// Default RPC port for mainnet (BTPC isolated from Bitcoin)
+pub const MAINNET_RPC_PORT: u16 = 18340;
 
-/// Default RPC port for testnet
-pub const TESTNET_RPC_PORT: u16 = 18332;
+/// Default RPC port for testnet (BTPC isolated from Bitcoin)
+pub const TESTNET_RPC_PORT: u16 = 18350;
 
-/// Default RPC port for regtest
-pub const REGTEST_RPC_PORT: u16 = 18443;
+/// Default RPC port for regtest (BTPC isolated from Bitcoin)
+pub const REGTEST_RPC_PORT: u16 = 18360;
 
 /// Maximum number of peer connections
 pub const MAX_PEER_CONNECTIONS: usize = 125;
@@ -166,8 +166,9 @@ pub const GENESIS_TIMESTAMP: u64 = 1735689600;
 /// Genesis block nonce (will be determined during mining)
 pub const GENESIS_NONCE: u32 = 0;
 
-/// Genesis block difficulty bits (minimum difficulty)
-pub const GENESIS_BITS: u32 = 0x207fffff;
+/// Genesis block difficulty bits (minimum difficulty for regtest)
+/// FIX 2025-12-27: Updated to SHA-512 compatible value (exponent 64, instant mining)
+pub const GENESIS_BITS: u32 = 0x407fffff;
 
 /// CREDITS per BTPC
 pub const CREDITS_PER_BTPC: u64 = 100_000_000;
@@ -203,7 +204,7 @@ const _: () = {
     // Ensure fee constants are reasonable
     assert!(STANDARD_FEE > 0);
     assert!(DUST_THRESHOLD > 0);
-    assert!(MIN_FEE_PER_BYTE > 0);
+    assert!(MIN_FEE_PER_KB > 0);
 };
 
 /// Get network-specific constants
@@ -226,7 +227,7 @@ impl NetworkConstants {
             address_version: ADDRESS_VERSION_MAINNET,
             script_version: SCRIPT_VERSION_MAINNET,
             bech32_hrp: BECH32_HRP_MAINNET,
-            min_difficulty_bits: 0x1d00ffff, // Mainnet minimum difficulty
+            min_difficulty_bits: 0x3c7fffff, // Mainnet minimum difficulty (SHA-512 ~32 bits work)
         }
     }
 
@@ -238,7 +239,7 @@ impl NetworkConstants {
             address_version: ADDRESS_VERSION_TESTNET,
             script_version: SCRIPT_VERSION_TESTNET,
             bech32_hrp: BECH32_HRP_TESTNET,
-            min_difficulty_bits: 0x207fffff, // Testnet minimum difficulty (easier)
+            min_difficulty_bits: 0x3c7fffff, // Testnet minimum difficulty (SHA-512 ~32 bits work)
         }
     }
 
@@ -250,12 +251,13 @@ impl NetworkConstants {
             address_version: ADDRESS_VERSION_REGTEST,
             script_version: SCRIPT_VERSION_REGTEST,
             bech32_hrp: BECH32_HRP_REGTEST,
-            min_difficulty_bits: 0x207fffff, // Regtest minimum difficulty (very easy)
+            min_difficulty_bits: 0x407fffff, // Regtest minimum difficulty (SHA-512 instant mining)
         }
     }
 }
 
 #[cfg(test)]
+#[allow(clippy::assertions_on_constants)]
 mod tests {
     use super::*;
 
@@ -291,7 +293,7 @@ mod tests {
     }
 
     #[test]
-    fn test_satoshi_conversion() {
+    fn test_credits_conversion() {
         assert_eq!(CREDITS_PER_BTPC, 100_000_000);
 
         // Test some known conversions
@@ -334,7 +336,7 @@ mod tests {
     #[test]
     fn test_fee_constants() {
         // Test fee-related constants
-        assert!(MIN_FEE_PER_BYTE > 0);
+        assert!(MIN_FEE_PER_KB > 0);
         assert!(STANDARD_FEE > 0);
         assert!(DUST_THRESHOLD > 0);
         assert!(MIN_RELAY_FEE > 0);

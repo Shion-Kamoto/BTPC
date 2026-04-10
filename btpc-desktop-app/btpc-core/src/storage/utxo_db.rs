@@ -36,6 +36,13 @@ pub trait UTXODatabase {
         to_remove: &[&crate::blockchain::OutPoint],
         to_add: &[&crate::blockchain::utxo::UTXO],
     ) -> Result<(), UTXODbError>;
+
+    /// Get all UTXOs for a given pubkey hash (address)
+    /// Used by getutxosforaddress RPC method
+    fn get_utxos_for_pubkey_hash(
+        &self,
+        pubkey_hash: &[u8; 20],
+    ) -> Result<Vec<crate::blockchain::utxo::UTXO>, UTXODbError>;
 }
 
 impl UtxoDb {
@@ -263,6 +270,33 @@ impl UTXODatabase for UtxoDb {
             .map_err(|e| UTXODbError::DatabaseError(e.to_string()))?;
 
         Ok(())
+    }
+
+    fn get_utxos_for_pubkey_hash(
+        &self,
+        pubkey_hash: &[u8; 20],
+    ) -> Result<Vec<UTXO>, UTXODbError> {
+        let mut matching_utxos = Vec::new();
+
+        // Iterate all UTXOs and filter by pubkey hash
+        for result in self.iter_utxos() {
+            match result {
+                Ok((_outpoint, utxo)) => {
+                    // Extract pubkey hash from the script_pubkey (P2PKH format)
+                    if let Some(script_hash) = utxo.output.script_pubkey.extract_pubkey_hash() {
+                        if &script_hash == pubkey_hash {
+                            matching_utxos.push(utxo);
+                        }
+                    }
+                }
+                Err(e) => {
+                    // Log error but continue scanning
+                    eprintln!("Error iterating UTXO: {:?}", e);
+                }
+            }
+        }
+
+        Ok(matching_utxos)
     }
 }
 

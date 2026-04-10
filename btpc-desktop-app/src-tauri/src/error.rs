@@ -309,6 +309,19 @@ pub enum TransactionError {
     TransactionAlreadyBroadcast {
         tx_id: String,
     },
+
+    // Additional errors for test compatibility
+    WalletNotFound {
+        wallet_id: String,
+    },
+    TransactionLocked {
+        tx_id: String,
+        reason: String,
+    },
+    TransactionConfirmed {
+        tx_id: String,
+        block_height: u64,
+    },
 }
 
 impl fmt::Display for BtpcError {
@@ -650,7 +663,7 @@ impl fmt::Display for TransactionError {
             } => {
                 write!(
                     f,
-                    "Invalid amount {} satoshis (minimum: {})",
+                    "Invalid amount {} credits (minimum: {})",
                     amount, min_required
                 )
             }
@@ -670,7 +683,7 @@ impl fmt::Display for TransactionError {
             TransactionError::DustOutput { amount, dust_limit } => {
                 write!(
                     f,
-                    "Output {} is below dust limit of {} satoshis",
+                    "Output {} is below dust limit of {} credits",
                     amount, dust_limit
                 )
             }
@@ -747,7 +760,7 @@ impl fmt::Display for TransactionError {
             TransactionError::FeeTooLow { provided, minimum } => {
                 write!(
                     f,
-                    "Fee too low. Provided: {} sat/byte, Minimum: {} sat/byte",
+                    "Fee too low. Provided: {} crd/KB, Minimum: {} crd/KB",
                     provided, minimum
                 )
             }
@@ -787,6 +800,21 @@ impl fmt::Display for TransactionError {
             }
             TransactionError::TransactionAlreadyBroadcast { tx_id } => {
                 write!(f, "Transaction {} has already been broadcast", tx_id)
+            }
+
+            // Additional errors
+            TransactionError::WalletNotFound { wallet_id } => {
+                write!(f, "Wallet {} not found", wallet_id)
+            }
+            TransactionError::TransactionLocked { tx_id, reason } => {
+                write!(f, "Transaction {} is locked: {}", tx_id, reason)
+            }
+            TransactionError::TransactionConfirmed { tx_id, block_height } => {
+                write!(
+                    f,
+                    "Transaction {} is already confirmed at block {}",
+                    tx_id, block_height
+                )
             }
         }
     }

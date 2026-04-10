@@ -17,6 +17,22 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
+/// Sanitize a wallet nickname for safe use in filenames.
+/// Strips all characters except alphanumeric, underscore, and hyphen.
+/// Returns "wallet" if the result would be empty.
+fn sanitize_nickname_for_filename(nickname: &str) -> String {
+    let sanitized: String = nickname
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
+        .take(64) // Cap length to prevent absurdly long filenames
+        .collect();
+    if sanitized.is_empty() {
+        "wallet".to_string()
+    } else {
+        sanitized
+    }
+}
+
 /// UTXO Reservation Token for preventing double-spending during transaction creation
 ///
 /// This token reserves specific UTXOs for a transaction, preventing them from being
@@ -131,7 +147,7 @@ pub struct WalletInfo {
     pub last_accessed: DateTime<Utc>,
     /// Wallet metadata and settings
     pub metadata: WalletMetadata,
-    /// Current balance cache (in satoshis)
+    /// Current balance cache (in credits)
     pub cached_balance_credits: u64,
     /// Current balance cache (in BTP)
     pub cached_balance_btp: f64,
@@ -152,6 +168,8 @@ pub struct CreateWalletResponse {
     pub seed_phrase: String,
     /// Private key hex (for displaying to user once as backup/recovery)
     pub private_key_hex: String,
+    /// Seed hex (64 chars) - for private key import (FIX 2025-12-03)
+    pub seed_hex: String,
 }
 
 /// Additional metadata for wallet management
@@ -169,7 +187,7 @@ pub struct WalletMetadata {
     pub auto_backup: bool,
     /// Notification preferences
     pub notifications_enabled: bool,
-    /// Custom transaction fee preference (satoshis)
+    /// Custom transaction fee preference (credits)
     pub default_fee_credits: Option<u64>,
 }
 
@@ -222,7 +240,7 @@ pub struct CreateWalletRequest {
     pub auto_backup: bool,
     /// Notifications enabled
     pub notifications_enabled: bool,
-    /// Default fee in satoshis
+    /// Default fee in credits
     pub default_fee_credits: Option<u64>,
     /// Password for encrypting the private key (required for new wallets)
     pub password: String,
@@ -239,6 +257,9 @@ pub struct ImportData {
     pub private_key_hex: String,
     /// Password for encryption
     pub password: String,
+    /// Seed in hex format (32 bytes = 64 hex chars) for wallet file creation
+    /// FIX 2025-12-14: Required for proper import - creates wallet file with correct keypair
+    pub seed_hex: Option<String>,
 }
 
 /// Wallet update parameters
@@ -312,6 +333,10 @@ pub struct WalletSummary {
     pub total_balance_credits: u64,
     /// Total balance across all wallets (BTP)
     pub total_balance_btp: f64,
+    /// Spendable balance across all wallets (credits) - excludes immature coinbase
+    pub spendable_balance_credits: u64,
+    /// Spendable balance across all wallets (BTP) - excludes immature coinbase
+    pub spendable_balance_btp: f64,
     /// Number of favorite wallets
     pub favorite_wallets: usize,
     /// Most recently accessed wallet
@@ -326,7 +351,8 @@ pub struct WalletSummary {
 pub struct WalletManager {
     config: WalletManagerConfig,
     wallets: HashMap<String, WalletInfo>,
-    security: SecurityManager,
+    #[allow(dead_code)]
+    security: SecurityManager, // Reserved for security audit logging
     metadata_file: PathBuf,
     /// Thread-safe storage for UTXO reservations
     /// Key: Reservation UUID, Value: ReservationToken
@@ -394,11 +420,35 @@ impl WalletManager {
     }
 
     /// Create a new wallet with the specified parameters
+    ///
+    /// # Arguments
+    /// * `request` - Wallet creation request with nickname, password, etc.
+    /// * `btpc_integration` - BTPC integration for wallet file creation
+    /// * `network` - Network type (Mainnet, Testnet, Regtest) for address prefix
     pub fn create_wallet(
         &mut self,
         request: CreateWalletRequest,
         btpc_integration: &crate::btpc_integration::BtpcIntegration,
+        network: btpc_core::Network,
     ) -> BtpcResult<CreateWalletResponse> {
+        // Validate nickname safety — reject path separators and control chars
+        if request.nickname.is_empty() || request.nickname.len() > 64 {
+            return Err(BtpcError::Validation(
+                crate::error::ValidationError::CustomValidation {
+                    rule: "nickname_length".to_string(),
+                    message: "Wallet nickname must be 1-64 characters".to_string(),
+                },
+            ));
+        }
+        if request.nickname.contains('/') || request.nickname.contains('\\') || request.nickname.contains('\0') || request.nickname.contains("..") {
+            return Err(BtpcError::Validation(
+                crate::error::ValidationError::CustomValidation {
+                    rule: "nickname_safety".to_string(),
+                    message: "Wallet nickname contains invalid characters (/, \\, ..)".to_string(),
+                },
+            ));
+        }
+
         // Validate nickname uniqueness
         if self.get_wallet_by_nickname(&request.nickname).is_some() {
             return Err(BtpcError::Validation(
@@ -427,9 +477,52 @@ impl WalletManager {
         let wallet_filename = format!("wallet_{}.dat", wallet_id);
         let wallet_path = self.config.wallets_dir.join(&wallet_filename);
 
-        // Create wallet file using BTPC integration with password
-        let (address, seed_phrase, private_key_hex) =
-            self.create_btpc_wallet_file(&wallet_path, &request.password, btpc_integration)?;
+        // FIX 2025-12-14: Handle import_data for mnemonic/key imports
+        // When import_data is provided with seed_hex, create wallet from existing seed
+        // This ensures the wallet file has the SAME keypair as the imported mnemonic
+        let (address, seed_phrase, private_key_hex, seed_hex) = if let Some(ref import_data) = request.import_data {
+            if let Some(ref seed_hex_str) = import_data.seed_hex {
+                // Convert seed hex to bytes
+                let seed_bytes = hex::decode(seed_hex_str).map_err(|e| {
+                    BtpcError::Validation(crate::error::ValidationError::CustomValidation {
+                        rule: "seed_hex".to_string(),
+                        message: format!("Invalid seed hex: {}", e),
+                    })
+                })?;
+
+                if seed_bytes.len() != 32 {
+                    return Err(BtpcError::Validation(crate::error::ValidationError::CustomValidation {
+                        rule: "seed_length".to_string(),
+                        message: format!("Seed must be 32 bytes, got {}", seed_bytes.len()),
+                    }));
+                }
+
+                let mut seed: [u8; 32] = [0u8; 32];
+                seed.copy_from_slice(&seed_bytes);
+
+                // Create wallet file from existing seed
+                eprintln!("🔐 Creating wallet from imported seed (mnemonic/key import)");
+                let (addr, priv_key_hex) = btpc_integration
+                    .create_wallet_from_seed(&wallet_path, &request.password, seed, network)
+                    .map_err(|e| {
+                        BtpcError::FileSystem(crate::error::FileSystemError::WriteFailed {
+                            path: wallet_path.display().to_string(),
+                            error: format!("Failed to create wallet from seed: {}", e),
+                        })
+                    })?;
+
+                // No seed phrase for imports (user already has it)
+                (addr, String::new(), priv_key_hex, seed_hex_str.clone())
+            } else {
+                // import_data without seed_hex - use provided address but create new wallet file
+                // This is a fallback for compatibility but may cause issues
+                eprintln!("⚠️ Import without seed_hex - wallet file will have different keypair!");
+                self.create_btpc_wallet_file(&wallet_path, &request.password, btpc_integration, network)?
+            }
+        } else {
+            // Normal wallet creation - generate new keypair
+            self.create_btpc_wallet_file(&wallet_path, &request.password, btpc_integration, network)?
+        };
 
         // Prepare metadata
         let metadata = WalletMetadata {
@@ -485,6 +578,7 @@ impl WalletManager {
             wallet_info,
             seed_phrase,
             private_key_hex,
+            seed_hex,
         })
     }
 
@@ -692,6 +786,8 @@ impl WalletManager {
             total_wallets: self.wallets.len(),
             total_balance_credits,
             total_balance_btp: total_balance_credits as f64 / 100_000_000.0,
+            spendable_balance_credits: 0,
+            spendable_balance_btp: 0.0,
             favorite_wallets: favorite_count,
             most_recent_wallet: most_recent,
             highest_balance_wallet: highest_balance,
@@ -737,7 +833,8 @@ impl WalletManager {
 
         // Create backup with timestamp
         let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
-        let backup_filename = format!("backup_{}_{}.dat", wallet.nickname, timestamp);
+        let safe_nickname = sanitize_nickname_for_filename(&wallet.nickname);
+        let backup_filename = format!("backup_{}_{}.dat", safe_nickname, timestamp);
         let backup_path = self.config.backups_dir.join(backup_filename);
 
         // Verify source wallet file exists
@@ -775,6 +872,11 @@ impl WalletManager {
                 error: "Failed to read wallet metadata".to_string(),
             })
         })?;
+
+        // Handle empty file (0 bytes) - treat as no wallets
+        if content.trim().is_empty() {
+            return Ok(());
+        }
 
         self.wallets = serde_json::from_str(&content).map_err(|_| {
             BtpcError::Utxo(crate::error::UtxoError::DeserializationError {
@@ -925,15 +1027,20 @@ impl WalletManager {
         colors[fastrand::usize(..colors.len())].to_string()
     }
 
+    /// Create wallet file using btpc_integration
+    /// Returns: (address, seed_phrase, private_key_hex, seed_hex)
     fn create_btpc_wallet_file(
         &self,
         path: &Path,
         password: &str,
         btpc_integration: &crate::btpc_integration::BtpcIntegration,
-    ) -> BtpcResult<(String, String, String)> {
+        network: btpc_core::Network,
+    ) -> BtpcResult<(String, String, String, String)> {
         // Use BtpcIntegration to create a real wallet with ML-DSA keypair and password encryption
-        let (address, seed_phrase, private_key_hex) = btpc_integration
-            .create_wallet(path, password)
+        // FIX 2025-12-01: Pass network parameter for correct address prefix
+        // FIX 2025-12-03: Now returns seed_hex (64 chars) for private key import
+        let (address, seed_phrase, private_key_hex, seed_hex) = btpc_integration
+            .create_wallet(path, password, network)
             .map_err(|e| {
                 BtpcError::FileSystem(crate::error::FileSystemError::WriteFailed {
                     path: path.display().to_string(),
@@ -941,7 +1048,7 @@ impl WalletManager {
                 })
             })?;
 
-        Ok((address.trim().to_string(), seed_phrase, private_key_hex))
+        Ok((address.trim().to_string(), seed_phrase, private_key_hex, seed_hex))
     }
 
     // ========================================================================
@@ -1127,7 +1234,7 @@ impl WalletManager {
     /// `JoinHandle` for the background task (can be used to cancel if needed)
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,ignore
     /// let cleanup_handle = wallet_manager.start_cleanup_task();
     /// // Task runs in background...
     /// // To stop: cleanup_handle.abort();

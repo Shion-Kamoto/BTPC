@@ -223,7 +223,7 @@ impl Block {
             prev_hash: Hash::zero(),
             merkle_root,
             timestamp: 1735344000,
-            bits: 0x207fffff,
+            bits: 0x407fffff, // SHA-512 instant mining for tests
             nonce: 12345,
         };
 
@@ -246,7 +246,7 @@ impl Block {
             prev_hash: Hash::zero(),
             merkle_root: Hash::zero(), // Will be calculated
             timestamp: 1735344000,     // BTPC project start
-            bits: 0x207fffff,          // Easy difficulty for regtest
+            bits: 0x407fffff,          // SHA-512 instant mining for regtest
             nonce: 0,
         };
 
@@ -453,11 +453,15 @@ impl BlockHeader {
     }
 
     /// Create genesis header for network
+    /// FIX 2025-12-27: Updated to SHA-512 compatible difficulty values
+    /// FIX 2026-03-04: Bitcoin-style "difficulty 1" — uses minimum meaningful difficulty.
+    /// The 2016-block adjustment algorithm handles convergence to real hashrate.
     pub fn genesis_for_network(network: Network) -> Self {
+        use crate::consensus::constants as cons;
         let bits = match network {
-            Network::Mainnet => 0x1d00ffff,
-            Network::Testnet => 0x1d00ffff,
-            Network::Regtest => 0x207fffff,
+            Network::Mainnet => cons::INITIAL_DIFFICULTY_BITS, // SHA-512 "difficulty 1"
+            Network::Testnet => cons::INITIAL_DIFFICULTY_BITS, // Same as mainnet
+            Network::Regtest => cons::REGTEST_DIFFICULTY_BITS, // Instant mining
         };
 
         BlockHeader {
@@ -478,7 +482,7 @@ impl BlockHeader {
             prev_hash: Hash::zero(),
             merkle_root: Hash::from_int(12345),
             timestamp: 1735344000,
-            bits: 0x207fffff,
+            bits: 0x407fffff, // SHA-512 instant mining for tests
             nonce: 12345,
         }
     }

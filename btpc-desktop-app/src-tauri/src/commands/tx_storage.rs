@@ -1,15 +1,16 @@
-//! Transaction storage Tauri commands for RocksDB-based transaction management
+//! Transaction storage Tauri commands for SQLite-based transaction management
 //!
-//! These commands provide frontend access to the RocksDB transaction storage
+//! These commands provide frontend access to the SQLite transaction history
 //! for paginated queries, balance lookups, and mining history.
 //!
+//! FIX 2025-12-12: Replaced RocksDB tx_storage with SQLite tx_history
 //! Constitution Article V: Structured logging for all database operations
 //! Constitution Article XI.1: Backend is single source of truth
 
 use tauri::{Emitter, State};
 
 use crate::error::BtpcError;
-use btpc_desktop_app::tx_storage::{PaginatedTransactions, PaginationParams, TransactionWithOutputs};
+use btpc_desktop_app::tx_history::{PaginatedTransactions, PaginationParams, TransactionWithOutputs};
 use crate::AppState;
 
 /// Get transaction history (DEPRECATED - O(n×m) complexity)
@@ -27,7 +28,7 @@ pub async fn get_transaction_history(
     // - 10k transactions = 5s load time
     // - 100k transactions = 30s+ app freeze
     //
-    // Constitution Article XI.1 Compliance: RocksDB is single source of truth
+    // Constitution Article XI.1 Compliance: SQLite is single source of truth
     eprintln!("⚠️  WARNING: get_transaction_history called (DEPRECATED)");
     eprintln!("   This command has O(n×m) complexity and causes severe performance degradation");
     eprintln!("   Use get_paginated_transaction_history or get_transaction_from_storage instead");
@@ -61,45 +62,106 @@ pub async fn get_transaction_history(
     Ok(transactions)
 }
 
-/// Get paginated transaction history from RocksDB
-/// Constitution Article V: RocksDB transaction storage with pagination
+/// Get paginated transaction history from SQLite
+///
+/// Per-Wallet Transaction Database Feature (Option A):
+/// - wallet_id: Optional wallet ID to query. If None, uses default wallet.
+/// - This allows viewing transaction history for ANY wallet, not just the default.
+///
+/// Constitution Article V: SQLite transaction storage with pagination
+///
+/// Filter parameter:
+/// - None/"all" = all transactions
+/// - "sent" = non-coinbase where sender_address = wallet address
+/// - "received" = non-coinbase where sender_address != wallet address
+/// - "mining" = coinbase transactions only
 #[tauri::command]
 pub async fn get_paginated_transaction_history(
     state: State<'_, AppState>,
     offset: usize,
     limit: usize,
+    wallet_id: Option<String>,
+    tx_type: Option<String>,
 ) -> Result<PaginatedTransactions, String> {
-    // Get wallet address from WalletManager
-    let address = {
+    // Resolve wallet address: use specified wallet_id or fall back to default
+    let raw_address = {
         let wallet_manager = state
             .wallet_manager
             .lock()
             .map_err(|e| format!("Failed to lock wallet manager: {}", e))?;
 
-        match wallet_manager.get_default_wallet() {
-            Some(wallet) => wallet.address.clone(),
-            None => {
-                // No default wallet - return empty paginated result
-                return Ok(PaginatedTransactions {
-                    transactions: Vec::new(),
-                    total_count: 0,
-                    offset,
-                    limit,
-                    has_more: false,
-                });
+        if let Some(ref id) = wallet_id {
+            // Query specific wallet by ID
+            match wallet_manager.get_wallet(id) {
+                Some(wallet) => wallet.address.clone(),
+                None => {
+                    // Wallet ID not found - return empty result (not error for graceful handling)
+                    tracing::warn!("Wallet ID '{}' not found, returning empty history", id);
+                    return Ok(PaginatedTransactions {
+                        transactions: Vec::new(),
+                        total_count: 0,
+                        offset,
+                        limit,
+                        has_more: false,
+                    });
+                }
+            }
+        } else {
+            // No wallet_id specified - use default wallet (backward compatible)
+            match wallet_manager.get_default_wallet() {
+                Some(wallet) => wallet.address.clone(),
+                None => {
+                    // No default wallet - return empty paginated result
+                    return Ok(PaginatedTransactions {
+                        transactions: Vec::new(),
+                        total_count: 0,
+                        offset,
+                        limit,
+                        has_more: false,
+                    });
+                }
             }
         }
     };
 
-    // Query RocksDB with pagination
+    // FIX 2025-12-09: Clean address by stripping "Address: " prefix if present
+    // Transaction storage uses clean addresses (from script_pubkey extraction)
+    // but some wallets (especially default wallets created before fixes) may have the prefix
+    // Without this cleaning, queries for default wallet transactions return empty results
+    let address = if raw_address.starts_with("Address: ") {
+        raw_address.strip_prefix("Address: ").unwrap_or(&raw_address).to_string()
+    } else {
+        raw_address.clone()
+    };
+
+    eprintln!(
+        "📊 TX History Query: raw='{}' clean='{}' (wallet_id: {:?})",
+        &raw_address[..std::cmp::min(30, raw_address.len())],
+        &address[..std::cmp::min(30, address.len())],
+        wallet_id
+    );
+
+    tracing::debug!(
+        "Querying transaction history for {} (wallet_id: {:?}, tx_type: {:?})",
+        &address[..std::cmp::min(20, address.len())],
+        wallet_id,
+        tx_type
+    );
+
+    // Query SQLite with pagination and optional type filter
+    // FIX 2025-12-05: Use .read().await for RwLock access
+    // FIX 2025-12-12: Added tx_type filter for backend filtering (sent/received/mining)
     let pagination = PaginationParams { offset, limit };
+    let tx_type_ref = tx_type.as_deref();
     state
         .tx_storage
-        .get_transactions_for_address(&address, pagination)
+        .read()
+        .await
+        .get_transactions_for_address_filtered(&address, pagination, tx_type_ref)
         .map_err(|e| format!("Failed to get paginated transactions: {}", e))
 }
 
-/// Add a transaction to RocksDB storage
+/// Add a transaction to SQLite storage
 /// Emits transaction-added and wallet-balance-updated events (Constitution Article XI.3)
 #[tauri::command]
 pub async fn add_transaction_to_storage(
@@ -108,19 +170,18 @@ pub async fn add_transaction_to_storage(
     tx: btpc_desktop_app::utxo_manager::Transaction,
     address: String,
 ) -> Result<String, String> {
-    // Add transaction to RocksDB
-    state
-        .tx_storage
+    // Add transaction to SQLite
+    // FIX 2025-12-05: Use .read().await for RwLock access
+    let tx_storage_guard = state.tx_storage.read().await;
+    tx_storage_guard
         .add_transaction(&tx, &address)
         .map_err(|e| format!("Failed to add transaction to storage: {}", e))?;
 
     // Get updated balance and transaction count
-    let (balance_credits, balance_btpc) = state
-        .tx_storage
+    let (balance_credits, balance_btpc) = tx_storage_guard
         .get_balance(&address)
         .map_err(|e| format!("Failed to get updated balance: {}", e))?;
-    let tx_count = state
-        .tx_storage
+    let tx_count = tx_storage_guard
         .get_transaction_count(&address)
         .map_err(|e| format!("Failed to get transaction count: {}", e))?;
 
@@ -151,59 +212,95 @@ pub async fn add_transaction_to_storage(
     Ok(format!("Transaction {} added to storage", tx.txid))
 }
 
-/// Get a single transaction from RocksDB by txid
+/// Get a single transaction from SQLite by txid with addresses decoded
 #[tauri::command]
 pub async fn get_transaction_from_storage(
     state: State<'_, AppState>,
     txid: String,
-) -> Result<Option<btpc_desktop_app::utxo_manager::Transaction>, String> {
+) -> Result<Option<btpc_desktop_app::tx_history::TransactionWithOutputs>, String> {
+    // FIX 2025-12-12: Uses SQLite tx_history instead of RocksDB tx_storage
     state
         .tx_storage
-        .get_transaction(&txid)
+        .read()
+        .await
+        .get_transaction_with_addresses(&txid)
         .map_err(|e| format!("Failed to get transaction from storage: {}", e))
 }
 
-/// Get wallet balance from RocksDB storage
+/// Get wallet balance from SQLite storage
+///
+/// Per-Wallet Transaction Database Feature (Option A):
+/// - wallet_id: Optional wallet ID to query. If None, uses default wallet.
 #[tauri::command]
 pub async fn get_wallet_balance_from_storage(
     state: State<'_, AppState>,
+    wallet_id: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    // Get wallet address from WalletManager
-    let address = {
+    // Resolve wallet address: use specified wallet_id or fall back to default
+    let (raw_address, wallet_nickname) = {
         let wallet_manager = state
             .wallet_manager
             .lock()
             .map_err(|e| format!("Failed to lock wallet manager: {}", e))?;
 
-        match wallet_manager.get_default_wallet() {
-            Some(wallet) => wallet.address.clone(),
-            None => {
-                return Ok(serde_json::json!({
-                    "credits": 0,
-                    "btpc": 0.0,
-                    "address": null
-                }));
+        if let Some(ref id) = wallet_id {
+            match wallet_manager.get_wallet(id) {
+                Some(wallet) => (wallet.address.clone(), Some(wallet.nickname.clone())),
+                None => {
+                    return Ok(serde_json::json!({
+                        "credits": 0,
+                        "btpc": 0.0,
+                        "address": null,
+                        "wallet_id": id,
+                        "wallet_nickname": null
+                    }));
+                }
+            }
+        } else {
+            match wallet_manager.get_default_wallet() {
+                Some(wallet) => (wallet.address.clone(), Some(wallet.nickname.clone())),
+                None => {
+                    return Ok(serde_json::json!({
+                        "credits": 0,
+                        "btpc": 0.0,
+                        "address": null,
+                        "wallet_id": null,
+                        "wallet_nickname": null
+                    }));
+                }
             }
         }
     };
 
+    // FIX 2025-12-09: Clean address by stripping "Address: " prefix if present
+    let address = if raw_address.starts_with("Address: ") {
+        raw_address.strip_prefix("Address: ").unwrap_or(&raw_address).to_string()
+    } else {
+        raw_address
+    };
+
+    // FIX 2025-12-05: Use .read().await for RwLock access
     let (credits, btpc) = state
         .tx_storage
+        .read()
+        .await
         .get_balance(&address)
         .map_err(|e| format!("Failed to get balance from storage: {}", e))?;
 
     Ok(serde_json::json!({
         "credits": credits,
         "btpc": btpc,
-        "address": address
+        "address": address,
+        "wallet_id": wallet_id,
+        "wallet_nickname": wallet_nickname
     }))
 }
 
-/// Get transaction count for the current wallet from RocksDB storage
+/// Get transaction count for the current wallet from SQLite storage
 #[tauri::command]
 pub async fn get_transaction_count_from_storage(state: State<'_, AppState>) -> Result<usize, String> {
     // Get wallet address from WalletManager
-    let address = {
+    let raw_address = {
         let wallet_manager = state
             .wallet_manager
             .lock()
@@ -215,20 +312,30 @@ pub async fn get_transaction_count_from_storage(state: State<'_, AppState>) -> R
         }
     };
 
+    // FIX 2025-12-09: Clean address by stripping "Address: " prefix if present
+    let address = if raw_address.starts_with("Address: ") {
+        raw_address.strip_prefix("Address: ").unwrap_or(&raw_address).to_string()
+    } else {
+        raw_address
+    };
+
+    // FIX 2025-12-05: Use .read().await for RwLock access
     state
         .tx_storage
+        .read()
+        .await
         .get_transaction_count(&address)
         .map_err(|e| format!("Failed to get transaction count: {}", e))
 }
 
-/// Get mining history (coinbase transactions) from RocksDB storage
+/// Get mining history (coinbase transactions) from SQLite storage
 /// Returns all mined blocks for the current wallet address
 #[tauri::command]
 pub async fn get_mining_history_from_storage(
     state: State<'_, AppState>,
 ) -> Result<Vec<TransactionWithOutputs>, String> {
     // Get wallet address from WalletManager
-    let address = {
+    let raw_address = {
         let wallet_manager = state
             .wallet_manager
             .lock()
@@ -240,13 +347,23 @@ pub async fn get_mining_history_from_storage(
         }
     };
 
+    // FIX 2025-12-09: Clean address by stripping "Address: " prefix if present
+    let address = if raw_address.starts_with("Address: ") {
+        raw_address.strip_prefix("Address: ").unwrap_or(&raw_address).to_string()
+    } else {
+        raw_address
+    };
+
+    // FIX 2025-12-05: Use .read().await for RwLock access
     state
         .tx_storage
+        .read()
+        .await
         .get_coinbase_transactions(&address)
         .map_err(|e| format!("Failed to get mining history: {}", e))
 }
 
-/// Migrate transactions from JSON wallet file to RocksDB
+/// Migrate transactions from JSON wallet file to SQLite
 #[tauri::command]
 pub async fn migrate_json_transactions_to_rocksdb(
     state: State<'_, AppState>,
@@ -335,10 +452,13 @@ pub async fn migrate_json_transactions_to_rocksdb(
             block_height: json_tx.block_height,
             confirmed_at,
             is_coinbase: json_tx.is_coinbase,
+            // Migrated transactions don't have sender_address - fallback logic handles them
+            sender_address: None,
         };
 
-        // Try to add to RocksDB
-        match state.tx_storage.add_transaction(&tx, &address) {
+        // Try to add to SQLite
+        // FIX 2025-12-05: Use .read().await for RwLock access
+        match state.tx_storage.read().await.add_transaction(&tx, &address) {
             Ok(_) => {
                 migrated_count += 1;
             }
@@ -387,15 +507,18 @@ pub async fn create_transaction_preview(
     let fee_credits = 10000u64; // Standard fee
     let total_needed = amount_credits + fee_credits;
 
+    // Get blockchain height for maturity check
+    let current_height = state.embedded_node.read().await.get_height();
+
     let utxo_manager = state.utxo_manager.lock().map_err(|_| {
         BtpcError::mutex_poison("utxo_manager", "create_transaction_preview").to_string()
     })?;
 
-    // Get current balance
-    let (available_credits, available_btp) = utxo_manager.get_balance(&from_address);
+    // Get spendable balance (excludes immature coinbase)
+    let (available_credits, available_btp) = utxo_manager.get_spendable_balance(&from_address, current_height);
 
-    // Try to select UTXOs
-    let selected_utxos = match utxo_manager.select_utxos_for_spending(&from_address, total_needed) {
+    // Try to select UTXOs (with maturity check)
+    let selected_utxos = match utxo_manager.select_utxos_for_spending(&from_address, total_needed, current_height) {
         Ok(utxos) => utxos,
         Err(e) => return Err(format!("Cannot create transaction: {}", e)),
     };
@@ -427,4 +550,70 @@ pub async fn create_transaction_preview(
     });
 
     Ok(preview)
+}
+
+/// FIX 2025-12-11: Debug command to get detailed transaction diagnostic info
+/// Helps track down disappearing transactions by showing all index entries
+#[tauri::command]
+pub async fn debug_tx_diagnostic(
+    state: State<'_, AppState>,
+    wallet_id: Option<String>,
+) -> Result<String, String> {
+    // Resolve wallet address
+    let raw_address = {
+        let wallet_manager = state
+            .wallet_manager
+            .lock()
+            .map_err(|e| format!("Failed to lock wallet manager: {}", e))?;
+
+        if let Some(ref id) = wallet_id {
+            match wallet_manager.get_wallet(id) {
+                Some(wallet) => wallet.address.clone(),
+                None => return Err(format!("Wallet ID '{}' not found", id)),
+            }
+        } else {
+            match wallet_manager.get_default_wallet() {
+                Some(wallet) => wallet.address.clone(),
+                None => return Err("No default wallet found".to_string()),
+            }
+        }
+    };
+
+    // Clean address
+    let address = if raw_address.starts_with("Address: ") {
+        raw_address.strip_prefix("Address: ").unwrap_or(&raw_address).to_string()
+    } else {
+        raw_address
+    };
+
+    // Get diagnostic info
+    state
+        .tx_storage
+        .read()
+        .await
+        .get_diagnostic_info(&address)
+        .map_err(|e| format!("Failed to get diagnostic info: {}", e))
+}
+
+/// FIX 2025-12-11: Debug command to run orphaned pending TX cleanup
+/// This scans for pending transactions and logs what would be cleaned up
+#[tauri::command]
+pub async fn debug_cleanup_pending_txs(
+    state: State<'_, AppState>,
+    max_age_hours: Option<u32>,
+) -> Result<serde_json::Value, String> {
+    let max_age_seconds = max_age_hours.unwrap_or(1) as i64 * 3600;
+
+    let cleaned = state
+        .tx_storage
+        .read()
+        .await
+        .cleanup_orphaned_pending_transactions(max_age_seconds)
+        .map_err(|e| format!("Cleanup failed: {}", e))?;
+
+    Ok(serde_json::json!({
+        "success": true,
+        "message": format!("Cleanup complete: {} orphaned transactions removed", cleaned),
+        "cleaned": cleaned
+    }))
 }

@@ -23,14 +23,14 @@ impl Difficulty {
         self.0
     }
 
-    /// Get minimum difficulty
+    /// Get minimum difficulty (easiest - for regtest)
     pub fn minimum() -> Self {
-        Difficulty(0x207fffff) // Very easy for testing
+        Difficulty(0x407fffff) // SHA-512 instant mining
     }
 
-    /// Get maximum difficulty
+    /// Get maximum difficulty (hardest - for mainnet)
     pub fn maximum() -> Self {
-        Difficulty(0x1d00ffff) // Bitcoin-like difficulty
+        Difficulty(0x3c7fffff) // SHA-512 ~32 bits work
     }
 }
 
@@ -253,7 +253,21 @@ impl DifficultyTarget {
         DifficultyTarget::from_hash(&Hash::from_bytes(new_target))
     }
 
-    /// Convert compact bits to full target
+    /// Convert compact bits to full 64-byte target for SHA-512
+    ///
+    /// FIX 2025-12-27: Removed special cases, using consistent generic formula
+    ///
+    /// Formula (adapted from Bitcoin for 64-byte SHA-512):
+    ///   start_pos = 64 - exponent
+    ///   target[start_pos..start_pos+3] = mantissa bytes (big-endian)
+    ///
+    /// This places the 3-byte mantissa at position (64 - exponent) from the MSB,
+    /// with all other bytes being zero.
+    ///
+    /// Examples:
+    /// - 0x3c7fffff (Mainnet/Testnet): exp=60, start_pos=4, target=[0,0,0,0, 0x7f,0xff,0xff, 0,...]
+    /// - 0x407fffff (Regtest): exp=64, start_pos=0, target=[0x7f,0xff,0xff, 0,...]
+    /// - 0x3a7fffff (harder): exp=58, start_pos=6, target=[0,0,0,0,0,0, 0x7f,0xff,0xff, 0,...]
     fn bits_to_target(bits: u32) -> [u8; 64] {
         let mut target = [0u8; 64];
 
@@ -264,62 +278,18 @@ impl DifficultyTarget {
             return target; // Return all zeros for invalid input
         }
 
-        // Special case for easy test target 0x207fffff
-        // This should match MiningTarget::easy_target() which is [0x7f, 0xff, 0xff, ...]
-        // The challenge is that MiningTarget has a different representation than DifficultyTarget
-        if bits == 0x207fffff {
-            target[0] = 0x7f;
-            for i in 1..64 {
-                target[i] = 0xff;
+        // Generic formula: start_pos = 64 - exponent
+        // This is consistent with Bitcoin's formula adapted for 64-byte hashes
+        let start_pos = (64 - exponent) as usize;
+
+        // Place the 3-byte mantissa at start_pos (if within bounds)
+        if start_pos < 64 {
+            target[start_pos] = ((mantissa >> 16) & 0xff) as u8;
+            if start_pos + 1 < 64 {
+                target[start_pos + 1] = ((mantissa >> 8) & 0xff) as u8;
             }
-            return target;
-        }
-
-        // Special case for regtest minimum difficulty 0x1d0fffff
-        // This should be maximum target (easiest to mine)
-        if bits == 0x1d0fffff {
-            target[0] = 0x0f;
-            target[1] = 0xff;
-            target[2] = 0xff;
-            for i in 3..64 {
-                target[i] = 0xff;
-            }
-            return target;
-        }
-
-        // Special case for mainnet minimum difficulty 0x1d00ffff
-        // This should be maximum target (easiest to mine on mainnet)
-        if bits == 0x1d00ffff {
-            target[0] = 0x00;
-            target[1] = 0xff;
-            target[2] = 0xff;
-            for i in 3..64 {
-                target[i] = 0xff;
-            }
-            return target;
-        }
-
-        // Bitcoin compact format: mantissa * 256^(exponent-3)
-        // For SHA-512 (64 bytes), we need to map this correctly
-
-        // The exponent tells us how many bytes the number occupies
-        // Position from the end where we should place the mantissa
-        let position = exponent - 3;
-
-        if position >= 0 && (position as usize) < 64 {
-            // Place the 3-byte mantissa at the correct position
-            // For a 64-byte target, we count from the end
-            let start_pos = (64 - exponent) as usize;
-
-            if start_pos < 64 {
-                // Place mantissa bytes (big-endian)
-                target[start_pos] = ((mantissa >> 16) & 0xff) as u8;
-                if start_pos + 1 < 64 {
-                    target[start_pos + 1] = ((mantissa >> 8) & 0xff) as u8;
-                }
-                if start_pos + 2 < 64 {
-                    target[start_pos + 2] = (mantissa & 0xff) as u8;
-                }
+            if start_pos + 2 < 64 {
+                target[start_pos + 2] = (mantissa & 0xff) as u8;
             }
         }
 
@@ -327,6 +297,8 @@ impl DifficultyTarget {
     }
 
     /// Convert full target to compact bits
+    ///
+    /// Inverse of `bits_to_target`. Uses 64-byte positioning for backwards compatibility.
     fn target_to_bits(target: &[u8; 64]) -> u32 {
         // Find the first non-zero byte (most significant)
         for (i, &byte) in target.iter().enumerate() {
@@ -427,18 +399,58 @@ impl DifficultyTarget {
         }
     }
 
-    /// Get minimum difficulty for network (Bitcoin-compatible standards)
+    /// Get minimum difficulty for network (SHA-512 compatible)
     ///
-    /// FIX 2025-11-18: Corrected difficulty values to match Bitcoin standards
-    /// - Mainnet: 0x1d00ffff (Bitcoin mainnet minimum)
-    /// - Testnet: 0x1d00ffff (same as mainnet, was typo 0x1d0fffff)
-    /// - Regtest: 0x207fffff (Bitcoin regtest standard - instant mining for development)
+    /// FIX 2025-12-27: Updated to SHA-512 compatible values that work with generic formula
+    ///
+    /// Bitcoin uses SHA-256 (32 bytes) with compact bits formula:
+    ///   target = mantissa × 2^(8 × (exponent - 3))
+    ///   start_pos = 32 - exponent (for 32-byte hash)
+    ///
+    /// BTPC uses SHA-512 (64 bytes) with adapted formula:
+    ///   start_pos = 64 - exponent (for 64-byte hash)
+    ///
+    /// To achieve equivalent ~32 bits of work (4 leading zero bytes) like Bitcoin:
+    ///   - Bitcoin: 0x1d00ffff → exponent 29, start_pos = 32 - 29 = 3
+    ///   - BTPC:    0x3c7fffff → exponent 60, start_pos = 64 - 60 = 4
+    ///
+    /// Values:
+    /// - Mainnet: 0x3c7fffff (exponent 60, ~32 bits work, ~10 min blocks)
+    /// - Testnet: 0x3c7fffff (same as mainnet for realistic testing)
+    /// - Regtest: 0x407fffff (exponent 64, start_pos=0, instant mining)
+    ///
+    /// Mantissa 0x7fffff follows Bitcoin convention (high bit = 0 to avoid negative interpretation)
     pub fn minimum_for_network(network: crate::Network) -> Self {
         match network {
-            crate::Network::Mainnet => DifficultyTarget::from_bits(0x1d00ffff), // Bitcoin mainnet standard
-            crate::Network::Testnet => DifficultyTarget::from_bits(0x1d00ffff), // Fixed typo: was 0x1d0fffff
-            // Bitcoin regtest standard allows instant mining for development/testing
-            crate::Network::Regtest => DifficultyTarget::from_bits(0x207fffff),
+            // SHA-512 equivalent of Bitcoin's difficulty 1 (~32 bits work)
+            // Exponent 60 (0x3C) → start_pos = 4 → 4 leading zero bytes
+            crate::Network::Mainnet => DifficultyTarget::from_bits(0x3c7fffff),
+            crate::Network::Testnet => DifficultyTarget::from_bits(0x3c7fffff),
+            // Instant mining for development/testing
+            // Exponent 64 (0x40) → start_pos = 0 → no leading zeros required
+            crate::Network::Regtest => DifficultyTarget::from_bits(0x407fffff),
+        }
+    }
+
+    /// Get initial difficulty for network (what genesis block and first 2016 blocks use)
+    ///
+    /// FIX 2026-03-04: Bitcoin-style "difficulty 1" approach.
+    /// Like Bitcoin launched at difficulty 1 (0x1d00ffff for SHA-256) and let the
+    /// 2016-block adjustment algorithm converge to match actual network hashrate,
+    /// BTPC launches at its minimum meaningful difficulty for SHA-512.
+    ///
+    /// - Mainnet/Testnet: 0x3C7FFFFF ("difficulty 1" — minimum meaningful SHA-512)
+    /// - Regtest: 0x407fffff (instant mining, same as minimum)
+    ///
+    /// The first ~2016 blocks will mine quickly, then the adjustment algorithm
+    /// corrects upward to match real network hashrate. This eliminates the need
+    /// to calibrate for any specific GPU hashrate.
+    pub fn initial_for_network(network: crate::Network) -> Self {
+        use super::constants as cons;
+        match network {
+            crate::Network::Mainnet => DifficultyTarget::from_bits(cons::INITIAL_DIFFICULTY_BITS),
+            crate::Network::Testnet => DifficultyTarget::from_bits(cons::INITIAL_DIFFICULTY_BITS),
+            crate::Network::Regtest => DifficultyTarget::from_bits(cons::REGTEST_DIFFICULTY_BITS),
         }
     }
 }
@@ -562,7 +574,8 @@ mod tests {
 
     #[test]
     fn test_difficulty_target_creation() {
-        let bits = 0x207fffff;
+        // FIX 2025-12-27: Updated to SHA-512 compatible values
+        let bits = 0x407fffff; // Regtest easy difficulty
         let target = DifficultyTarget::from_bits(bits);
 
         assert_eq!(target.bits, bits);
@@ -571,8 +584,9 @@ mod tests {
 
     #[test]
     fn test_difficulty_comparison() {
-        let easy_target = DifficultyTarget::from_bits(0x207fffff);
-        let hard_target = DifficultyTarget::from_bits(0x1d00ffff);
+        // FIX 2025-12-27: Updated to SHA-512 compatible values
+        let easy_target = DifficultyTarget::from_bits(0x407fffff); // Regtest
+        let hard_target = DifficultyTarget::from_bits(0x3c7fffff); // Mainnet
 
         assert!(hard_target.is_harder_than(&easy_target));
         assert!(easy_target.is_easier_than(&hard_target));
@@ -580,13 +594,14 @@ mod tests {
 
     #[test]
     fn test_hash_validation() {
-        let bits = 0x207fffff;
+        // FIX 2025-12-27: Updated to SHA-512 compatible values
+        let bits = 0x407fffff; // Regtest - start_pos = 0
         let target = DifficultyTarget::from_bits(bits);
 
         // Create a hash that should definitely meet this target
-        // Since target starts with zeros up to position 32, we need a hash that's smaller
+        // For 0x407fffff, target = [0x7f, 0xff, 0xff, 0, ...] so hash must be <= that
         let mut easy_hash_bytes = [0x00u8; 64];
-        easy_hash_bytes[35] = 0x01; // Much smaller than target
+        easy_hash_bytes[0] = 0x01; // Much smaller than 0x7f
         let easy_hash = Hash::from_bytes(easy_hash_bytes);
         assert!(target.validates_hash(&easy_hash));
 
@@ -597,11 +612,12 @@ mod tests {
 
     #[test]
     fn test_work_calculation() {
-        let easy_target = DifficultyTarget::from_bits(0x207fffff);
-        let hard_target = DifficultyTarget::from_bits(0x1d00ffff);
+        // FIX 2025-12-27: Updated to SHA-512 compatible values
+        let easy_target = DifficultyTarget::from_bits(0x407fffff); // Regtest
+        let hard_target = DifficultyTarget::from_bits(0x3c7fffff); // Mainnet
 
-        let easy_work = easy_target.work();
-        let hard_work = hard_target.work();
+        let easy_work = easy_target.work_integer();
+        let hard_work = hard_target.work_integer();
 
         // Harder target should require more work
         assert!(hard_work > easy_work);
@@ -609,7 +625,8 @@ mod tests {
 
     #[test]
     fn test_difficulty_multiplication() {
-        let original = DifficultyTarget::from_bits(0x207fffff);
+        // FIX 2025-12-27: Updated to SHA-512 compatible values
+        let original = DifficultyTarget::from_bits(0x407fffff); // Regtest
         let doubled = original.multiply_difficulty(2.0);
 
         // Doubled difficulty should be harder
@@ -618,8 +635,8 @@ mod tests {
 
     #[test]
     fn test_bits_target_conversion() {
-        // Use a different bits value (not 0x207fffff which is a special case)
-        let bits = 0x1d00ffff;
+        // FIX 2025-12-27: Use SHA-512 compatible value
+        let bits = 0x3c7fffff; // Mainnet difficulty
         let target1 = DifficultyTarget::from_bits(bits);
         let target2 = DifficultyTarget::from_hash(&target1.as_hash());
 
@@ -629,23 +646,24 @@ mod tests {
         assert!(target2.is_valid());
 
         // Targets should be very close (within 1% of each other)
-        let work1 = target1.work();
-        let work2 = target2.work();
-        let work_ratio = if work1 > work2 {
-            work1 / work2
+        let work1 = target1.work_integer();
+        let work2 = target2.work_integer();
+        let (work_max, work_min) = if work1 > work2 {
+            (work1, work2)
         } else {
-            work2 / work1
+            (work2, work1)
         };
         assert!(
-            work_ratio < 1.01,
-            "Work ratio {} indicates significant precision loss",
-            work_ratio
+            work_min > 0 && work_max * 100 < work_min * 101,
+            "Work ratio indicates significant precision loss (work1={}, work2={})",
+            work1, work2
         );
     }
 
     #[test]
     fn test_difficulty_adjustment() {
-        let original_target = DifficultyTarget::from_bits(0x207fffff);
+        // FIX 2025-12-27: Updated to SHA-512 compatible values
+        let original_target = DifficultyTarget::from_bits(0x3c7fffff); // Mainnet
         let target_timespan = 1209600; // 2 weeks in seconds
 
         // Blocks took twice as long (should make easier)
@@ -667,7 +685,8 @@ mod tests {
 
     #[test]
     fn test_adjustment_bounds() {
-        let original_target = DifficultyTarget::from_bits(0x207fffff);
+        // FIX 2025-12-27: Updated to SHA-512 compatible values
+        let original_target = DifficultyTarget::from_bits(0x3c7fffff); // Mainnet
         let target_timespan = 1209600;
 
         // Extreme slow timing should be clamped to 4x easier
@@ -718,8 +737,9 @@ mod tests {
     // Issue #12: Integer work calculation tests for determinism
     #[test]
     fn test_work_integer_deterministic() {
+        // FIX 2025-12-27: Updated to SHA-512 compatible values
         // Same target should always produce same work value
-        let target = DifficultyTarget::from_bits(0x207fffff);
+        let target = DifficultyTarget::from_bits(0x407fffff); // Regtest
         let work1 = target.work_integer();
         let work2 = target.work_integer();
         let work3 = target.work_integer();
@@ -730,9 +750,10 @@ mod tests {
 
     #[test]
     fn test_work_integer_ordering() {
+        // FIX 2025-12-27: Updated to SHA-512 compatible values
         // Harder targets (smaller values) should have more work
-        let easy_target = DifficultyTarget::from_bits(0x207fffff);
-        let hard_target = DifficultyTarget::from_bits(0x1d00ffff);
+        let easy_target = DifficultyTarget::from_bits(0x407fffff); // Regtest
+        let hard_target = DifficultyTarget::from_bits(0x3c7fffff); // Mainnet
 
         let easy_work = easy_target.work_integer();
         let hard_work = hard_target.work_integer();
@@ -797,7 +818,7 @@ mod tests {
     fn test_work_integer_no_f64_dependency() {
         // Verify work_integer produces consistent results across multiple calls
         // This would fail if there was any f64 rounding involved
-        let target = DifficultyTarget::from_bits(0x1d00ffff);
+        let target = DifficultyTarget::from_bits(0x3c7fffff); // SHA-512 mainnet difficulty
 
         let mut works = Vec::new();
         for _ in 0..100 {
@@ -816,49 +837,55 @@ mod tests {
 
     #[test]
     fn test_tc001_mainnet_difficulty() {
-        // TC-001: Mainnet difficulty = 0x1d00ffff
+        // TC-001: Mainnet difficulty = 0x3c7fffff (SHA-512 ~32 bits work)
         let mainnet_difficulty = DifficultyTarget::minimum_for_network(crate::Network::Mainnet);
 
         assert_eq!(
             mainnet_difficulty.bits,
-            0x1d00ffff,
-            "Mainnet difficulty must be 0x1d00ffff"
+            0x3c7fffff,
+            "Mainnet difficulty must be 0x3c7fffff for SHA-512 PoW"
         );
     }
 
     #[test]
     fn test_tc002_testnet_difficulty() {
-        // TC-002: Testnet difficulty = 0x1d0fffff (easier than mainnet)
+        // TC-002: Testnet difficulty = 0x3c7fffff (same as mainnet for realistic testing)
         let testnet_difficulty = DifficultyTarget::minimum_for_network(crate::Network::Testnet);
 
         assert_eq!(
             testnet_difficulty.bits,
-            0x1d00ffff,  // Fixed: Testnet should be 0x1d00ffff per the fix in minimum_for_network
-            "Testnet difficulty must be 0x1d00ffff (fixed from typo 0x1d0fffff)"
+            0x3c7fffff,
+            "Testnet difficulty must be 0x3c7fffff for SHA-512 PoW"
         );
     }
 
     #[test]
     fn test_tc003_regtest_difficulty_fixed() {
-        // TC-003: Regtest difficulty = 0x207fffff (easier than mainnet for testing)
+        // TC-003: Regtest difficulty = 0x407fffff (instant mining for development)
         let regtest_difficulty = DifficultyTarget::minimum_for_network(crate::Network::Regtest);
 
         assert_eq!(
             regtest_difficulty.bits,
-            0x207fffff,
-            "Regtest difficulty must be 0x207fffff for easy testing"
+            0x407fffff,
+            "Regtest difficulty must be 0x407fffff for instant mining"
         );
     }
 
     #[test]
-    fn test_tc004_regtest_not_too_easy() {
-        // TC-004: Regtest != 0x1d0fffff (old broken value)
+    fn test_tc004_regtest_not_legacy_values() {
+        // TC-004: Regtest should not use legacy SHA-256 values
         let regtest_difficulty = DifficultyTarget::minimum_for_network(crate::Network::Regtest);
 
+        // Should not use old SHA-256 compatible values
         assert_ne!(
             regtest_difficulty.bits,
             0x1d0fffff,
-            "Regtest should NOT use 0x1d0fffff (too easy - allows hundreds of blocks/second)"
+            "Regtest should NOT use legacy 0x1d0fffff"
+        );
+        assert_ne!(
+            regtest_difficulty.bits,
+            0x207fffff,
+            "Regtest should NOT use legacy 0x207fffff"
         );
     }
 
@@ -893,12 +920,12 @@ mod tests {
         // Mainnet should be harder than regtest
         assert!(
             mainnet_difficulty.is_harder_than(&regtest_difficulty),
-            "Mainnet difficulty (0x1d00ffff) should be harder than regtest (0x207fffff)"
+            "Mainnet difficulty (0x3c7fffff) should be harder than regtest (0x407fffff)"
         );
 
         // Verify work difference between mainnet and regtest is reasonable
-        let mainnet_work = mainnet_difficulty.work();
-        let regtest_work = regtest_difficulty.work();
+        let mainnet_work = mainnet_difficulty.work_integer();
+        let regtest_work = regtest_difficulty.work_integer();
 
         // Mainnet should require more work than regtest
         assert!(

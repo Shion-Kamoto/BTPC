@@ -46,6 +46,7 @@ pub const PROTOCOL_VERSION: u32 = 70015;
 /// from accidentally connecting to Bitcoin or other cryptocurrency networks.
 pub const BTPC_MAINNET_MAGIC: [u8; 4] = [0xB7, 0xC0, 0x1A, 0x55];
 pub const BTPC_TESTNET_MAGIC: [u8; 4] = [0xF1, 0xC0, 0xBA, 0x55];
+pub const BTPC_REGTEST_MAGIC: [u8; 4] = [0xDA, 0xB5, 0xBF, 0xFA];
 
 /// Maximum message size (32MB) - deprecated in favor of message-specific limits
 pub const MAX_MESSAGE_SIZE: usize = 32 * 1024 * 1024;
@@ -845,7 +846,7 @@ mod tests {
         assert_eq!(MAX_HEADERS_MESSAGE_SIZE, 2_000 * 81); // 162KB
         assert_eq!(MAX_ADDR_MESSAGE_SIZE, 1_000 * 30); // 30KB
         assert_eq!(MAX_VERSION_MESSAGE_SIZE, 256); // 256 bytes
-        assert_eq!(MAX_GENERIC_MESSAGE_SIZE, 1 * 1024 * 1024); // 1MB
+        assert_eq!(MAX_GENERIC_MESSAGE_SIZE, 1024 * 1024); // 1MB
     }
 
     #[test]

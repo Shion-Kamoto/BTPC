@@ -101,6 +101,25 @@ impl Script {
         }
     }
 
+    /// Extract public key bytes from a P2PKH unlock script (script_sig)
+    /// P2PKH unlock script format: [signature, pubkey]
+    /// Returns None if the script is not a valid P2PKH unlock script
+    pub fn extract_pubkey_from_unlock(&self) -> Option<Vec<u8>> {
+        // P2PKH unlock scripts have exactly 2 PushData operations
+        if self.operations.len() != 2 {
+            return None;
+        }
+
+        // Check the expected operation sequence: [signature, pubkey]
+        match &self.operations[..] {
+            [ScriptOp::PushData(_signature), ScriptOp::PushData(pubkey)] => {
+                // Return the public key bytes
+                Some(pubkey.clone())
+            }
+            _ => None,
+        }
+    }
+
     /// Create a script that always returns true
     pub fn always_true() -> Self {
         Script {
@@ -188,10 +207,20 @@ impl Script {
                     if data.len() <= 75 {
                         bytes.push(data.len() as u8);
                         bytes.extend_from_slice(data);
-                    } else {
-                        // Use OP_PUSHDATA1 for larger data
+                    } else if data.len() <= 255 {
+                        // Use OP_PUSHDATA1 for data 76-255 bytes
                         bytes.push(76); // OP_PUSHDATA1
                         bytes.push(data.len() as u8);
+                        bytes.extend_from_slice(data);
+                    } else if data.len() <= 65535 {
+                        // Use OP_PUSHDATA2 for data 256-65535 bytes (ML-DSA signatures!)
+                        bytes.push(77); // OP_PUSHDATA2
+                        bytes.extend_from_slice(&(data.len() as u16).to_le_bytes());
+                        bytes.extend_from_slice(data);
+                    } else {
+                        // Use OP_PUSHDATA4 for data > 65535 bytes
+                        bytes.push(78); // OP_PUSHDATA4
+                        bytes.extend_from_slice(&(data.len() as u32).to_le_bytes());
                         bytes.extend_from_slice(data);
                     }
                 }
@@ -240,12 +269,40 @@ impl Script {
                     i += data_len;
                 }
                 76 => {
-                    // OP_PUSHDATA1
+                    // OP_PUSHDATA1 (1 byte length)
                     if i >= bytes.len() {
                         return Err(ScriptError::InvalidScript);
                     }
                     let data_len = bytes[i] as usize;
                     i += 1;
+                    if i + data_len > bytes.len() {
+                        return Err(ScriptError::InvalidScript);
+                    }
+                    let data = bytes[i..i + data_len].to_vec();
+                    operations.push(ScriptOp::PushData(data));
+                    i += data_len;
+                }
+                77 => {
+                    // OP_PUSHDATA2 (2 byte length, little-endian)
+                    if i + 2 > bytes.len() {
+                        return Err(ScriptError::InvalidScript);
+                    }
+                    let data_len = u16::from_le_bytes([bytes[i], bytes[i + 1]]) as usize;
+                    i += 2;
+                    if i + data_len > bytes.len() {
+                        return Err(ScriptError::InvalidScript);
+                    }
+                    let data = bytes[i..i + data_len].to_vec();
+                    operations.push(ScriptOp::PushData(data));
+                    i += data_len;
+                }
+                78 => {
+                    // OP_PUSHDATA4 (4 byte length, little-endian)
+                    if i + 4 > bytes.len() {
+                        return Err(ScriptError::InvalidScript);
+                    }
+                    let data_len = u32::from_le_bytes([bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]]) as usize;
+                    i += 4;
                     if i + data_len > bytes.len() {
                         return Err(ScriptError::InvalidScript);
                     }
@@ -351,16 +408,9 @@ impl fmt::Display for Script {
     }
 }
 
-impl AsRef<[u8]> for Script {
-    fn as_ref(&self) -> &[u8] {
-        // We need to return a reference, but serialize() creates a new Vec.
-        // For now, we'll use a workaround - this is not ideal for performance
-        // but works for the trait requirement.
-        // In a production implementation, we might cache the serialized form.
-        static EMPTY: &[u8] = &[];
-        EMPTY // Temporary workaround
-    }
-}
+// AsRef<[u8]> implementation removed - Script should use to_bytes() or serialize() explicitly
+// The AsRef trait cannot be correctly implemented because it requires returning a reference
+// but Script needs to serialize on-demand (serialize() creates a new Vec).
 
 /// Context for script execution
 pub struct ScriptContext {

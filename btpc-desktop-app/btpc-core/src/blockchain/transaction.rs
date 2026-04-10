@@ -42,7 +42,7 @@ impl Transaction {
     /// Create a coinbase transaction for mining
     ///
     /// # Arguments
-    /// * `reward` - Block reward in satoshis
+    /// * `reward` - Block reward in credits
     /// * `recipient_hash` - Hash of recipient public key
     ///
     /// # Note
@@ -520,7 +520,7 @@ impl TransactionInput {
 /// A transaction output
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransactionOutput {
-    /// Value in satoshis
+    /// Value in credits
     pub value: u64,
     /// Script public key (lock script)
     pub script_pubkey: Script,

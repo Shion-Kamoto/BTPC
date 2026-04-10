@@ -23,8 +23,8 @@ pub struct MempoolConfig {
     pub max_transactions: usize,
     /// Maximum total size of all transactions in bytes
     pub max_size_bytes: usize,
-    /// Minimum fee per byte (in smallest units)
-    pub min_fee_per_byte: u64,
+    /// Minimum fee per kilobyte (in credits)
+    pub min_fee_per_kb: u64,
     /// Maximum transaction size in bytes
     pub max_transaction_size: usize,
 }
@@ -34,7 +34,7 @@ impl Default for MempoolConfig {
         MempoolConfig {
             max_transactions: 5000,        // 5000 transactions
             max_size_bytes: 300_000_000,   // 300 MB
-            min_fee_per_byte: 1,           // 1 satoshi per byte minimum
+            min_fee_per_kb: 1,             // 1 crd/KB minimum
             max_transaction_size: 100_000, // 100 KB per transaction
         }
     }
@@ -133,12 +133,12 @@ impl Mempool {
             });
         }
 
-        // Validate minimum fee (Issue #14: fee requirements)
-        let fee_per_byte = fee as f64 / tx_size as f64;
-        if fee_per_byte < self.config.min_fee_per_byte as f64 {
+        // Validate minimum fee (crd/KB)
+        let fee_per_kb = fee as f64 / tx_size as f64 * 1024.0;
+        if fee_per_kb < self.config.min_fee_per_kb as f64 {
             return Err(MempoolError::InsufficientFee {
-                fee_per_byte,
-                min_required: self.config.min_fee_per_byte as f64,
+                fee_per_kb,
+                min_required: self.config.min_fee_per_kb as f64,
             });
         }
 
@@ -155,6 +155,7 @@ impl Mempool {
             .map_err(|e| MempoolError::InvalidTransaction(format!("{}", e)))?;
 
         // Add transaction to mempool
+        let fee_per_byte = fee as f64 / tx_size as f64;
         let entry = MempoolEntry {
             transaction: transaction.clone(),
             txid,
@@ -269,12 +270,21 @@ impl Mempool {
         removed
     }
 
-    /// Get mempool statistics
+    /// Get mempool statistics with enhanced fee information
     pub fn stats(&self) -> MempoolStats {
+        let fee_rates = self.get_sorted_fee_rates();
+        let histogram = self.calculate_fee_histogram(&fee_rates);
+
         MempoolStats {
             transaction_count: self.transactions.len(),
             total_size_bytes: self.total_size,
             avg_fee_per_byte: self.calculate_avg_fee_per_byte(),
+            min_fee_per_byte: fee_rates.first().copied().unwrap_or(0.0),
+            max_fee_per_byte: fee_rates.last().copied().unwrap_or(0.0),
+            fee_rate_p25_crd_per_byte: self.calculate_percentile(&fee_rates, 25),
+            fee_rate_p50_crd_per_byte: self.calculate_percentile(&fee_rates, 50),
+            fee_rate_p75_crd_per_byte: self.calculate_percentile(&fee_rates, 75),
+            fee_histogram: histogram,
         }
     }
 
@@ -292,6 +302,112 @@ impl Mempool {
 
         total_fee_per_byte / self.transactions.len() as f64
     }
+
+    /// Get fee rates sorted in ascending order
+    fn get_sorted_fee_rates(&self) -> Vec<f64> {
+        let mut rates: Vec<f64> = self
+            .transactions
+            .values()
+            .map(|entry| entry.fee_per_byte)
+            .collect();
+        rates.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        rates
+    }
+
+    /// Calculate percentile from sorted fee rates
+    fn calculate_percentile(&self, sorted_rates: &[f64], percentile: u8) -> f64 {
+        if sorted_rates.is_empty() {
+            return 0.0;
+        }
+
+        let index = ((percentile as f64 / 100.0) * (sorted_rates.len() - 1) as f64).round() as usize;
+        sorted_rates[index.min(sorted_rates.len() - 1)]
+    }
+
+    /// Calculate fee histogram with 10 buckets
+    fn calculate_fee_histogram(&self, sorted_rates: &[f64]) -> Vec<FeeHistogramBucket> {
+        const NUM_BUCKETS: usize = 10;
+
+        if sorted_rates.is_empty() {
+            return Vec::new();
+        }
+
+        let min_rate = sorted_rates.first().copied().unwrap_or(0.0);
+        let max_rate = sorted_rates.last().copied().unwrap_or(1.0);
+        let range = (max_rate - min_rate).max(0.001); // Avoid division by zero
+        let bucket_size = range / NUM_BUCKETS as f64;
+
+        let mut buckets: Vec<FeeHistogramBucket> = (0..NUM_BUCKETS)
+            .map(|i| {
+                let bucket_min = min_rate + (i as f64 * bucket_size);
+                let bucket_max = if i == NUM_BUCKETS - 1 {
+                    max_rate + 0.001 // Include max value
+                } else {
+                    min_rate + ((i + 1) as f64 * bucket_size)
+                };
+                FeeHistogramBucket {
+                    min_fee_rate: bucket_min,
+                    max_fee_rate: bucket_max,
+                    tx_count: 0,
+                    total_size: 0,
+                }
+            })
+            .collect();
+
+        // Populate buckets
+        for entry in self.transactions.values() {
+            let bucket_index = if bucket_size > 0.0 {
+                ((entry.fee_per_byte - min_rate) / bucket_size).floor() as usize
+            } else {
+                0
+            };
+            let bucket_index = bucket_index.min(NUM_BUCKETS - 1);
+
+            buckets[bucket_index].tx_count += 1;
+            buckets[bucket_index].total_size += entry.size;
+        }
+
+        buckets
+    }
+
+    /// Get recommended fee rate for a given priority level
+    ///
+    /// Returns the fee rate in credits per byte that should be used
+    /// to achieve the desired confirmation priority.
+    pub fn get_fee_rate_for_priority(&self, priority: FeePriority) -> f64 {
+        let stats = self.stats();
+
+        match priority {
+            FeePriority::High => {
+                // 75th percentile + 10% buffer for next-block confirmation
+                let rate = stats.fee_rate_p75_crd_per_byte * 1.1;
+                rate.max(self.config.min_fee_per_kb as f64)
+            }
+            FeePriority::Medium => {
+                // 50th percentile (median) for 3-6 block confirmation
+                let rate = stats.fee_rate_p50_crd_per_byte;
+                rate.max(self.config.min_fee_per_kb as f64)
+            }
+            FeePriority::Low => {
+                // 25th percentile for eventual confirmation
+                let rate = stats.fee_rate_p25_crd_per_byte;
+                rate.max(self.config.min_fee_per_kb as f64)
+            }
+        }
+    }
+
+    /// Estimate fee for a transaction of given size at specified priority
+    ///
+    /// # Arguments
+    /// * `tx_size` - Transaction size in bytes
+    /// * `priority` - Desired confirmation priority
+    ///
+    /// # Returns
+    /// Recommended fee in credits
+    pub fn estimate_fee(&self, tx_size: usize, priority: FeePriority) -> u64 {
+        let rate = self.get_fee_rate_for_priority(priority);
+        (tx_size as f64 * rate).ceil() as u64
+    }
 }
 
 impl Default for Mempool {
@@ -300,7 +416,31 @@ impl Default for Mempool {
     }
 }
 
-/// Mempool statistics
+/// Transaction priority level for fee estimation
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FeePriority {
+    /// High priority - confirms in next 1-2 blocks (75th percentile)
+    High,
+    /// Medium priority - confirms in next 3-6 blocks (50th percentile)
+    Medium,
+    /// Low priority - confirms eventually (25th percentile)
+    Low,
+}
+
+/// Fee histogram bucket
+#[derive(Debug, Clone)]
+pub struct FeeHistogramBucket {
+    /// Minimum fee rate for this bucket (crd/byte)
+    pub min_fee_rate: f64,
+    /// Maximum fee rate for this bucket (crd/byte)
+    pub max_fee_rate: f64,
+    /// Number of transactions in this bucket
+    pub tx_count: usize,
+    /// Total size of transactions in this bucket (bytes)
+    pub total_size: usize,
+}
+
+/// Mempool statistics with enhanced fee information
 #[derive(Debug, Clone)]
 pub struct MempoolStats {
     /// Number of transactions
@@ -309,6 +449,18 @@ pub struct MempoolStats {
     pub total_size_bytes: usize,
     /// Average fee per byte
     pub avg_fee_per_byte: f64,
+    /// Minimum fee per byte in mempool
+    pub min_fee_per_byte: f64,
+    /// Maximum fee per byte in mempool
+    pub max_fee_per_byte: f64,
+    /// 25th percentile fee rate (low priority)
+    pub fee_rate_p25_crd_per_byte: f64,
+    /// 50th percentile fee rate (medium priority / median)
+    pub fee_rate_p50_crd_per_byte: f64,
+    /// 75th percentile fee rate (high priority)
+    pub fee_rate_p75_crd_per_byte: f64,
+    /// Fee histogram (10 buckets)
+    pub fee_histogram: Vec<FeeHistogramBucket>,
 }
 
 /// Mempool errors
@@ -326,9 +478,9 @@ pub enum MempoolError {
         additional: usize,
         max: usize,
     },
-    #[error("Insufficient fee: {fee_per_byte} sat/byte < {min_required} sat/byte minimum")]
+    #[error("Insufficient fee: {fee_per_kb} crd/KB < {min_required} crd/KB minimum")]
     InsufficientFee {
-        fee_per_byte: f64,
+        fee_per_kb: f64,
         min_required: f64,
     },
     #[error("Double spend detected: {0:?}")]
@@ -453,5 +605,150 @@ mod tests {
         assert_eq!(stats.transaction_count, 1);
         assert!(stats.total_size_bytes > 0);
         assert!(stats.avg_fee_per_byte > 0.0);
+        // New stats fields
+        assert!(stats.min_fee_per_byte > 0.0);
+        assert!(stats.max_fee_per_byte > 0.0);
+        assert!(stats.fee_rate_p50_crd_per_byte > 0.0);
+    }
+
+    #[test]
+    fn test_fee_percentiles() {
+        let mut mempool = Mempool::new();
+
+        // Add transactions with different fee rates
+        // Test tx is ~118 bytes, so need at least 118 credits per tx for 1 crd/byte
+        for i in 1..=10 {
+            let (tx, _) = create_test_transaction(i * 100);
+            let tx_size = tx.size();
+            // Fee = i * tx_size to get i crd/byte fee rate
+            mempool.add_transaction(tx, i * tx_size as u64).unwrap();
+        }
+
+        let stats = mempool.stats();
+        assert_eq!(stats.transaction_count, 10);
+
+        // Verify percentiles are ordered correctly
+        assert!(stats.fee_rate_p25_crd_per_byte <= stats.fee_rate_p50_crd_per_byte);
+        assert!(stats.fee_rate_p50_crd_per_byte <= stats.fee_rate_p75_crd_per_byte);
+        assert!(stats.fee_rate_p25_crd_per_byte >= stats.min_fee_per_byte);
+        assert!(stats.fee_rate_p75_crd_per_byte <= stats.max_fee_per_byte);
+    }
+
+    #[test]
+    fn test_fee_histogram() {
+        let mut mempool = Mempool::new();
+
+        // Add transactions with varying fee rates
+        // Test tx is ~118 bytes, so need at least 118 credits per tx for 1 crd/byte
+        for i in 1..=20 {
+            let (tx, _) = create_test_transaction(i * 50);
+            let tx_size = tx.size();
+            // Fee = i * tx_size to get i crd/byte fee rate
+            mempool.add_transaction(tx, i * tx_size as u64).unwrap();
+        }
+
+        let stats = mempool.stats();
+
+        // Histogram should have 10 buckets
+        assert_eq!(stats.fee_histogram.len(), 10);
+
+        // Total transactions in histogram should match mempool size
+        let histogram_total: usize = stats.fee_histogram.iter().map(|b| b.tx_count).sum();
+        assert_eq!(histogram_total, 20);
+
+        // Each bucket should have ordered min/max rates
+        for bucket in &stats.fee_histogram {
+            assert!(bucket.min_fee_rate <= bucket.max_fee_rate);
+        }
+    }
+
+    #[test]
+    fn test_fee_priority_estimation() {
+        let mut mempool = Mempool::new();
+
+        // Add transactions with different fee rates
+        // Test tx is ~118 bytes, so need at least 118 credits per tx for 1 crd/byte
+        for i in 1..=100 {
+            let (tx, _) = create_test_transaction(i * 10);
+            let tx_size = tx.size();
+            // Fee = i * tx_size to get i crd/byte fee rate
+            mempool.add_transaction(tx, i * tx_size as u64).unwrap();
+        }
+
+        // Test priority levels
+        let high_rate = mempool.get_fee_rate_for_priority(FeePriority::High);
+        let medium_rate = mempool.get_fee_rate_for_priority(FeePriority::Medium);
+        let low_rate = mempool.get_fee_rate_for_priority(FeePriority::Low);
+
+        // Higher priority should have higher fee rate
+        assert!(high_rate >= medium_rate);
+        assert!(medium_rate >= low_rate);
+
+        // All rates should be at least minimum
+        let min_rate = mempool.config.min_fee_per_kb as f64;
+        assert!(high_rate >= min_rate);
+        assert!(medium_rate >= min_rate);
+        assert!(low_rate >= min_rate);
+    }
+
+    #[test]
+    fn test_estimate_fee() {
+        let mut mempool = Mempool::new();
+
+        // Add transactions with varying fee rates
+        // Test tx is ~118 bytes, so need at least 118 credits per tx for 1 crd/byte
+        for i in 1..=10 {
+            let (tx, _) = create_test_transaction(i * 100);
+            let tx_size = tx.size();
+            // Fee = i * tx_size to get i crd/byte fee rate
+            mempool.add_transaction(tx, i * tx_size as u64).unwrap();
+        }
+
+        let tx_size = 4000; // Typical ML-DSA transaction size
+
+        // Estimate fees for different priorities
+        let high_fee = mempool.estimate_fee(tx_size, FeePriority::High);
+        let medium_fee = mempool.estimate_fee(tx_size, FeePriority::Medium);
+        let low_fee = mempool.estimate_fee(tx_size, FeePriority::Low);
+
+        // Higher priority should have higher fee
+        assert!(high_fee >= medium_fee);
+        assert!(medium_fee >= low_fee);
+
+        // All fees should be positive
+        assert!(high_fee > 0);
+        assert!(medium_fee > 0);
+        assert!(low_fee > 0);
+    }
+
+    #[test]
+    fn test_empty_mempool_stats() {
+        let mempool = Mempool::new();
+        let stats = mempool.stats();
+
+        assert_eq!(stats.transaction_count, 0);
+        assert_eq!(stats.total_size_bytes, 0);
+        assert_eq!(stats.avg_fee_per_byte, 0.0);
+        assert_eq!(stats.min_fee_per_byte, 0.0);
+        assert_eq!(stats.max_fee_per_byte, 0.0);
+        assert_eq!(stats.fee_rate_p25_crd_per_byte, 0.0);
+        assert_eq!(stats.fee_rate_p50_crd_per_byte, 0.0);
+        assert_eq!(stats.fee_rate_p75_crd_per_byte, 0.0);
+        assert!(stats.fee_histogram.is_empty());
+    }
+
+    #[test]
+    fn test_empty_mempool_fee_priority() {
+        let mempool = Mempool::new();
+
+        // Empty mempool should return minimum fee rate
+        let high_rate = mempool.get_fee_rate_for_priority(FeePriority::High);
+        let medium_rate = mempool.get_fee_rate_for_priority(FeePriority::Medium);
+        let low_rate = mempool.get_fee_rate_for_priority(FeePriority::Low);
+
+        let min_rate = mempool.config.min_fee_per_kb as f64;
+        assert_eq!(high_rate, min_rate);
+        assert_eq!(medium_rate, min_rate);
+        assert_eq!(low_rate, min_rate);
     }
 }

@@ -62,9 +62,9 @@ impl Hash {
 
     /// Create a random hash (for testing)
     pub fn random() -> Self {
-        use rand::RngCore;
+        use rand::{rngs::OsRng, RngCore};
         let mut bytes = [0u8; SHA512_HASH_SIZE];
-        rand::thread_rng().fill_bytes(&mut bytes);
+        OsRng.fill_bytes(&mut bytes);
         Hash(bytes)
     }
 

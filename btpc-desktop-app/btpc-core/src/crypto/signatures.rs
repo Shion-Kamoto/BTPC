@@ -45,10 +45,10 @@ impl Signature {
 
     /// Get the algorithm name
     ///
-    /// Returns the ML-DSA security level identifier. BTPC uses ML-DSA-65 (Dilithium3)
-    /// which provides 192-bit security and is specified in FIPS 204.
+    /// Returns the ML-DSA security level identifier. BTPC uses ML-DSA-87 (Dilithium5)
+    /// which provides 256-bit security (NIST Level 5) and is specified in FIPS 204.
     pub fn algorithm(&self) -> &'static str {
-        "ML-DSA-65" // Fixed: Was incorrectly labeled as ML-DSA-87 (Issue 1.1.1)
+        "ML-DSA-87"
     }
 
     /// Convert to hex string
@@ -94,33 +94,6 @@ impl Signature {
         Ok(results)
     }
 
-    /// Verify that this is a valid ML-DSA signature structure
-    ///
-    /// # Warning (Issue 1.1.2 - HIGH)
-    /// This method provides only basic structural validation and should NOT be relied
-    /// upon for security-critical decisions. It performs minimal checks:
-    /// - Signature is not all zeros
-    /// - Signature has correct length (enforced by type system)
-    ///
-    /// **Security Note:** True signature validation happens during `PublicKey::verify()`,
-    /// which performs full ML-DSA cryptographic verification. This method is intended
-    /// only for quick sanity checks and debugging.
-    ///
-    /// # Recommendation
-    /// Always use `PublicKey::verify()` for actual signature validation. Consider this
-    /// method deprecated for security purposes.
-    #[deprecated(
-        note = "Provides weak validation only. Use PublicKey::verify() for security-critical validation."
-    )]
-    pub fn is_valid_structure(&self) -> bool {
-        // Basic check: signature should not be all zeros
-        // Note: This does NOT validate ML-DSA mathematical correctness
-        let all_zeros = self.signature_bytes.iter().all(|&b| b == 0);
-        let all_ones = self.signature_bytes.iter().all(|&b| b == 0xFF);
-
-        // Reject obvious invalid signatures
-        !all_zeros && !all_ones
-    }
 }
 
 impl fmt::Display for Signature {
@@ -275,8 +248,7 @@ mod tests {
 
         // Verify signature properties
         assert_eq!(signature.size(), ML_DSA_SIGNATURE_SIZE);
-        assert_eq!(signature.algorithm(), "ML-DSA-65"); // Fixed: Now correctly returns ML-DSA-65
-        assert!(signature.is_valid_structure());
+        assert_eq!(signature.algorithm(), "ML-DSA-87"); // ML-DSA-87 (Dilithium5) per FIPS 204
 
         // Verify signature
         assert!(public_key.verify(message, &signature));
@@ -379,23 +351,6 @@ mod tests {
 
         // ML-DSA signatures should be deterministic
         assert_eq!(signature1, signature2);
-    }
-
-    #[test]
-    fn test_signature_structure_validation() {
-        let private_key = PrivateKey::generate_ml_dsa().unwrap();
-        let message = b"Structure validation test";
-        let valid_signature = private_key.sign(message).unwrap();
-
-        // Valid signature should pass structure check
-        assert!(valid_signature.is_valid_structure());
-
-        // Invalid signature data should fail
-        let invalid_bytes = [0xffu8; ML_DSA_SIGNATURE_SIZE];
-        let invalid_signature = Signature::from_bytes(&invalid_bytes).unwrap();
-        // This might or might not be valid structure depending on ML-DSA internals
-        // The test is mainly to ensure the function doesn't panic
-        let _ = invalid_signature.is_valid_structure();
     }
 
     #[test]

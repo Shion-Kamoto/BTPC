@@ -6,12 +6,10 @@
 //! - Wallet creation
 //! - BTPC sending
 
-use std::sync::{Arc, Mutex};
 use tauri::State;
 
 use crate::error::BtpcError;
 use crate::AppState;
-use crate::utxo_manager::UTXOManager;
 
 #[tauri::command]
 pub async fn get_total_balance(state: State<'_, AppState>) -> Result<f64, String> {
@@ -54,11 +52,19 @@ pub async fn create_wallet(state: State<'_, AppState>) -> Result<String, String>
     println!("BTPC home: {}", state.config.btpc_home.display());
     println!("Binary directory: {}", state.btpc.bin_dir.display());
 
+    // FIX 2025-12-01: Get active network for correct address prefix
+    // FIX 2025-12-01: Use .read().await instead of blocking_read() to prevent deadlock
+    let network: btpc_core::Network = {
+        let active_network = state.active_network.read().await;
+        (*active_network).clone().into()
+    };
+
     match state
         .btpc
-        .create_wallet(&wallet_file, "default-wallet-password")
+        .create_wallet(&wallet_file, "default-wallet-password", network)
     {
-        Ok((address, _seed_phrase, _private_key)) => {
+        // FIX 2025-12-03: Now returns 4 values (added seed_hex)
+        Ok((address, _seed_phrase, _private_key, _seed_hex)) => {
             Ok(format!("Wallet created successfully: {}", address))
         }
         Err(e) => {
@@ -110,12 +116,13 @@ pub async fn get_wallet_balance(state: State<'_, AppState>) -> Result<String, St
         address
     };
 
-    // Get balance from UTXO manager
+    // Get spendable balance from UTXO manager (excludes immature coinbase)
+    let current_height = state.embedded_node.read().await.get_height();
     let (total_credits, total_btp) = {
         let utxo_manager = state.utxo_manager.lock().map_err(|_| {
             BtpcError::mutex_poison("utxo_manager", "get_wallet_balance").to_string()
         })?;
-        utxo_manager.get_balance(&clean_address)
+        utxo_manager.get_spendable_balance(&clean_address, current_height)
     };
 
     let balance_str = format!("{} base units ({:.8} BTP)", total_credits, total_btp);
@@ -144,6 +151,7 @@ pub async fn get_wallet_address(state: State<'_, AppState>) -> Result<String, St
     }
 }
 
+#[allow(dead_code)]
 #[tauri::command]
 pub async fn send_btpc(
     state: State<'_, AppState>,
@@ -200,20 +208,23 @@ pub async fn send_btpc(
         Err(e) => return Err(format!("Failed to get wallet address: {}", e)),
     };
 
-    // Convert BTP to satoshis for UTXO calculations
+    // Convert BTPC to credits for UTXO calculations
     let amount_credits = (amount * 100_000_000.0) as u64;
     let fee_credits = 10000u64; // 0.0001 BTP standard fee
     let total_needed = amount_credits + fee_credits;
+
+    // Get blockchain height for maturity check
+    let current_height = state.embedded_node.read().await.get_height();
 
     // Check balance and select UTXOs using UTXO manager
     let (available_credits, available_btp) = {
         let utxo_manager = state.utxo_manager.lock().map_err(|_| {
             BtpcError::mutex_poison("utxo_manager", "send_transaction balance").to_string()
         })?;
-        let balance = utxo_manager.get_balance(&from_address);
+        let balance = utxo_manager.get_spendable_balance(&from_address, current_height);
 
-        // Try to select UTXOs for the transaction
-        match utxo_manager.select_utxos_for_spending(&from_address, total_needed) {
+        // Try to select UTXOs for the transaction (with maturity check)
+        match utxo_manager.select_utxos_for_spending(&from_address, total_needed, current_height) {
             Ok(selected_utxos) => {
                 let selected_amount: u64 = selected_utxos.iter().map(|u| u.value_credits).sum();
                 println!(
@@ -224,7 +235,7 @@ pub async fn send_btpc(
             }
             Err(e) => {
                 return Err(format!(
-                    "Cannot create transaction: {}. Available: {:.8} BTP, Needed: {:.8} BTP",
+                    "Cannot create transaction: {}. Spendable: {:.8} BTP, Needed: {:.8} BTP",
                     e,
                     balance.1,
                     (total_needed as f64) / 100_000_000.0
@@ -236,11 +247,12 @@ pub async fn send_btpc(
     };
 
     if available_credits < total_needed {
-        return Err(format!("Insufficient funds. Available: {:.8} BTP, Requested: {:.8} BTP (including {:.8} BTP fee)",
+        return Err(format!("Insufficient funds. Spendable: {:.8} BTP, Requested: {:.8} BTP (including {:.8} BTP fee). Coinbase UTXOs need 100 confirmations.",
                           available_btp, amount, fee_credits as f64 / 100_000_000.0));
     }
 
     // Create the transaction using UTXO manager
+    let fork_id = state.active_network.read().await.fork_id();
     let (transaction_result, change_amount) = {
         let utxo_manager = state.utxo_manager.lock().map_err(|_| {
             BtpcError::mutex_poison("utxo_manager", "send_transaction create").to_string()
@@ -250,6 +262,8 @@ pub async fn send_btpc(
             &to_address,
             amount_credits,
             fee_credits,
+            current_height,
+            fork_id,
         ) {
             Ok(transaction) => {
                 let total_input: u64 = transaction.inputs.len() as u64 * 3237500000; // Estimate
@@ -320,12 +334,13 @@ pub async fn get_wallet_balance_with_mined(state: State<'_, AppState>) -> Result
         address
     };
 
-    // Get balance from UTXO set
+    // Get spendable balance from UTXO set (excludes immature coinbase)
+    let current_height = state.embedded_node.read().await.get_height();
     let (total_credits, total_btp) = {
         let utxo_manager = state.utxo_manager.lock().map_err(|_| {
             BtpcError::mutex_poison("utxo_manager", "get_address_balance").to_string()
         })?;
-        utxo_manager.get_balance(&clean_address)
+        utxo_manager.get_spendable_balance(&clean_address, current_height)
     };
 
     Ok(format!(

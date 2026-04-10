@@ -30,6 +30,13 @@ pub struct AddressBookEntry {
     pub usage_count: u32,
     /// Optional category/tag for organization
     pub category: Option<String>,
+    /// Color for visual identification (hex format, e.g. "#6366f1")
+    #[serde(default = "default_color")]
+    pub color: String,
+}
+
+fn default_color() -> String {
+    "#6366f1".to_string()
 }
 
 /// Request to add a new address book entry
@@ -39,6 +46,7 @@ pub struct AddAddressBookRequest {
     pub address: String,
     pub notes: Option<String>,
     pub category: Option<String>,
+    pub color: Option<String>,
 }
 
 /// Request to update an existing address book entry
@@ -48,6 +56,7 @@ pub struct UpdateAddressBookRequest {
     pub label: Option<String>,
     pub notes: Option<String>,
     pub category: Option<String>,
+    pub color: Option<String>,
 }
 
 /// Address book manager
@@ -125,6 +134,7 @@ impl AddressBookManager {
             last_used: None,
             usage_count: 0,
             category: request.category,
+            color: request.color.unwrap_or_else(default_color),
         };
 
         // Store entry
@@ -185,6 +195,10 @@ impl AddressBookManager {
             entry.category = Some(category);
         }
 
+        if let Some(color) = request.color {
+            entry.color = color;
+        }
+
         let result = entry.clone();
         self.save_entries()?;
 
@@ -223,14 +237,14 @@ impl AddressBookManager {
         self.entries
             .values()
             .filter(|e| {
-                e.label.to_lowercase().contains(&query_lower)
-                    || e.address.to_lowercase().contains(&query_lower)
+                e.label.to_lowercase().contains(query_lower.as_str())
+                    || e.address.to_lowercase().contains(query_lower.as_str())
                     || e.notes
                         .as_ref()
-                        .is_some_and(|n| n.to_lowercase().contains(&query_lower))
+                        .is_some_and(|n| n.to_lowercase().contains(query_lower.as_str()))
                     || e.category
                         .as_ref()
-                        .is_some_and(|c| c.to_lowercase().contains(&query_lower))
+                        .is_some_and(|c| c.to_lowercase().contains(query_lower.as_str()))
             })
             .cloned()
             .collect()
@@ -290,12 +304,13 @@ mod tests {
 
         let mut manager = AddressBookManager::new(temp_dir.clone()).unwrap();
 
-        // Add entry
+        // Add entry using valid regtest address
         let request = AddAddressBookRequest {
             label: "Alice".to_string(),
-            address: "a".repeat(128),
+            address: "mw2YiPwD8F8Y2vNYZmeNT69BZZZKK8BoyV".to_string(),
             notes: Some("Test recipient".to_string()),
             category: Some("Friends".to_string()),
+            color: None,
         };
 
         let entry = manager.add_entry(request).unwrap();
@@ -317,7 +332,8 @@ mod tests {
 
         let mut manager = AddressBookManager::new(temp_dir.clone()).unwrap();
 
-        let address = "b".repeat(128);
+        // Use valid regtest address
+        let address = "mw2YiPwD8F8Y2vNYZmeNT69BZZZKK8BoyV".to_string();
 
         // Add first entry
         let request1 = AddAddressBookRequest {
@@ -325,6 +341,7 @@ mod tests {
             address: address.clone(),
             notes: None,
             category: None,
+            color: None,
         };
         manager.add_entry(request1).unwrap();
 
@@ -334,6 +351,7 @@ mod tests {
             address: address.clone(),
             notes: None,
             category: None,
+            color: None,
         };
         let result = manager.add_entry(request2);
         assert!(result.is_err());

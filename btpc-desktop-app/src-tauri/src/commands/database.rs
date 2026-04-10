@@ -153,11 +153,12 @@ pub async fn create_database_backup(
 /// The database must be reopened.
 #[tauri::command]
 pub async fn restore_database_backup(
+    state: State<'_, AppState>,
     backup_path: String,
 ) -> Result<RestoreBackupResponse, String> {
-    eprintln!("📂 Frontend requested database restore from: {}", backup_path);
+    eprintln!("Frontend requested database restore from: {}", backup_path);
 
-    // Determine database path
+    // Use network-aware database path
     let home_dir = match dirs::home_dir() {
         Some(dir) => dir,
         None => {
@@ -169,7 +170,9 @@ pub async fn restore_database_backup(
         }
     };
 
-    let db_path = home_dir.join(".btpc").join("blockchain.db");
+    let network = state.active_network.read().await;
+    let network_str = network.to_string();
+    let db_path = home_dir.join(".btpc").join("data").join(&network_str).join("blockchain.db");
     let backup_path_buf = PathBuf::from(backup_path);
 
     // Perform restore
@@ -238,4 +241,24 @@ pub async fn list_database_backups() -> Result<ListBackupsResponse, String> {
             })
         }
     }
+}
+
+/// Restart the application
+///
+/// This command cleanly exits the application. The user will need to
+/// manually relaunch the app. This is typically called after database
+/// restore operations that require a fresh start.
+///
+/// # Returns
+/// This function doesn't return - it exits the process.
+#[tauri::command]
+pub async fn restart_app() {
+    eprintln!("🔄 Application restart requested");
+    eprintln!("   Exiting application - please relaunch manually");
+
+    // Give a brief moment for the frontend to acknowledge
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+    // Exit the application using std::process::exit (guaranteed to work)
+    std::process::exit(0);
 }

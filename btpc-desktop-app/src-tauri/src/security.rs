@@ -13,17 +13,16 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use aes_gcm::aead::Aead;
 use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
-use argon2::password_hash::{rand_core::OsRng, SaltString};
+use argon2::password_hash::{rand_core::{OsRng, RngCore}, SaltString};
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use bip39::{Language, Mnemonic};
-use rand::Rng;
 use sha2::{Digest, Sha256};
 
 // ============================================================================
 // Security Configuration
 // ============================================================================
 
-const SESSION_TIMEOUT_MINUTES: u64 = 30;
+const SESSION_TIMEOUT_MINUTES: u64 = 15; // FR-004: 15-minute inactivity timeout
 const MAX_LOGIN_ATTEMPTS: u32 = 3;
 const LOCKOUT_DURATION_MINUTES: u64 = 15;
 
@@ -107,8 +106,9 @@ impl SecurityManager {
             .map_err(|e| anyhow!("Password hashing failed: {}", e))?
             .to_string();
 
-        // Generate BIP39 mnemonic for recovery
-        let entropy = rand::random::<[u8; 32]>();
+        // Generate BIP39 mnemonic for recovery using cryptographic RNG
+        let mut entropy = [0u8; 32];
+        OsRng.fill_bytes(&mut entropy);
         let mnemonic = Mnemonic::from_entropy_in(Language::English, &entropy)
             .map_err(|e| anyhow!("Mnemonic generation failed: {}", e))?;
 
@@ -259,7 +259,10 @@ impl SecurityManager {
 
         // Store session
         {
-            let mut sessions = self.sessions.lock().unwrap();
+            let mut sessions = self
+                .sessions
+                .lock()
+                .expect("Sessions Mutex poisoned - indicates prior panic in security module");
             sessions.insert(session_id, session.clone());
         }
 
@@ -268,7 +271,10 @@ impl SecurityManager {
 
     /// Validate session and update activity
     pub fn validate_session(&self, session_id: &str) -> Result<bool> {
-        let mut sessions = self.sessions.lock().unwrap();
+        let mut sessions = self
+            .sessions
+            .lock()
+            .expect("Sessions Mutex poisoned - indicates prior panic in security module");
 
         if let Some(session) = sessions.get_mut(session_id) {
             let now = self.current_timestamp();
@@ -290,19 +296,28 @@ impl SecurityManager {
 
     /// Get session information
     pub fn get_session(&self, session_id: &str) -> Option<UserSession> {
-        let sessions = self.sessions.lock().unwrap();
+        let sessions = self
+            .sessions
+            .lock()
+            .expect("Sessions Mutex poisoned - indicates prior panic in security module");
         sessions.get(session_id).cloned()
     }
 
     /// Invalidate a specific session
     pub fn invalidate_session(&self, session_id: &str) {
-        let mut sessions = self.sessions.lock().unwrap();
+        let mut sessions = self
+            .sessions
+            .lock()
+            .expect("Sessions Mutex poisoned - indicates prior panic in security module");
         sessions.remove(session_id);
     }
 
     /// Invalidate all sessions for a user
     pub fn invalidate_user_sessions(&self, username: &str) {
-        let mut sessions = self.sessions.lock().unwrap();
+        let mut sessions = self
+            .sessions
+            .lock()
+            .expect("Sessions Mutex poisoned - indicates prior panic in security module");
         sessions.retain(|_, session| session.username != username);
     }
 
@@ -338,8 +353,9 @@ impl SecurityManager {
             .map_err(|_| anyhow!("Invalid key length"))?;
         let key = aes_gcm::Key::<Aes256Gcm>::from_slice(key_array);
 
-        // Generate random nonce
-        let nonce_bytes: [u8; 12] = rand::thread_rng().gen();
+        // Generate random nonce using cryptographic RNG
+        let mut nonce_bytes = [0u8; 12];
+        OsRng.fill_bytes(&mut nonce_bytes);
         let nonce = Nonce::from_slice(&nonce_bytes);
 
         // Encrypt wallet key
@@ -420,7 +436,8 @@ impl SecurityManager {
     }
 
     fn generate_session_id(&self) -> String {
-        let random_bytes: [u8; 32] = rand::thread_rng().gen();
+        let mut random_bytes = [0u8; 32];
+        OsRng.fill_bytes(&mut random_bytes);
         format!("{:x}", Sha256::digest(random_bytes))
     }
 
@@ -432,7 +449,10 @@ impl SecurityManager {
     }
 
     fn is_account_locked(&self, username: &str) -> Result<bool> {
-        let lockout_tracker = self.lockout_tracker.lock().unwrap();
+        let lockout_tracker = self
+            .lockout_tracker
+            .lock()
+            .expect("Lockout Mutex poisoned - indicates prior panic in security module");
         if let Some((attempts, lockout_until)) = lockout_tracker.get(username) {
             let now = self.current_timestamp();
             if *attempts >= MAX_LOGIN_ATTEMPTS && *lockout_until > now {
@@ -443,7 +463,10 @@ impl SecurityManager {
     }
 
     fn record_failed_attempt(&self, username: &str) {
-        let mut lockout_tracker = self.lockout_tracker.lock().unwrap();
+        let mut lockout_tracker = self
+            .lockout_tracker
+            .lock()
+            .expect("Lockout Mutex poisoned - indicates prior panic in security module");
         let now = self.current_timestamp();
 
         let entry = lockout_tracker
@@ -457,7 +480,10 @@ impl SecurityManager {
     }
 
     fn clear_failed_attempts(&self, username: &str) {
-        let mut lockout_tracker = self.lockout_tracker.lock().unwrap();
+        let mut lockout_tracker = self
+            .lockout_tracker
+            .lock()
+            .expect("Lockout Mutex poisoned - indicates prior panic in security module");
         lockout_tracker.remove(username);
     }
 

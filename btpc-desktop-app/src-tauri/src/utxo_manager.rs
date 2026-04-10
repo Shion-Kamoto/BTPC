@@ -82,7 +82,7 @@ where
 /// BUG FIX (2025-11-05): This function was converting addresses to lowercase during deserialization,
 /// breaking base58check encoding. BTPC addresses MUST be stored in their original mixed case.
 /// Comparison should normalize, storage should preserve original case.
-
+///
 /// Represents an Unspent Transaction Output
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct UTXO {
@@ -131,7 +131,7 @@ pub struct TxInput {
 /// Represents a transaction output that creates a new UTXO
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TxOutput {
-    /// Value in satoshis
+    /// Value in credits
     pub value: u64,
     /// Script pubkey
     pub script_pubkey: Vec<u8>,
@@ -160,6 +160,11 @@ pub struct Transaction {
     pub confirmed_at: Option<DateTime<Utc>>,
     /// Whether this is a coinbase transaction
     pub is_coinbase: bool,
+    /// FIX 2025-12-10: Sender address for reliable SENT/RECEIVED detection
+    /// Set during broadcast for user-initiated transactions
+    /// None for coinbase/mining transactions
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sender_address: Option<String>,
 }
 
 /// UTXO set statistics
@@ -227,8 +232,18 @@ pub struct UTXOManager {
 impl UTXOManager {
     /// Create a new UTXO manager
     pub fn new(data_dir: PathBuf) -> Result<Self> {
+        // FIX 2025-12-03: Create directory if it doesn't exist
+        // Without this, save_utxos() silently fails and data is lost!
+        if !data_dir.exists() {
+            fs::create_dir_all(&data_dir)
+                .map_err(|e| anyhow!("Failed to create UTXO directory {:?}: {}", data_dir, e))?;
+            eprintln!("[BTPC::UTXO] Created directory: {:?}", data_dir);
+        }
+
         let utxo_file = data_dir.join("wallet_utxos.json");
         let tx_history_file = data_dir.join("wallet_transactions.json");
+
+        eprintln!("📁 UTXOManager initialized with file: {:?}", utxo_file);
 
         let mut manager = Self {
             utxo_file,
@@ -325,6 +340,44 @@ impl UTXOManager {
         self.save_utxos()
     }
 
+    /// FIX 2025-12-05: Sync UTXOManager from external UTXO list (e.g., tx_storage RocksDB)
+    /// This ensures UTXOManager stays in sync with the authoritative RocksDB store
+    /// after network switches or crash recovery.
+    ///
+    /// # Arguments
+    /// * `utxos` - Vector of UTXOs from tx_storage.get_all_unspent_utxos()
+    ///
+    /// # Behavior
+    /// - Merges incoming UTXOs with existing ones (does NOT clear existing)
+    /// - Overwrites if key already exists (tx_storage is authoritative)
+    /// - Saves to disk after merge
+    ///
+    /// # Returns
+    /// * Number of UTXOs added/updated
+    pub fn sync_from_tx_storage_utxos(&mut self, utxos: Vec<UTXO>) -> Result<usize> {
+        let count = utxos.len();
+
+        for utxo in utxos {
+            let key = format!("{}:{}", utxo.txid, utxo.vout);
+            // tx_storage is authoritative - overwrite local copy
+            self.utxos.insert(key, utxo);
+        }
+
+        // Persist to disk
+        self.save_utxos()?;
+        Ok(count)
+    }
+
+    /// Clear all UTXOs from memory (used during network switch)
+    /// FIX 2025-12-05: Needed when switching networks to start fresh
+    pub fn clear_all_utxos(&mut self) -> Result<()> {
+        self.utxos.clear();
+        self.transactions.clear();
+        self.save_utxos()?;
+        self.save_transactions()?;
+        Ok(())
+    }
+
     /// Add a coinbase UTXO from mining with Bitcoin-compatible block data
     pub fn add_coinbase_utxo(
         &mut self,
@@ -333,13 +386,10 @@ impl UTXOManager {
         value_credits: u64,
         address: String,
         block_height: u64,
+        fork_id: u8,
     ) -> Result<()> {
         // Clean the address to ensure consistent storage format
         let clean_addr = clean_address(&address);
-        println!(
-            "🔧 DEBUG (add_coinbase_utxo): Raw address: '{}' -> Cleaned: '{}'",
-            address, clean_addr
-        );
 
         let block_time = Utc::now();
         let utxo = UTXO {
@@ -367,10 +417,11 @@ impl UTXOManager {
                 script_pubkey: address.as_bytes().to_vec(), // Simplified
             }],
             lock_time: 0,
-            fork_id: 2, // Regtest by default (0=mainnet, 1=testnet, 2=regtest)
+            fork_id,
             block_height: Some(block_height),
             confirmed_at: Some(block_time),
             is_coinbase: true,
+            sender_address: None, // Coinbase transactions have no sender
         };
 
         // Add UTXO to the set
@@ -398,6 +449,9 @@ impl UTXOManager {
     }
 
     /// Mark a UTXO as spent
+    /// Mark a UTXO as spent with full details. Does NOT auto-flush to disk.
+    /// FIX 2026-02-21 (H7): Removed auto-save on each spend to enable atomic batch writes.
+    /// Caller MUST call `flush_utxos()` after all spend operations for persistence.
     pub fn spend_utxo(
         &mut self,
         txid: &str,
@@ -411,7 +465,8 @@ impl UTXOManager {
             utxo.spent = true;
             utxo.spent_in_tx = Some(spent_in_tx);
             utxo.spent_at_height = Some(spent_at_height);
-            self.save_utxos()?;
+            // FIX 2026-02-21 (H7): Don't save after each individual spend.
+            // Caller must flush after all block UTXOs are processed (atomic batch).
             Ok(())
         } else {
             Err(anyhow!("UTXO not found: {}:{}", txid, vout))
@@ -432,20 +487,28 @@ impl UTXOManager {
         }
     }
 
+    /// Get a UTXO by txid and vout (for looking up sender address)
+    pub fn get_utxo(&self, txid: &str, vout: u32) -> Option<&UTXO> {
+        let key = format!("{}:{}", txid, vout);
+        self.utxos.get(&key)
+    }
+
     /// Get all unspent UTXOs for an address
     pub fn get_unspent_utxos(&self, address: &str) -> Vec<&UTXO> {
         // Clean and normalize the query address for case-insensitive comparison
         let clean_query_addr = clean_address(address);
         let normalized_query_addr = normalize_address_for_comparison(&clean_query_addr);
 
-        self.utxos
+        let result: Vec<&UTXO> = self.utxos
             .values()
             .filter(|utxo| {
                 let utxo_clean = clean_address(&utxo.address);
                 let utxo_normalized = normalize_address_for_comparison(&utxo_clean);
                 utxo_normalized == normalized_query_addr && !utxo.spent
             })
-            .collect()
+            .collect();
+
+        result
     }
 
     /// Get all UTXOs (spent and unspent) for an address
@@ -462,10 +525,13 @@ impl UTXOManager {
             .collect()
     }
 
-    /// Calculate balance for an address
+    /// Calculate balance for an address (with overflow protection)
     pub fn get_balance(&self, address: &str) -> (u64, f64) {
         let unspent = self.get_unspent_utxos(address);
-        let total_credits: u64 = unspent.iter().map(|utxo| utxo.value_credits).sum();
+        // FIX 2026-02-21 (C4): Use saturating_add to prevent silent overflow
+        let total_credits: u64 = unspent
+            .iter()
+            .fold(0u64, |acc, utxo| acc.saturating_add(utxo.value_credits));
         let total_btp = total_credits as f64 / 100_000_000.0;
         (total_credits, total_btp)
     }
@@ -473,7 +539,7 @@ impl UTXOManager {
     /// Get UTXO set statistics
     pub fn get_stats(&self) -> UTXOStats {
         let total_utxos = self.utxos.len();
-        let total_value_credits: u64 = self.utxos.values().map(|u| u.value_credits).sum();
+        let total_value_credits: u64 = self.utxos.values().fold(0u64, |acc, u| acc.saturating_add(u.value_credits));
         let total_value_btp = total_value_credits as f64 / 100_000_000.0;
 
         let coinbase_utxos = self.utxos.values().filter(|u| u.is_coinbase).count();
@@ -493,13 +559,22 @@ impl UTXOManager {
         }
     }
 
-    /// Select UTXOs for spending (simple greedy selection)
+    /// Get the UTXO file path (for debugging)
+    pub fn get_utxo_file_path(&self) -> &std::path::Path {
+        &self.utxo_file
+    }
+
+    /// Select UTXOs for spending (simple greedy selection, with maturity check)
     pub fn select_utxos_for_spending(
         &self,
         address: &str,
         amount_credits: u64,
+        current_height: u64,
     ) -> Result<Vec<&UTXO>> {
-        let mut unspent = self.get_unspent_utxos(address);
+        let mut unspent: Vec<&UTXO> = self.get_unspent_utxos(address)
+            .into_iter()
+            .filter(|utxo| utxo.is_spendable(current_height))
+            .collect();
 
         // Sort by value (largest first for fewer inputs)
         unspent.sort_by(|a, b| b.value_credits.cmp(&a.value_credits));
@@ -509,7 +584,7 @@ impl UTXOManager {
 
         for utxo in unspent {
             selected.push(utxo);
-            total_selected += utxo.value_credits;
+            total_selected = total_selected.saturating_add(utxo.value_credits);
 
             if total_selected >= amount_credits {
                 return Ok(selected);
@@ -517,7 +592,7 @@ impl UTXOManager {
         }
 
         Err(anyhow!(
-            "Insufficient funds: need {} credits, have {} credits",
+            "Insufficient funds: need {} credits, have {} credits (coinbase UTXOs need 100 confirmations)",
             amount_credits,
             total_selected
         ))
@@ -559,13 +634,15 @@ impl UTXOManager {
         to_address: &str,
         amount_credits: u64,
         fee_credits: u64,
+        current_height: u64,
+        fork_id: u8,
     ) -> Result<Transaction> {
-        // Select UTXOs to spend
+        // Select UTXOs to spend (with coinbase maturity check)
         let selected_utxos =
-            self.select_utxos_for_spending(from_address, amount_credits + fee_credits)?;
+            self.select_utxos_for_spending(from_address, amount_credits + fee_credits, current_height)?;
 
-        let total_input: u64 = selected_utxos.iter().map(|u| u.value_credits).sum();
-        let change_amount = total_input - amount_credits - fee_credits;
+        let total_input: u64 = selected_utxos.iter().fold(0u64, |acc, u| acc.saturating_add(u.value_credits));
+        let change_amount = total_input.saturating_sub(amount_credits).saturating_sub(fee_credits);
 
         // Create inputs (unsigned - will be signed by sign_transaction command)
         let inputs: Vec<TxInput> = selected_utxos
@@ -585,16 +662,19 @@ impl UTXOManager {
         let from_addr = Address::from_string(from_address)
             .map_err(|e| anyhow!("Invalid sender address: {}", e))?;
 
+        // Create proper P2PKH scripts (not just the hash)
+        let to_script = btpc_core::crypto::Script::new_p2pkh(to_addr.hash160());
         let mut outputs = vec![TxOutput {
             value: amount_credits,
-            script_pubkey: to_addr.hash160().to_vec(), // Use decoded hash160
+            script_pubkey: to_script.serialize(),
         }];
 
         // Add change output if needed
         if change_amount > 0 {
+            let from_script = btpc_core::crypto::Script::new_p2pkh(from_addr.hash160());
             outputs.push(TxOutput {
                 value: change_amount,
-                script_pubkey: from_addr.hash160().to_vec(), // Use decoded hash160
+                script_pubkey: from_script.serialize(),
             });
         }
 
@@ -607,10 +687,11 @@ impl UTXOManager {
             inputs,
             outputs,
             lock_time: 0,
-            fork_id: 2, // Regtest (0=mainnet, 1=testnet, 2=regtest) - production: pass network from AppState
+            fork_id,
             block_height: None,
             confirmed_at: None,
             is_coinbase: false,
+            sender_address: Some(from_address.to_string()), // Sender is the from_address
         })
     }
 
@@ -706,13 +787,17 @@ impl UTXOManager {
         }
     }
 
-    /// T016: Modify select_utxos_for_spending to exclude reserved UTXOs
+    /// T016: Modify select_utxos_for_spending to exclude reserved + immature UTXOs
     pub fn select_utxos_for_spending_with_reservation(
         &self,
         address: &str,
         amount_credits: u64,
+        current_height: u64,
     ) -> Result<Vec<&UTXO>> {
-        let mut unspent = self.get_unspent_utxos(address);
+        let mut unspent: Vec<&UTXO> = self.get_unspent_utxos(address)
+            .into_iter()
+            .filter(|utxo| utxo.is_spendable(current_height))
+            .collect();
 
         // Filter out reserved UTXOs
         let reserved = self.reserved_utxos.lock();
@@ -727,7 +812,7 @@ impl UTXOManager {
 
         for utxo in unspent {
             selected.push(utxo);
-            total_selected += utxo.value_credits;
+            total_selected = total_selected.saturating_add(utxo.value_credits);
 
             if total_selected >= amount_credits {
                 return Ok(selected);
@@ -735,7 +820,7 @@ impl UTXOManager {
         }
 
         Err(anyhow!(
-            "Insufficient funds: need {} credits, have {} credits",
+            "Insufficient funds: need {} credits, have {} credits (coinbase UTXOs need 100 confirmations)",
             amount_credits,
             total_selected
         ))
@@ -819,8 +904,11 @@ impl UTXOManager {
         self.cleanup_expired_reservations_internal(&mut reserved, &mut reservations);
     }
 
-    /// T018: Select UTXOs for a transaction (with reservation check)
-    pub fn select_utxos_for_amount(&self, address: &str, amount_credits: u64) -> Result<Vec<UTXO>> {
+    /// T018: Select UTXOs for a transaction (with reservation + maturity check)
+    ///
+    /// `current_height` is the current blockchain height, used to enforce
+    /// coinbase maturity (100-block requirement before coinbase UTXOs can be spent).
+    pub fn select_utxos_for_amount(&self, address: &str, amount_credits: u64, current_height: u64) -> Result<Vec<UTXO>> {
         let reserved = self.reserved_utxos.lock();
         let normalized_addr = normalize_address_for_comparison(address);
 
@@ -845,6 +933,7 @@ impl UTXOManager {
         println!("  Unspent UTXOs: {}", unspent_utxos.len());
         println!("  Matching address: {}", matching_address.len());
         println!("  Not reserved: {}", not_reserved.len());
+        println!("  Current blockchain height: {}", current_height);
 
         // Show unique addresses in system for debugging
         let unique_addrs: std::collections::HashSet<String> = self
@@ -855,7 +944,9 @@ impl UTXOManager {
             .collect();
         println!("  Unique addresses in system: {:?}", unique_addrs);
 
-        // Get all unspent UTXOs for the address
+        // Get all unspent, mature UTXOs for the address
+        let mut immature_count = 0u64;
+        let mut immature_value = 0u64;
         let mut available_utxos: Vec<UTXO> = self
             .utxos
             .iter()
@@ -864,13 +955,34 @@ impl UTXOManager {
                     && normalize_address_for_comparison(&utxo.address) == normalized_addr
                     && !reserved.contains(key)
                 {
-                    // T018: Skip reserved UTXOs
+                    // Coinbase maturity check: must have 100 confirmations
+                    if utxo.is_coinbase && current_height < utxo.block_height + 100 {
+                        immature_count += 1;
+                        immature_value += utxo.value_credits;
+                        return None;
+                    }
                     Some(utxo.clone())
                 } else {
                     None
                 }
             })
             .collect();
+
+        if immature_count > 0 {
+            println!(
+                "  ⏳ Skipped {} immature coinbase UTXOs ({} credits) — need {} more blocks",
+                immature_count,
+                immature_value,
+                100u64.saturating_sub(current_height.saturating_sub(
+                    self.utxos.values()
+                        .filter(|u| u.is_coinbase && !u.spent && current_height < u.block_height + 100)
+                        .map(|u| u.block_height)
+                        .max()
+                        .unwrap_or(0)
+                ))
+            );
+        }
+        println!("  Spendable (mature) UTXOs: {}", available_utxos.len());
 
         // T018: Sort by age (prefer older UTXOs) - more confirmations
         available_utxos.sort_by(|a, b| a.block_height.cmp(&b.block_height));
@@ -881,7 +993,7 @@ impl UTXOManager {
 
         for utxo in available_utxos {
             selected.push(utxo.clone());
-            total_selected += utxo.value_credits;
+            total_selected = total_selected.saturating_add(utxo.value_credits);
             if total_selected >= amount_credits {
                 println!(
                     "✅ Selected {} UTXOs with total {} credits",
@@ -894,20 +1006,42 @@ impl UTXOManager {
 
         let amount_btpc = amount_credits as f64 / 100_000_000.0;
         let available_btpc = total_selected as f64 / 100_000_000.0;
+        let immature_btpc = immature_value as f64 / 100_000_000.0;
+
+        let mut hint = "Check if you selected the correct wallet with sufficient balance".to_string();
+        if immature_count > 0 {
+            hint = format!(
+                "You have {:.8} BTPC in immature coinbase UTXOs (need 100 confirmations). Mine more blocks or wait.",
+                immature_btpc
+            );
+        }
 
         Err(anyhow!(
             "Insufficient funds for address {}:\n\
              Need: {} BTPC ({} credits)\n\
-             Available: {} BTPC ({} credits)\n\
-             UTXOs matching this address: {}\n\
-             Hint: Check if you selected the correct wallet with sufficient balance",
+             Spendable: {} BTPC ({} credits)\n\
+             Immature (coinbase, <100 confirmations): {} BTPC ({} credits)\n\
+             Hint: {}",
             address,
             amount_btpc,
             amount_credits,
             available_btpc,
             total_selected,
-            not_reserved.len()
+            immature_btpc,
+            immature_value,
+            hint
         ))
+    }
+
+    /// Get spendable balance (excludes immature coinbase UTXOs)
+    pub fn get_spendable_balance(&self, address: &str, current_height: u64) -> (u64, f64) {
+        let unspent = self.get_unspent_utxos(address);
+        let total_credits: u64 = unspent
+            .iter()
+            .filter(|utxo| utxo.is_spendable(current_height))
+            .fold(0u64, |acc, utxo| acc.saturating_add(utxo.value_credits));
+        let total_btp = total_credits as f64 / 100_000_000.0;
+        (total_credits, total_btp)
     }
 
     /// Check if a UTXO is reserved
@@ -963,6 +1097,7 @@ mod tests {
                 5000000000, // 50 BTP
                 "test_address".to_string(),
                 1,
+                2, // Regtest fork_id
             )
             .unwrap();
 

@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BTPC Blockchain Icons Showcase</title>
+    <link rel="stylesheet" href="btpc-styles.css">
+    <style>
+        body {
+            padding: 40px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .showcase-header {
+            text-align: center;
+            margin-bottom: 60px;
+        }
+
+        .showcase-header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 12px;
+            background: linear-gradient(135deg, var(--btpc-primary), var(--btpc-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .showcase-header p {
+            font-size: 1.125rem;
+            color: var(--text-secondary);
+        }
+
+        .icon-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 24px;
+            margin-bottom: 60px;
+        }
+
+        .icon-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 32px;
+            text-align: center;
+            transition: all 200ms ease;
+        }
+
+        .icon-card:hover {
+            border-color: var(--btpc-primary);
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(99, 102, 241, 0.2);
+        }
+
+        .icon-display {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
+            background-color: rgba(99, 102, 241, 0.1);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .icon-large {
+            width: 48px;
+            height: 48px;
+        }
+
+        .icon-name {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+
+        .icon-description {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        .section-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 24px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid var(--border-color);
+        }
+
+        .size-demo {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            padding: 20px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            margin-bottom: 16px;
+        }
+
+        .size-label {
+            font-weight: 600;
+            color: var(--text-secondary);
+            min-width: 80px;
+        }
+
+        .icon-small { width: 16px; height: 16px; }
+        .icon-medium { width: 24px; height: 24px; }
+        .icon-xlarge { width: 64px; height: 64px; }
+    </style>
+</head>
+<body>
+    <div class="showcase-header">
+        <h1>BTPC Blockchain Icons</h1>
+        <p>Professional blockchain-specific icons for the quantum-resistant cryptocurrency wallet</p>
+    </div>
+
+    <div class="section-title">New Blockchain-Specific Icons</div>
+    <div class="icon-grid">
+        <div class="icon-card">
+            <div class="icon-display">
+                <div class="icon icon-mining-enhanced icon-large"></div>
+            </div>
+            <div class="icon-name">Mining Enhanced</div>
+            <div class="icon-description">
+                Mining pick-axe breaking a blockchain block. Perfect for mining operations and block generation displays.
+            </div>
+        </div>
+
+        <div class="icon-card">
+            <div class="icon-display">
+                <div class="icon icon-btpc-logo icon-large"></div>
+            </div>
+            <div class="icon-name">BTPC Logo</div>
+            <div class="icon-description">
+                Branded BTPC cryptocurrency icon with hexagonal frame and quantum particles. Ideal for branding and navigation.
+            </div>
+        </div>
+
+        <div class="icon-card">
+            <div class="icon-display">
+                <div class="icon icon-blockchain-network icon-large"></div>
+            </div>
+            <div class="icon-name">Blockchain Network</div>
+            <div class="icon-description">
+                Distributed network visualization showing connected blockchain nodes. Great for network status displays.
+            </div>
+        </div>
+
+        <div class="icon-card">
+            <div class="icon-display">
+                <div class="icon icon-block-cube icon-large"></div>
+            </div>
+            <div class="icon-name">Block Cube</div>
+            <div class="icon-description">
+                3D isometric blockchain block with data lines. Perfect for block explorers and chain visualization.
+            </div>
+        </div>
+
+        <div class="icon-card">
+            <div class="icon-display">
+                <div class="icon icon-transaction-enhanced icon-large"></div>
+            </div>
+            <div class="icon-name">Transaction Enhanced</div>
+            <div class="icon-description">
+                Transaction flow with blockchain nodes along the path. Ideal for transaction history and transfers.
+            </div>
+        </div>
+    </div>
+
+    <div class="section-title">Icon Sizes</div>
+    <div class="size-demo">
+        <span class="size-label">Small (16px)</span>
+        <div class="icon icon-mining-enhanced icon-small"></div>
+        <div class="icon icon-btpc-logo icon-small"></div>
+        <div class="icon icon-blockchain-network icon-small"></div>
+        <div class="icon icon-block-cube icon-small"></div>
+        <div class="icon icon-transaction-enhanced icon-small"></div>
+    </div>
+
+    <div class="size-demo">
+        <span class="size-label">Medium (24px)</span>
+        <div class="icon icon-mining-enhanced icon-medium"></div>
+        <div class="icon icon-btpc-logo icon-medium"></div>
+        <div class="icon icon-blockchain-network icon-medium"></div>
+        <div class="icon icon-block-cube icon-medium"></div>
+        <div class="icon icon-transaction-enhanced icon-medium"></div>
+    </div>
+
+    <div class="size-demo">
+        <span class="size-label">Large (48px)</span>
+        <div class="icon icon-mining-enhanced icon-large"></div>
+        <div class="icon icon-btpc-logo icon-large"></div>
+        <div class="icon icon-blockchain-network icon-large"></div>
+        <div class="icon icon-block-cube icon-large"></div>
+        <div class="icon icon-transaction-enhanced icon-large"></div>
+    </div>
+
+    <div class="size-demo">
+        <span class="size-label">XL (64px)</span>
+        <div class="icon icon-mining-enhanced icon-xlarge"></div>
+        <div class="icon icon-btpc-logo icon-xlarge"></div>
+        <div class="icon icon-blockchain-network icon-xlarge"></div>
+        <div class="icon icon-block-cube icon-xlarge"></div>
+        <div class="icon icon-transaction-enhanced icon-xlarge"></div>
+    </div>
+
+    <div class="section-title">Usage Examples</div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px;">
+        <div class="card">
+            <div class="card-header">
+                <span>Mining Operations</span>
+            </div>
+            <button class="btn btn-success">
+                <div class="icon icon-mining-enhanced" style="width: 20px; height: 20px;"></div>
+                Start Mining
+            </button>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <span>Network Status</span>
+            </div>
+            <div class="stat-label">Connected Nodes</div>
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div class="icon icon-blockchain-network" style="width: 32px; height: 32px;"></div>
+                <div class="stat-value" style="font-size: 1.5rem;">8</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <span>Recent Transactions</span>
+            </div>
+            <button class="btn btn-primary">
+                <div class="icon icon-transaction-enhanced" style="width: 20px; height: 20px;"></div>
+                View History
+            </button>
+        </div>
+    </div>
+</body>
+</html>

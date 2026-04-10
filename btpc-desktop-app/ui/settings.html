@@ -2,6 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BTPC Wallet - Settings</title>
     <link rel="stylesheet" href="btpc-styles.css">
@@ -45,6 +48,243 @@
         .tab-content.active {
             display: block;
         }
+        .btn-restart {
+            background: var(--status-success);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-weight: 600;
+            transition: all 200ms ease;
+        }
+        .btn-restart:hover {
+            background: #0ea571;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        }
+        /* Confirmation Modal Styles */
+        .confirm-modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(4px);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+        }
+        .confirm-modal-overlay.show {
+            display: flex;
+        }
+        .confirm-modal {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 28px;
+            max-width: 420px;
+            width: 90%;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+            animation: modalSlideIn 200ms ease-out;
+        }
+        @keyframes modalSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px) scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+        .confirm-modal-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+            font-size: 28px;
+        }
+        .confirm-modal-icon.restart {
+            background: rgba(16, 185, 129, 0.15);
+            border: 2px solid var(--status-success);
+        }
+        .confirm-modal-icon.warning {
+            background: rgba(251, 191, 36, 0.15);
+            border: 2px solid var(--status-warning);
+        }
+        .confirm-modal-icon.danger {
+            background: rgba(239, 68, 68, 0.15);
+            border: 2px solid var(--status-error);
+        }
+        .confirm-modal h3 {
+            color: var(--text-primary);
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin: 0 0 12px 0;
+            text-align: center;
+        }
+        .confirm-modal p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            line-height: 1.5;
+            margin: 0 0 24px 0;
+            text-align: center;
+        }
+        .confirm-modal-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+        }
+        .confirm-modal-buttons .btn {
+            min-width: 100px;
+            padding: 12px 24px;
+            font-weight: 600;
+        }
+        .btn-confirm-cancel {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            min-width: 80px;
+            padding: 10px 16px;
+        }
+        .btn-confirm-cancel:hover {
+            background: var(--bg-hover);
+            border-color: var(--text-muted);
+        }
+        .btn-confirm-action {
+            background: var(--status-success);
+            border: none;
+            color: white;
+        }
+        .btn-confirm-action:hover {
+            background: #0ea571;
+        }
+        .btn-confirm-action.warning {
+            background: var(--status-warning);
+        }
+        .btn-confirm-action.warning:hover {
+            background: #d97706;
+        }
+        .btn-confirm-action.danger {
+            background: var(--status-error);
+        }
+        .btn-confirm-action.danger:hover {
+            background: #dc2626;
+        }
+
+        /* Custom Checkbox Styling */
+        .custom-checkbox {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            user-select: none;
+        }
+        .custom-checkbox input[type="checkbox"] {
+            appearance: none;
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--bg-secondary);
+            cursor: pointer;
+            position: relative;
+            margin-right: 10px;
+            transition: all 200ms ease;
+            flex-shrink: 0;
+        }
+        .custom-checkbox input[type="checkbox"]:hover {
+            border-color: var(--btpc-primary);
+            background: rgba(139, 92, 246, 0.1);
+        }
+        .custom-checkbox input[type="checkbox"]:checked {
+            background: var(--btpc-primary);
+            border-color: var(--btpc-primary);
+        }
+        .custom-checkbox input[type="checkbox"]:checked::after {
+            content: '';
+            position: absolute;
+            left: 5px;
+            top: 1px;
+            width: 6px;
+            height: 11px;
+            border: solid white;
+            border-width: 0 2px 2px 0;
+            transform: rotate(45deg);
+        }
+        .custom-checkbox input[type="checkbox"]:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.3);
+        }
+        .custom-checkbox span {
+            color: var(--text-primary);
+            font-size: 0.9375rem;
+        }
+
+        /* Password Strength Meter (NIST SP 800-63B - 80 bits required) */
+        .password-strength-container {
+            margin-top: 8px;
+        }
+
+        .password-strength-bar {
+            height: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 6px;
+        }
+
+        .password-strength-fill {
+            height: 100%;
+            width: 0%;
+            transition: all 0.3s ease;
+            border-radius: 3px;
+        }
+
+        .password-strength-fill.weak {
+            width: 25%;
+            background: #ef4444;
+        }
+
+        .password-strength-fill.fair {
+            width: 50%;
+            background: #f59e0b;
+        }
+
+        .password-strength-fill.good {
+            width: 75%;
+            background: #3b82f6;
+        }
+
+        .password-strength-fill.strong {
+            width: 100%;
+            background: #10b981;
+        }
+
+        .password-strength-text {
+            font-size: 0.75rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .password-strength-label {
+            font-weight: 500;
+        }
+
+        .password-strength-label.weak { color: #ef4444; }
+        .password-strength-label.fair { color: #f59e0b; }
+        .password-strength-label.good { color: #3b82f6; }
+        .password-strength-label.strong { color: #10b981; }
+
+        .entropy-bits {
+            color: var(--text-muted);
+            font-family: 'SF Mono', monospace;
+        }
     </style>
 </head>
 <body>
@@ -67,6 +307,7 @@
                 </div>
                 <div class="logo-header">BTPC Wallet</div>
                 <div class="logo-subtitle">Quantum-Resistant</div>
+                <div id="app-version" class="app-version" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; cursor: pointer; user-select: none;" title="Click 10x to enable Developer Mode" onclick="handleVersionClick()">v1.0.0</div>
 
                 <!-- Balance Card inside logo section -->
                 <div class="account-info">
@@ -74,6 +315,13 @@
                     <div class="balance-amount">
                         <span id="wallet-balance">0.00000000</span>
                         <span class="balance-unit">BTPC</span>
+                    </div>
+                    <div class="spendable-row">
+                        <div class="spendable-label">Spendable</div>
+                        <div class="spendable-amount">
+                            <span id="spendable-balance">0.00000000</span>
+                            <span class="balance-unit">BTPC</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -142,6 +390,7 @@
                 <button class="tab-btn" role="tab" id="tab-btn-application" data-tab="application" aria-selected="false" aria-controls="tab-panel-application" tabindex="-1">Application</button>
                 <button class="tab-btn" role="tab" id="tab-btn-database" data-tab="database" aria-selected="false" aria-controls="tab-panel-database" tabindex="-1">Database</button>
                 <button class="tab-btn" role="tab" id="tab-btn-security" data-tab="security" aria-selected="false" aria-controls="tab-panel-security" tabindex="-1">Security</button>
+                <button class="tab-btn" role="tab" id="tab-btn-storage" data-tab="storage" aria-selected="false" aria-controls="tab-panel-storage" tabindex="-1">Disk Space</button>
             </div>
 
             <!-- Network Settings Tab -->
@@ -152,24 +401,19 @@
                         <label class="form-label">Network Type</label>
                         <select class="form-input" id="network-type">
                             <option value="mainnet">Mainnet</option>
-                            <option value="testnet">Testnet</option>
-                            <option value="regtest">Regtest (Local)</option>
+                            <!-- Testnet and Regtest options added dynamically by Developer Mode -->
                         </select>
                     </div>
                     <div class="form-group">
                         <label class="form-label">RPC Port</label>
-                        <input type="number" class="form-input" id="rpc-port" value="8332" placeholder="8332">
+                        <input type="number" class="form-input" id="rpc-port" value="18340" placeholder="18340">
                     </div>
                     <div class="form-group">
                         <label class="form-label">P2P Port</label>
-                        <input type="number" class="form-input" id="p2p-port" value="8333" placeholder="8333">
+                        <input type="number" class="form-input" id="p2p-port" value="18341" placeholder="18341">
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">Connect to Peer (Optional)</label>
-                        <input type="text" class="form-input" id="peer-address" placeholder="127.0.0.1:8333">
-                        <small style="color: var(--text-muted); font-size: 0.8125rem;">Leave empty for automatic peer discovery</small>
-                    </div>
-                    <div style="display: flex; gap: 12px; margin-top: 24px;">
+
+                    <div style="padding: 16px; background: rgba(139, 92, 246, 0.1); border-left: 3px solid var(--btpc-primary); border-radius: 6px; display: flex; gap: 12px; margin-top: 24px; justify-content: center; flex-wrap: wrap;">
                         <button class="btn btn-primary" onclick="saveSettings()"><span class="icon icon-save"></span> Save Settings</button>
                         <button class="btn btn-secondary" onclick="resetToDefaults()"><span class="icon icon-refresh"></span> Reset to Defaults</button>
                     </div>
@@ -189,13 +433,7 @@
                         <label class="form-label">Maximum Peer Connections</label>
                         <input type="number" class="form-input" id="max-peers" value="8" min="1" max="125">
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">
-                            <input type="checkbox" id="enable-mining" style="margin-right: 8px;">
-                            Enable Mining on Node Start
-                        </label>
-                    </div>
-                    <div style="display: flex; gap: 12px; margin-top: 24px;">
+                    <div style="padding: 16px; background: rgba(139, 92, 246, 0.1); border-left: 3px solid var(--btpc-primary); border-radius: 6px; display: flex; gap: 12px; margin-top: 24px; justify-content: center;">
                         <button class="btn btn-primary" onclick="saveSettings()"><span class="icon icon-save"></span> Save Settings</button>
                         <button class="btn btn-secondary" onclick="resetToDefaults()"><span class="icon icon-refresh"></span> Reset to Defaults</button>
                     </div>
@@ -217,18 +455,18 @@
                         </select>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">
-                            <input type="checkbox" id="auto-start-node" checked style="margin-right: 8px;">
-                            Auto-start node on application launch
+                        <label class="form-label custom-checkbox">
+                            <input type="checkbox" id="enable-mining">
+                            <span>Enable Mining on Node Start</span>
                         </label>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">
-                            <input type="checkbox" id="minimize-to-tray" style="margin-right: 8px;">
-                            Minimize to system tray
+                        <label class="form-label custom-checkbox">
+                            <input type="checkbox" id="auto-start-node" checked>
+                            <span>Auto-start node on application launch</span>
                         </label>
                     </div>
-                    <div style="display: flex; gap: 12px; margin-top: 24px;">
+                    <div style="padding: 16px; background: rgba(139, 92, 246, 0.1); border-left: 3px solid var(--btpc-primary); border-radius: 6px; display: flex; gap: 12px; margin-top: 24px; justify-content: center;">
                         <button class="btn btn-primary" onclick="saveSettings()"><span class="icon icon-save"></span> Save Settings</button>
                         <button class="btn btn-secondary" onclick="exportConfig()"><span class="icon icon-export"></span> Export Configuration</button>
                     </div>
@@ -284,9 +522,7 @@
                         <button class="btn btn-secondary" onclick="loadBackupList()">
                             <span class="icon icon-refresh"></span> Refresh List
                         </button>
-                        <button class="btn btn-primary" onclick="restoreDatabaseBackup()" style="margin-left: 12px;">
-                            <span class="icon icon-upload"></span> Restore Selected Backup
-                        </button>
+                        <button class="btn btn-primary" onclick="restoreDatabaseBackup()" style="margin-left: 12px;">Restore Backup</button>
                         <div id="restore-result" style="margin-top: 12px; padding: 12px; display: none; border-radius: 6px;"></div>
                     </div>
                 </div>
@@ -307,16 +543,6 @@
                             Hash algorithm: SHA-512 (PoW consensus)
                         </small>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">
-                            <input type="checkbox" id="require-password" checked style="margin-right: 8px;">
-                            Require password for transactions
-                        </label>
-                    </div>
-                    <div style="display: flex; gap: 12px; margin-top: 24px;">
-                        <button class="btn btn-primary" onclick="saveSettings()"><span class="icon icon-save"></span> Save Settings</button>
-                        <button class="btn btn-secondary" onclick="resetToDefaults()"><span class="icon icon-refresh"></span> Reset to Defaults</button>
-                    </div>
                 </div>
 
                 <!-- Lock Wallets Section -->
@@ -325,10 +551,13 @@
                     <div class="form-group">
                         <label class="form-label">Lock Wallets</label>
                         <p style="color: var(--text-muted); font-size: 0.875rem; margin-bottom: 12px;">
-                            Clear wallet data from memory and require password to access. This provides additional security when stepping away from your computer.
+                            Lock wallet access and require password to view. Your wallets and balances remain safely stored on disk. Mining and node operations continue unaffected.
                         </p>
-                        <button class="btn btn-secondary" onclick="handleLockWallets()">
-                            <span class="icon icon-lock"></span> Lock Wallets Now
+                        <button class="btn btn-secondary" onclick="handleLockWallets()" style="display: inline-flex; align-items: center; gap: 8px;">
+                            <svg width="16" height="16" viewBox="0 0 512 512" fill="currentColor">
+                                <path d="M256 48 C198.4 48 152 94.4 152 152 L152 208 L128 208 C110.3 208 96 222.3 96 240 L96 432 C96 449.7 110.3 464 128 464 L384 464 C401.7 464 416 449.7 416 432 L416 240 C416 222.3 401.7 208 384 208 L360 208 L360 152 C360 94.4 313.6 48 256 48 Z M256 80 C295.8 80 328 112.2 328 152 L328 208 L184 208 L184 152 C184 112.2 216.2 80 256 80 Z M128 240 L384 240 L384 432 L128 432 L128 240 Z M256 288 C238.3 288 224 302.3 224 320 C224 331.7 230.9 341.7 240.9 346.5 L240.9 384 C240.9 392.8 248.1 400 256.9 400 C265.7 400 272.9 392.8 272.9 384 L272.9 346.5 C282.9 341.7 288 331.7 288 320 C288 302.3 273.7 288 256 288 Z"/>
+                            </svg>
+                            Lock Wallets Now
                         </button>
                     </div>
                 </div>
@@ -343,18 +572,96 @@
                         </div>
                         <div class="form-group">
                             <label class="form-label">New Password</label>
-                            <input type="password" id="new-password" class="form-input" required minlength="8" autocomplete="new-password">
-                            <small style="color: var(--text-muted); font-size: 0.8125rem;">Minimum 8 characters recommended</small>
+                            <input type="password" id="new-password" class="form-input" required minlength="8" autocomplete="new-password" oninput="updatePasswordStrength(this.value)">
+                            <!-- Password Strength Meter (NIST SP 800-63B - 80 bits required) -->
+                            <div class="password-strength-container" id="strength-container" style="display: none;">
+                                <div class="password-strength-bar">
+                                    <div class="password-strength-fill" id="strength-fill"></div>
+                                </div>
+                                <div class="password-strength-text">
+                                    <span class="password-strength-label" id="strength-label">Weak</span>
+                                    <span class="entropy-bits" id="entropy-bits">0 bits</span>
+                                </div>
+                            </div>
+                            <small style="color: var(--text-muted); font-size: 0.8125rem;">Requires 80+ bits entropy (~14 chars with mixed case, numbers, symbols)</small>
                         </div>
                         <div class="form-group">
                             <label class="form-label">Confirm New Password</label>
                             <input type="password" id="confirm-password" class="form-input" required minlength="8" autocomplete="new-password">
                         </div>
-                        <button type="submit" class="btn btn-primary">
-                            <span class="icon icon-key"></span> Change Password
+                        <button type="submit" class="btn btn-primary" style="margin-top: 16px; padding: 8px 16px;">
+                            Change Password
                         </button>
                     </form>
                     <div id="password-change-message" style="margin-top: 12px; padding: 12px; display: none; border-radius: 6px;"></div>
+                </div>
+            </div>
+
+            <!-- Disk Space Tab (FR-058) -->
+            <div id="tab-panel-storage" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-storage" tabindex="0">
+                <div class="card">
+                    <div class="card-header">Disk Space Monitor</div>
+                    <p style="color: var(--text-muted); font-size: 0.875rem; margin-bottom: 16px;">
+                        Monitor available disk space for blockchain data. Mining is blocked below 2GB, sync pauses below 5GB.
+                    </p>
+                    <div class="status-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+                        <div class="status-item" style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: var(--bg-card); border-radius: 8px;">
+                            <span class="status-item-label" style="font-size: 0.875rem; color: var(--text-muted);">Available</span>
+                            <span class="status-item-value" id="disk-available" style="font-size: 0.9375rem; color: var(--text-primary); font-weight: 600; font-family: 'SF Mono', monospace;">--</span>
+                        </div>
+                        <div class="status-item" style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: var(--bg-card); border-radius: 8px;">
+                            <span class="status-item-label" style="font-size: 0.875rem; color: var(--text-muted);">Total</span>
+                            <span class="status-item-value" id="disk-total" style="font-size: 0.9375rem; color: var(--text-primary); font-weight: 600; font-family: 'SF Mono', monospace;">--</span>
+                        </div>
+                        <div class="status-item" style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: var(--bg-card); border-radius: 8px;">
+                            <span class="status-item-label" style="font-size: 0.875rem; color: var(--text-muted);">Used</span>
+                            <span class="status-item-value" id="disk-used" style="font-size: 0.9375rem; color: var(--text-primary); font-weight: 600; font-family: 'SF Mono', monospace;">--</span>
+                        </div>
+                        <div class="status-item" style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: var(--bg-card); border-radius: 8px;">
+                            <span class="status-item-label" style="font-size: 0.875rem; color: var(--text-muted);">Status</span>
+                            <span class="status-item-value" id="disk-status" style="font-size: 0.9375rem; color: var(--text-primary); font-weight: 600;">
+                                <span class="icon icon-check" style="color: var(--success-color);"></span> OK
+                            </span>
+                        </div>
+                    </div>
+                    <!-- Disk usage progress bar -->
+                    <div style="margin-top: 16px;">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.8125rem; margin-bottom: 4px;">
+                            <span style="color: var(--text-muted);">Usage</span>
+                            <span id="disk-usage-percent" style="color: var(--text-primary); font-weight: 600;">0%</span>
+                        </div>
+                        <div class="progress-bar-container" style="height: 8px; background: var(--bg-secondary); border-radius: 4px; overflow: hidden;">
+                            <div id="disk-usage-bar" class="progress-bar-fill" style="width: 0%; height: 100%; background: var(--btpc-primary); transition: width 0.3s ease;"></div>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 12px; margin-top: 24px;">
+                        <button class="btn btn-secondary" onclick="updateDiskSpace()">
+                            <span class="icon icon-refresh"></span> Refresh
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Disk Space Thresholds Info -->
+                <div class="card" style="margin-top: 24px;">
+                    <div class="card-header">Threshold Alerts</div>
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        <div style="padding: 12px; background: rgba(16, 185, 129, 0.1); border-left: 3px solid var(--btpc-accent); border-radius: 6px;">
+                            <strong style="color: var(--btpc-accent);"><span class="icon icon-check"></span> Normal:</strong>
+                            <span style="color: var(--text-secondary);">Above 10GB available - all operations enabled</span>
+                        </div>
+                        <div style="padding: 12px; background: rgba(139, 92, 246, 0.1); border-left: 3px solid var(--btpc-primary); border-radius: 6px;">
+                            <strong style="color: var(--btpc-primary);"><span class="icon icon-warning"></span> Warning:</strong>
+                            <span style="color: var(--text-secondary);">5-10GB available - consider freeing space</span>
+                        </div>
+                        <div style="padding: 12px; background: rgba(239, 68, 68, 0.1); border-left: 3px solid #ef4444; border-radius: 6px;">
+                            <strong style="color: #ef4444;"><span class="icon icon-warning"></span> Sync Paused:</strong>
+                            <span style="color: var(--text-secondary);">2-5GB available - blockchain sync paused</span>
+                        </div>
+                        <div style="padding: 12px; background: rgba(239, 68, 68, 0.15); border-left: 3px solid #dc2626; border-radius: 6px;">
+                            <strong style="color: #dc2626;"><span class="icon icon-x-circle"></span> Mining Blocked:</strong>
+                            <span style="color: var(--text-secondary);">Below 2GB available - mining disabled</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -374,20 +681,50 @@
     <script src="password-modal.js"></script>
     <script src="btpc-tab-manager.js"></script>
     <script src="btpc-logout.js"></script>
+    <script src="btpc-corruption-check.js"></script>
     <script>
         const updateManager = window.btpcUpdateManager;
+
+        // Track original network for restart detection
+        let originalNetwork = null;
 
         // Load current settings from backend
         async function loadSettings() {
             try {
+                // FIX 2025-12-13: Ensure developer mode options exist BEFORE loading network
+                // Without this, setting dropdown to testnet/regtest fails silently
+                // because those options only exist when developer mode is enabled
+                if (typeof updateDeveloperModeUI === 'function') {
+                    updateDeveloperModeUI();
+                }
+
                 // Fetch network config from backend
                 if (window.invoke) {
                     const networkConfig = await window.invoke('get_network_config');
                     if (networkConfig) {
-                        document.getElementById('network-type').value = networkConfig.network || 'regtest';
-                        document.getElementById('rpc-port').value = networkConfig.rpc_port || 18360;
-                        document.getElementById('p2p-port').value = networkConfig.p2p_port || 18361;
+                        let network = networkConfig.network || 'mainnet';
+
+                        // If developer mode is NOT enabled, force mainnet
+                        // (prevents showing testnet/regtest from previous sessions)
+                        if (!isDeveloperModeEnabled() && (network === 'testnet' || network === 'regtest')) {
+                            console.log('Developer mode disabled, forcing mainnet instead of:', network);
+                            network = 'mainnet';
+                        }
+
+                        document.getElementById('network-type').value = network;
+                        document.getElementById('rpc-port').value = networkConfig.rpc_port || 18340;
+                        document.getElementById('p2p-port').value = networkConfig.p2p_port || 18341;
                         console.log('Network config loaded from backend:', networkConfig);
+
+                        // FIX 2025-12-13: ALWAYS update originalNetwork to match dropdown
+                        // This ensures they match even if dropdown value couldn't be set
+                        // or if loadSettings runs multiple times
+                        const actualDropdownValue = document.getElementById('network-type').value;
+                        originalNetwork = actualDropdownValue;
+                        console.log('Original network stored:', originalNetwork, '(backend wanted:', network + ')');
+
+                        // Update ports based on actual network
+                        updatePortsForNetwork();
                     }
                 }
 
@@ -413,21 +750,6 @@
                     document.getElementById('auto-start-node').checked = nodeConfig.autoConnect;
                 }
 
-                const minimizeToTray = settings.minimizeToTray || false;
-                if (minimizeToTray !== undefined) {
-                    document.getElementById('minimize-to-tray').checked = minimizeToTray;
-                }
-
-                const requirePassword = settings.requirePassword || false;
-                if (requirePassword !== undefined) {
-                    document.getElementById('require-password').checked = requirePassword;
-                }
-
-                const trustedNodes = nodeConfig.trustedNodes || [];
-                if (trustedNodes.length > 0) {
-                    document.getElementById('peer-address').value = trustedNodes[0];
-                }
-
                 console.log('Settings loaded from btpcStorage');
             } catch (e) {
                 console.error('Could not load settings from btpcStorage:', e);
@@ -436,6 +758,8 @@
 
         function showMessage(message, type = 'success') {
             const msgEl = document.getElementById('settings-message');
+            if (!msgEl) return;
+
             msgEl.textContent = message;
             msgEl.style.display = 'block';
             msgEl.style.background = type === 'success' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)';
@@ -447,58 +771,149 @@
             }, 5000);
         }
 
+        // Developer Mode key - must be defined before saveSettings() uses isDeveloperModeEnabled()
+        const DEVELOPER_MODE_KEY = 'btpc_developer_mode';
+
+        /**
+         * Check if developer mode is enabled
+         */
+        function isDeveloperModeEnabled() {
+            return localStorage.getItem(DEVELOPER_MODE_KEY) === 'true';
+        }
+
         async function saveSettings() {
+            console.log('[Settings] saveSettings() CALLED');
             try {
                 // STEP 1: Validate network settings with backend FIRST (before saving to localStorage)
+                console.log('[Settings] STEP 1 - Starting backend validation');
                 if (window.invoke) {
                     try {
                         const network = document.getElementById('network-type').value;
                         const rpcPort = parseInt(document.getElementById('rpc-port').value);
                         const p2pPort = parseInt(document.getElementById('p2p-port').value);
+                        const devMode = isDeveloperModeEnabled();
+                        console.log('[Settings] Params:', { network, rpcPort, p2pPort, devMode });
 
                         // Backend validates and saves network config
+                        console.log('[Settings] Calling save_network_config...');
                         const result = await window.invoke('save_network_config', {
                             network: network,
                             rpcPort: rpcPort,
-                            p2pPort: p2pPort
+                            p2pPort: p2pPort,
+                            developerMode: devMode
                         });
 
-                        console.log('Backend validation successful:', result);
+                        console.log('[Settings] Backend validation successful:', result);
                     } catch (backendErr) {
                         // Backend validation failed - DO NOT save to localStorage
+                        console.error('[Settings] Backend error:', backendErr);
                         showMessage(`${backendErr}`, 'error');
-                        console.error('Backend validation failed:', backendErr);
                         return; // Exit early - don't save anything to localStorage
                     }
                 }
+                console.log('[Settings] STEP 2 - Saving to localStorage');
 
                 // STEP 2: Backend validation passed - now save other settings to localStorage
                 window.btpcStorage.updateSettings({
                     dataDir: document.getElementById('data-dir').value,
                     logLevel: document.getElementById('log-level').value,
-                    minimizeToTray: document.getElementById('minimize-to-tray').checked,
-                    requirePassword: document.getElementById('require-password').checked,
                 });
 
                 // Save node configuration to browser storage
-                const peerAddress = document.getElementById('peer-address').value.trim();
+                const autoConnectValue = document.getElementById('auto-start-node').checked;
+                const autoStartMiningValue = document.getElementById('enable-mining').checked;
+
+                // FIX 2025-12-08: Add debug logging for auto-start settings
+                console.log('[Settings Save] ========================================');
+                console.log('[Settings Save] Auto-start node (autoConnect):', autoConnectValue);
+                console.log('[Settings Save] Enable mining on node start (autoStart):', autoStartMiningValue);
+
                 window.btpcStorage.updateNodeConfig({
                     rpcHost: '127.0.0.1',
                     rpcPort: parseInt(document.getElementById('rpc-port').value),
                     p2pPort: parseInt(document.getElementById('p2p-port').value),
                     maxPeers: parseInt(document.getElementById('max-peers').value),
-                    autoConnect: document.getElementById('auto-start-node').checked,
-                    trustedNodes: peerAddress ? [peerAddress] : []
+                    autoConnect: autoConnectValue,
                 });
 
                 // Save mining configuration to browser storage
                 window.btpcStorage.updateMiningConfig({
-                    autoStart: document.getElementById('enable-mining').checked,
+                    autoStart: autoStartMiningValue,
                 });
 
-                // STEP 3: Show success message
-                showMessage('All settings saved successfully', 'success');
-                console.log('Settings saved:', window.btpcStorage.getStats());
+                // Verify save by reading back
+                const savedNodeConfig = window.btpcStorage.getNodeConfig();
+                const savedMiningConfig = window.btpcStorage.getMiningConfig();
+                console.log('[Settings Save] Verified node config:', JSON.stringify(savedNodeConfig, null, 2));
+                console.log('[Settings Save] Verified mining config:', JSON.stringify(savedMiningConfig, null, 2));
+                console.log('[Settings Save] ========================================');
+
+                // STEP 3: Update sidebar network display immediately
+                const network = document.getElementById('network-type').value;
+                const networkNameEl = document.getElementById('network-name');
+                if (networkNameEl) {
+                    const networkName = network.charAt(0).toUpperCase() + network.slice(1);
+                    networkNameEl.textContent = networkName;
+                    console.log('Updated sidebar network display to:', networkName);
+                }
+
+                // STEP 3.5: Check if network changed - ONLY if Network tab is active
+                // FIX 2025-12-13: Don't show Network Changed popup when saving from other tabs
+                const networkTabPanel = document.getElementById('tab-panel-network');
+                const isNetworkTabActive = networkTabPanel && networkTabPanel.classList.contains('active');
+
+                if (isNetworkTabActive && originalNetwork !== null && network !== originalNetwork) {
+                    console.log(`[Settings] Network changed from '${originalNetwork}' to '${network}' - showing quit modal`);
+
+                    // Extra warning when switching TO mainnet
+                    if (network === 'mainnet' && originalNetwork !== 'mainnet') {
+                        const confirmed = confirm(
+                            'WARNING: You are switching to MAINNET.\n\n' +
+                            'On Mainnet, all transactions use REAL BTPC with actual value.\n' +
+                            'Testnet/Regtest wallets and balances will not be accessible on Mainnet.\n\n' +
+                            'Are you sure you want to switch to Mainnet?'
+                        );
+                        if (!confirmed) {
+                            // Revert dropdown to original network
+                            document.getElementById('network-type').value = originalNetwork;
+                            if (window.networkDropdown) window.networkDropdown.setValue(originalNetwork);
+                            updatePortsForNetwork();
+                            return;
+                        }
+                    }
+
+                    // Update originalNetwork so subsequent saves don't trigger popup again
+                    originalNetwork = network;
+                    // Show quit confirmation modal directly
+                    restartApp();
+                    return; // Don't show success message, modal handles it
+                }
+
+                // STEP 4: Show success message
+                const msgEl = document.getElementById('settings-message');
+                console.log('[Settings] Message element check:', {
+                    exists: !!msgEl,
+                    display: msgEl?.style?.display,
+                    parentVisible: msgEl?.parentElement?.style?.display,
+                    offsetHeight: msgEl?.offsetHeight,
+                    offsetTop: msgEl?.offsetTop
+                });
+
+                if (msgEl) {
+                    msgEl.textContent = 'All settings saved successfully';
+                    msgEl.style.display = 'block';
+                    msgEl.style.background = 'rgba(16, 185, 129, 0.1)';
+                    msgEl.style.border = '1px solid var(--btpc-accent)';
+                    msgEl.style.color = 'var(--btpc-accent)';
+                    console.log('[Settings] Message displayed directly, style:', msgEl.style.cssText);
+
+                    setTimeout(() => {
+                        msgEl.style.display = 'none';
+                    }, 5000);
+                } else {
+                    console.error('[Settings] ERROR: settings-message element not found!');
+                    alert('Settings saved successfully!'); // Fallback
+                }
             } catch (e) {
                 showMessage('Failed to save settings: ' + e, 'error');
                 console.error('Save settings error:', e);
@@ -511,14 +926,14 @@
                 if (window.invoke) {
                     try {
                         const networkConfig = await window.invoke('get_network_config');
-                        document.getElementById('network-type').value = networkConfig.network || 'regtest';
-                        document.getElementById('rpc-port').value = networkConfig.rpc_port || 18360;
-                        document.getElementById('p2p-port').value = networkConfig.p2p_port || 18361;
+                        document.getElementById('network-type').value = networkConfig.network || 'mainnet';
+                        document.getElementById('rpc-port').value = networkConfig.rpc_port || 18340;
+                        document.getElementById('p2p-port').value = networkConfig.p2p_port || 18341;
                     } catch (e) {
                         console.warn('Could not fetch backend defaults, using hardcoded values:', e);
-                        document.getElementById('network-type').value = 'regtest';
-                        document.getElementById('rpc-port').value = '18360';
-                        document.getElementById('p2p-port').value = '18361';
+                        document.getElementById('network-type').value = 'mainnet';
+                        document.getElementById('rpc-port').value = '18340';
+                        document.getElementById('p2p-port').value = '18341';
                     }
                 }
 
@@ -527,9 +942,6 @@
                 document.getElementById('enable-mining').checked = false;
                 document.getElementById('log-level').value = 'info';
                 document.getElementById('auto-start-node').checked = true;
-                document.getElementById('minimize-to-tray').checked = false;
-                document.getElementById('require-password').checked = true;
-                document.getElementById('peer-address').value = '';
 
                 showMessage('Settings reset to defaults', 'success');
             }
@@ -568,6 +980,8 @@
             updateManager.subscribe((type, data, fullState) => {
                 if (type === 'wallet') {
                     document.getElementById('wallet-balance').textContent = (data.balance || 0).toFixed(8);
+                    const spendableEl = document.getElementById('spendable-balance');
+                    if (spendableEl) spendableEl.textContent = (data.spendable_balance || 0).toFixed(8);
                 } else if (type === 'blockchain') {
                     const chainHeightEl = document.getElementById('chain-height');
                     if (chainHeightEl) {
@@ -586,23 +1000,109 @@
             });
         }
 
-        // Lock Wallets Handler
-        async function handleLockWallets() {
-            if (!confirm('Lock wallets now? You will need to enter your master password to unlock them again.')) {
+        // Lock Wallets Handler - Uses styled modal instead of native confirm()
+        function handleLockWallets() {
+            showConfirmModal({
+                title: 'Lock Wallets?',
+                message: 'Lock wallets now? You will need to enter your master password to unlock them again.',
+                customIcon: '<img src="src/assets/icons-svg/lock.svg" alt="Lock" style="width: 32px; height: 32px;">',
+                iconClass: 'restart',
+                actionText: 'Lock Wallets',
+                actionClass: '',
+                onConfirm: async () => {
+                    try {
+                        // Call global lockWallets function from password-modal.js
+                        if (typeof window.lockWallets === 'function') {
+                            await window.lockWallets();
+                            // Note: lockWallets() shows the password modal, no need for success message
+                        } else {
+                            throw new Error('lockWallets function not available');
+                        }
+                    } catch (e) {
+                        showMessage('Failed to lock wallets: ' + e, 'error');
+                        console.error('Lock wallets error:', e);
+                    }
+                }
+            });
+        }
+
+        // Password Entropy Calculator (NIST SP 800-63B - 80 bits required)
+        function calculatePasswordEntropy(password) {
+            if (!password || password.length === 0) return 0;
+
+            // Character set size calculation
+            let charsetSize = 0;
+            if (/[a-z]/.test(password)) charsetSize += 26; // lowercase
+            if (/[A-Z]/.test(password)) charsetSize += 26; // uppercase
+            if (/[0-9]/.test(password)) charsetSize += 10; // digits
+            if (/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(password)) charsetSize += 32; // special chars
+            if (/\s/.test(password)) charsetSize += 1; // space
+
+            // Basic entropy: log2(charsetSize^length) = length * log2(charsetSize)
+            const basicEntropy = password.length * Math.log2(charsetSize || 1);
+
+            // Penalty for common patterns (reduces entropy)
+            let penalty = 0;
+
+            // Repeated characters penalty
+            const repeats = password.match(/(.)\1{2,}/g);
+            if (repeats) penalty += repeats.length * 5;
+
+            // Sequential characters penalty (abc, 123, etc.)
+            const sequences = password.match(/(abc|bcd|cde|def|efg|fgh|ghi|hij|ijk|jkl|klm|lmn|mno|nop|opq|pqr|qrs|rst|stu|tuv|uvw|vwx|wxy|xyz|012|123|234|345|456|567|678|789)/gi);
+            if (sequences) penalty += sequences.length * 5;
+
+            // Keyboard patterns penalty (qwerty, asdf, etc.)
+            const keyboard = password.match(/(qwert|asdf|zxcv|qazwsx|1qaz|2wsx)/gi);
+            if (keyboard) penalty += keyboard.length * 10;
+
+            // Common words penalty
+            const commonWords = ['password', 'bitcoin', 'wallet', '123456', 'qwerty', 'admin', 'letmein', 'welcome', 'btpc', 'crypto'];
+            for (const word of commonWords) {
+                if (password.toLowerCase().includes(word)) penalty += 20;
+            }
+
+            return Math.max(0, basicEntropy - penalty);
+        }
+
+        function updatePasswordStrength(password) {
+            const container = document.getElementById('strength-container');
+            const fill = document.getElementById('strength-fill');
+            const label = document.getElementById('strength-label');
+            const bits = document.getElementById('entropy-bits');
+
+            if (!password || password.length === 0) {
+                container.style.display = 'none';
                 return;
             }
 
-            try {
-                // Call global lockWallets function from password-modal.js
-                if (typeof window.lockWallets === 'function') {
-                    await window.lockWallets();
-                    showMessage('Wallets locked successfully', 'success');
-                } else {
-                    throw new Error('lockWallets function not available');
-                }
-            } catch (e) {
-                showMessage('Failed to lock wallets: ' + e, 'error');
-                console.error('Lock wallets error:', e);
+            container.style.display = 'block';
+            const entropy = calculatePasswordEntropy(password);
+
+            // Update entropy display
+            bits.textContent = `${Math.round(entropy)} bits`;
+
+            // Clear previous classes
+            fill.className = 'password-strength-fill';
+            label.className = 'password-strength-label';
+
+            // FR-001: 80 bits is the threshold for "strong"
+            if (entropy < 40) {
+                fill.classList.add('weak');
+                label.classList.add('weak');
+                label.textContent = 'Weak';
+            } else if (entropy < 60) {
+                fill.classList.add('fair');
+                label.classList.add('fair');
+                label.textContent = 'Fair';
+            } else if (entropy < 80) {
+                fill.classList.add('good');
+                label.classList.add('good');
+                label.textContent = 'Good';
+            } else {
+                fill.classList.add('strong');
+                label.classList.add('strong');
+                label.textContent = 'Strong (80+ bits)';
             }
         }
 
@@ -618,6 +1118,7 @@
 
             // Validation
             if (newPassword !== confirmPassword) {
+                toast.error('New passwords do not match');
                 msgEl.textContent = 'New passwords do not match';
                 msgEl.style.display = 'block';
                 msgEl.style.background = 'rgba(239, 68, 68, 0.1)';
@@ -626,8 +1127,11 @@
                 return;
             }
 
-            if (newPassword.length < 8) {
-                msgEl.textContent = 'Password must be at least 8 characters long';
+            // NIST SP 800-63B: Require 80 bits of entropy
+            const entropy = calculatePasswordEntropy(newPassword);
+            if (entropy < 80) {
+                toast.warning(`Password too weak (${Math.round(entropy)} bits). Need 80+ bits.`);
+                msgEl.textContent = `Password too weak (${Math.round(entropy)} bits). Need 80+ bits. Use 14+ chars with mixed case, numbers, and symbols.`;
                 msgEl.style.display = 'block';
                 msgEl.style.background = 'rgba(239, 68, 68, 0.1)';
                 msgEl.style.border = '1px solid #ef4444';
@@ -641,20 +1145,23 @@
                     const result = await window.changeMasterPassword(oldPassword, newPassword);
 
                     if (result.success) {
+                        toast.success('Password changed successfully');
                         msgEl.textContent = 'Password changed successfully';
                         msgEl.style.display = 'block';
                         msgEl.style.background = 'rgba(16, 185, 129, 0.1)';
                         msgEl.style.border = '1px solid var(--btpc-accent)';
                         msgEl.style.color = 'var(--btpc-accent)';
 
-                        // Reset form
+                        // Reset form and strength meter
                         document.getElementById('change-password-form').reset();
+                        document.getElementById('strength-container').style.display = 'none';
 
                         // Hide message after 5 seconds
                         setTimeout(() => {
                             msgEl.style.display = 'none';
                         }, 5000);
                     } else {
+                        toast.error('Error: ' + result.error);
                         msgEl.textContent = 'Error: ' + result.error;
                         msgEl.style.display = 'block';
                         msgEl.style.background = 'rgba(239, 68, 68, 0.1)';
@@ -665,6 +1172,7 @@
                     throw new Error('changeMasterPassword function not available');
                 }
             } catch (e) {
+                toast.error('Failed to change password: ' + e);
                 msgEl.textContent = 'Failed to change password: ' + e;
                 msgEl.style.display = 'block';
                 msgEl.style.background = 'rgba(239, 68, 68, 0.1)';
@@ -763,10 +1271,16 @@
                 } else if (result.success) {
                     selectEl.innerHTML = '<option value="">No backups found</option>';
                 } else {
-                    selectEl.innerHTML = `<option value="">Error: ${result.error_message}</option>`;
+                    const errOpt = document.createElement('option');
+                    errOpt.value = '';
+                    errOpt.textContent = `Error: ${result.error_message}`;
+                    selectEl.replaceChildren(errOpt);
                 }
             } catch (e) {
-                selectEl.innerHTML = `<option value="">Error: ${e}</option>`;
+                const errOpt = document.createElement('option');
+                errOpt.value = '';
+                errOpt.textContent = `Error: ${e}`;
+                selectEl.replaceChildren(errOpt);
             }
         }
 
@@ -777,9 +1291,9 @@
             if (!backupPath) {
                 resultEl.textContent = '⚠️ Please select a backup to restore';
                 resultEl.style.display = 'block';
-                resultEl.style.background = 'rgba(245, 158, 11, 0.1)';
-                resultEl.style.border = '1px solid #f59e0b';
-                resultEl.style.color = '#f59e0b';
+                resultEl.style.background = 'rgba(139, 92, 246, 0.1)';
+                resultEl.style.border = '1px solid var(--btpc-primary)';
+                resultEl.style.color = 'var(--btpc-primary)';
                 return;
             }
 
@@ -797,14 +1311,20 @@
                 const result = await window.invoke('restore_database_backup', { backupPath });
 
                 if (result.success) {
-                    resultEl.textContent = `✅ ${result.message} Application will restart in 3 seconds...`;
+                    resultEl.textContent = `✅ ${result.message} Application will exit in 3 seconds - please relaunch...`;
                     resultEl.style.background = 'rgba(16, 185, 129, 0.1)';
                     resultEl.style.border = '1px solid var(--btpc-accent)';
                     resultEl.style.color = 'var(--btpc-accent)';
 
-                    // TODO: Trigger application restart via Tauri API
-                    setTimeout(() => {
-                        window.location.reload();
+                    // Exit application via Tauri API (user must relaunch manually)
+                    setTimeout(async () => {
+                        try {
+                            await window.invoke('restart_app');
+                        } catch (e) {
+                            console.error('Failed to restart app:', e);
+                            // Fallback to page reload if restart fails
+                            window.location.reload();
+                        }
                     }, 3000);
                 } else {
                     resultEl.textContent = `❌ Restore failed: ${result.error_message}`;
@@ -829,30 +1349,29 @@
             const networkType = document.getElementById('network-type').value;
             const rpcPortInput = document.getElementById('rpc-port');
             const p2pPortInput = document.getElementById('p2p-port');
-            const peerAddressInput = document.getElementById('peer-address');
 
             let rpcPort, p2pPort;
 
+            // BTPC Desktop App port scheme (isolated from Bitcoin to avoid conflicts)
+            // Mainnet: 18340/18341 (BTPC mainnet)
+            // Testnet: 18350/18351 (BTPC testnet)
+            // Regtest: 18360/18361 (BTPC regtest)
             switch(networkType) {
                 case 'mainnet':
-                    rpcPort = 8332;
-                    p2pPort = 8333;
-                    peerAddressInput.placeholder = '127.0.0.1:8333';
+                    rpcPort = 18340;
+                    p2pPort = 18341;
                     break;
                 case 'testnet':
-                    rpcPort = 18332;
-                    p2pPort = 18333;
-                    peerAddressInput.placeholder = '127.0.0.1:18333';
+                    rpcPort = 18350;
+                    p2pPort = 18351;
                     break;
                 case 'regtest':
-                    rpcPort = 18443;
-                    p2pPort = 18444;
-                    peerAddressInput.placeholder = '127.0.0.1:18444';
+                    rpcPort = 18360;
+                    p2pPort = 18361;
                     break;
                 default:
-                    rpcPort = 8332;
-                    p2pPort = 8333;
-                    peerAddressInput.placeholder = '127.0.0.1:8333';
+                    rpcPort = 18340;
+                    p2pPort = 18341;
             }
 
             rpcPortInput.value = rpcPort;
@@ -869,6 +1388,23 @@
 
             // Load settings after TabManager is initialized
             loadSettings();
+
+            // Initialize custom styled dropdowns (purple theme)
+            if (typeof initBtpcDropdown === 'function') {
+                // Network Type dropdown
+                window.networkDropdown = initBtpcDropdown('network-type', {
+                    onChange: (value) => {
+                        updatePortsForNetwork(value);
+                        checkNetworkChange();
+                    }
+                });
+
+                // Log Level dropdown
+                window.logLevelDropdown = initBtpcDropdown('log-level');
+
+                // Backup List dropdown
+                window.backupDropdown = initBtpcDropdown('backup-list');
+            }
 
             // Set default backup name with today's date
             const backupNameInput = document.getElementById('backup-name');
@@ -887,45 +1423,409 @@
             }
         });
 
+        // FR-058: Fetch and update disk space display
+        async function updateDiskSpace() {
+            if (!window.invoke) return;
+
+            try {
+                const diskInfo = await window.invoke('get_disk_space_info');
+
+                // Update display values
+                document.getElementById('disk-available').textContent = diskInfo.available_formatted;
+                document.getElementById('disk-total').textContent = diskInfo.total_formatted;
+                document.getElementById('disk-used').textContent = diskInfo.used_formatted;
+                document.getElementById('disk-usage-percent').textContent = diskInfo.usage_percentage.toFixed(1) + '%';
+
+                // Update progress bar
+                const usageBar = document.getElementById('disk-usage-bar');
+                usageBar.style.width = diskInfo.usage_percentage + '%';
+
+                // Update progress bar color based on usage
+                if (diskInfo.usage_percentage >= 90) {
+                    usageBar.style.background = 'var(--status-error)';
+                } else if (diskInfo.usage_percentage >= 75) {
+                    usageBar.style.background = 'var(--status-warning)';
+                } else {
+                    usageBar.style.background = 'var(--btpc-primary)';
+                }
+
+                // Update status based on alert level
+                const diskStatus = document.getElementById('disk-status');
+                if (diskInfo.alert_level === 'MiningPrevented') {
+                    diskStatus.innerHTML = '<span class="icon icon-warning" style="color: var(--status-error);"></span> Critical - Mining Blocked';
+                    diskStatus.style.color = 'var(--status-error)';
+                } else if (diskInfo.alert_level === 'SyncPaused') {
+                    diskStatus.innerHTML = '<span class="icon icon-warning" style="color: var(--status-error);"></span> Low - Sync Paused';
+                    diskStatus.style.color = 'var(--status-error)';
+                } else if (diskInfo.alert_level === 'Warning') {
+                    diskStatus.innerHTML = '<span class="icon icon-warning" style="color: var(--status-warning);"></span> Warning';
+                    diskStatus.style.color = 'var(--status-warning)';
+                } else {
+                    diskStatus.innerHTML = '<span class="icon icon-check" style="color: var(--success-color);"></span> OK';
+                    diskStatus.style.color = '';
+                }
+            } catch (e) {
+                console.log('Failed to fetch disk space info:', e);
+            }
+        }
+
+        // Initialize disk space on page load
+        function initDiskSpace() {
+            if (window.invoke) {
+                updateDiskSpace();
+                // Update disk space every 30 seconds
+                setInterval(updateDiskSpace, 30000);
+            } else {
+                setTimeout(initDiskSpace, 200);
+            }
+        }
+        initDiskSpace();
+
+        // ============================================================================
+        // Developer Mode - 10x click on version number to unlock
+        // ============================================================================
+        // Note: DEVELOPER_MODE_KEY and isDeveloperModeEnabled() defined earlier (before saveSettings)
+        const CLICK_THRESHOLD = 10;
+        const CLICK_TIMEOUT = 3000; // Reset counter after 3 seconds of no clicks
+
+        let devModeClickCount = 0;
+        let devModeClickTimer = null;
+
+        /**
+         * Enable developer mode
+         */
+        function enableDeveloperMode() {
+            localStorage.setItem(DEVELOPER_MODE_KEY, 'true');
+            updateDeveloperModeUI();
+            showMessage('Developer Mode activated! Testnet and Regtest networks are now available.', 'success');
+            console.log('Developer Mode enabled');
+        }
+
+        /**
+         * Disable developer mode
+         */
+        function disableDeveloperMode() {
+            localStorage.removeItem(DEVELOPER_MODE_KEY);
+
+            // If currently on a dev network, switch to mainnet
+            const networkSelect = document.getElementById('network-type');
+            if (networkSelect && (networkSelect.value === 'testnet' || networkSelect.value === 'regtest')) {
+                networkSelect.value = 'mainnet';
+                updatePortsForNetwork();
+            }
+
+            updateDeveloperModeUI();
+            showMessage('Developer Mode disabled. Switched to Mainnet.', 'success');
+            console.log('Developer Mode disabled');
+        }
+
+        /**
+         * Update UI to reflect developer mode state
+         */
+        function updateDeveloperModeUI() {
+            const devModeEnabled = isDeveloperModeEnabled();
+            const versionEl = document.getElementById('app-version');
+            const networkSelect = document.getElementById('network-type');
+
+            // Update version display
+            if (versionEl) {
+                if (devModeEnabled) {
+                    versionEl.textContent = 'v1.0.0 (Developer)';
+                    versionEl.style.color = 'var(--btpc-primary)';
+                    versionEl.title = 'Click 10 times to disable Developer Mode';
+                } else {
+                    versionEl.textContent = 'v1.0.0';
+                    versionEl.style.color = 'var(--text-muted)';
+                    versionEl.title = '';
+                }
+            }
+
+            // Dynamically add/remove developer network options
+            if (networkSelect) {
+                const testnetOption = networkSelect.querySelector('option[value="testnet"]');
+                const regtestOption = networkSelect.querySelector('option[value="regtest"]');
+
+                if (devModeEnabled) {
+                    // Add options if they don't exist
+                    if (!testnetOption) {
+                        const opt = document.createElement('option');
+                        opt.value = 'testnet';
+                        opt.textContent = 'Testnet (Developer)';
+                        opt.className = 'dev-network-option';
+                        networkSelect.appendChild(opt);
+                    }
+                    if (!regtestOption) {
+                        const opt = document.createElement('option');
+                        opt.value = 'regtest';
+                        opt.textContent = 'Regtest (Developer)';
+                        opt.className = 'dev-network-option';
+                        networkSelect.appendChild(opt);
+                    }
+                } else {
+                    // Remove options if they exist
+                    if (testnetOption) testnetOption.remove();
+                    if (regtestOption) regtestOption.remove();
+
+                    // If currently selected network was removed, switch to mainnet
+                    if (networkSelect.value !== 'mainnet') {
+                        networkSelect.value = 'mainnet';
+                        updatePortsForNetwork();
+                    }
+                }
+            }
+        }
+
+        /**
+         * Handle version click for developer mode activation
+         */
+        function handleVersionClick() {
+            // Clear existing timeout
+            if (devModeClickTimer) {
+                clearTimeout(devModeClickTimer);
+            }
+
+            devModeClickCount++;
+            console.log(`Developer mode click: ${devModeClickCount}/${CLICK_THRESHOLD}`);
+
+            // Check if threshold reached
+            if (devModeClickCount >= CLICK_THRESHOLD) {
+                devModeClickCount = 0;
+
+                // Toggle developer mode
+                if (isDeveloperModeEnabled()) {
+                    disableDeveloperMode();
+                } else {
+                    enableDeveloperMode();
+                }
+                return;
+            }
+
+            // Set timeout to reset counter
+            devModeClickTimer = setTimeout(() => {
+                devModeClickCount = 0;
+                console.log('Developer mode click counter reset');
+            }, CLICK_TIMEOUT);
+        }
+
+        /**
+         * Initialize developer mode
+         */
+        function initDeveloperMode() {
+            const versionEl = document.getElementById('app-version');
+
+            if (versionEl) {
+                versionEl.addEventListener('click', handleVersionClick);
+            }
+
+            // Apply current developer mode state
+            updateDeveloperModeUI();
+        }
+
+        // Initialize developer mode on page load
+        document.addEventListener('DOMContentLoaded', initDeveloperMode);
+
+        // ============================================================================
+        // Confirmation Modal Functions
+        // ============================================================================
+
+        let confirmModalCallback = null;
+
+        /**
+         * Show the styled confirmation modal
+         * @param {Object} options - Modal configuration
+         * @param {string} options.title - Modal title
+         * @param {string} options.message - Modal message
+         * @param {string} options.emoji - Emoji for the icon (default: 🔄)
+         * @param {string} options.customIcon - Custom HTML for icon (overrides emoji)
+         * @param {string} options.iconClass - Icon class: 'restart', 'warning', or 'danger'
+         * @param {string} options.actionText - Text for the action button
+         * @param {string} options.actionClass - Additional class for action button: '', 'warning', or 'danger'
+         * @param {Function} options.onConfirm - Callback when confirmed
+         */
+        function showConfirmModal(options) {
+            const overlay = document.getElementById('confirm-modal-overlay');
+            const icon = document.getElementById('confirm-modal-icon');
+            const emoji = document.getElementById('confirm-modal-emoji');
+            const title = document.getElementById('confirm-modal-title');
+            const message = document.getElementById('confirm-modal-message');
+            const actionBtn = document.getElementById('confirm-modal-action');
+
+            // Set content
+            title.textContent = options.title || 'Confirm Action';
+            message.textContent = options.message || 'Are you sure you want to proceed?';
+
+            // Set icon - customIcon HTML overrides emoji
+            if (options.customIcon) {
+                emoji.innerHTML = options.customIcon;
+            } else {
+                emoji.textContent = options.emoji || '🔄';
+            }
+
+            // Set action button with optional icon
+            if (options.actionIcon) {
+                actionBtn.innerHTML = `<span style="margin-right: 6px; color: #000;">${options.actionIcon}</span>${options.actionText || 'Confirm'}`;
+            } else {
+                actionBtn.textContent = options.actionText || 'Confirm';
+            }
+
+            // Set icon class
+            icon.className = 'confirm-modal-icon ' + (options.iconClass || 'restart');
+
+            // Set action button class
+            actionBtn.className = 'btn btn-confirm-action';
+            if (options.actionClass) {
+                actionBtn.classList.add(options.actionClass);
+            }
+
+            // Store callback
+            confirmModalCallback = options.onConfirm || null;
+
+            // Show modal
+            overlay.classList.add('show');
+        }
+
+        /**
+         * Hide the confirmation modal
+         */
+        function hideConfirmModal() {
+            const overlay = document.getElementById('confirm-modal-overlay');
+            overlay.classList.remove('show');
+            confirmModalCallback = null;
+        }
+
+        /**
+         * Execute the modal's confirm action
+         */
+        function confirmModalAction() {
+            // Save callback before hiding (hideConfirmModal sets it to null)
+            const callback = confirmModalCallback;
+            hideConfirmModal();
+            if (callback) {
+                callback();
+            }
+        }
+
+        // Close modal when clicking overlay
+        document.getElementById('confirm-modal-overlay')?.addEventListener('click', (e) => {
+            if (e.target.id === 'confirm-modal-overlay') {
+                hideConfirmModal();
+            }
+        });
+
+        // ============================================================================
+        // Restart App Function - FIX 2025-12-01 Network Isolation
+        // ============================================================================
+
+        /**
+         * Restart the application to apply network changes
+         * Required for full network isolation (separate databases per network)
+         */
+        async function restartApp() {
+            showConfirmModal({
+                title: 'Network Changed',
+                message: 'Settings saved successfully. Quit and relaunch the app to apply the new network configuration.',
+                emoji: '✅',
+                iconClass: 'restart',
+                actionText: 'Quit',
+                actionIcon: '⏻',
+                actionClass: 'danger',
+                onConfirm: async () => {
+                    console.log('Quit callback triggered');
+                    showMessage('Closing application...', 'success');
+
+                    try {
+                        console.log('window.invoke available:', !!window.invoke);
+                        console.log('window.__TAURI__ available:', !!window.__TAURI__);
+
+                        // Try to use Tauri's restart API
+                        if (window.invoke) {
+                            console.log('Calling quit_app via window.invoke...');
+                            await window.invoke('restart_app');
+                            console.log('quit_app returned (should not reach here)');
+                        } else if (window.__TAURI__) {
+                            // Fallback to Tauri process API
+                            console.log('Calling exit via Tauri API...');
+                            const { exit } = await import('@tauri-apps/api/process');
+                            await exit(0);
+                        } else {
+                            // Web fallback - just reload (won't restart Tauri backend)
+                            console.log('No Tauri API available');
+                            showMessage('Please close and reopen the application manually.', 'error');
+                        }
+                    } catch (e) {
+                        console.error('Failed to quit app:', e);
+                        showMessage('Please close and reopen the application manually to apply network changes.', 'error');
+                    }
+                }
+            });
+        }
+
         // Note: startAutoUpdate called globally in btpc-common.js (Article XI compliance)
     </script>
 
-    <!-- Password Modal for Wallet Encryption -->
+    <!-- Confirmation Modal -->
+    <div id="confirm-modal-overlay" class="confirm-modal-overlay">
+        <div class="confirm-modal">
+            <div class="confirm-modal-icon restart" id="confirm-modal-icon">
+                <span id="confirm-modal-emoji">🔄</span>
+            </div>
+            <h3 id="confirm-modal-title">Restart Application?</h3>
+            <p id="confirm-modal-message">This will close the app and you will need to relaunch it manually.</p>
+            <div class="confirm-modal-buttons">
+                <button class="btn btn-confirm-cancel" onclick="hideConfirmModal()">Cancel</button>
+                <button class="btn btn-confirm-action" id="confirm-modal-action" onclick="confirmModalAction()">Restart Now</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Password Modal for Wallet Encryption - Styled to match app theme -->
     <div id="password-modal-overlay">
         <div class="password-modal">
-            <h2 id="modal-title">🔒 Unlock Your Wallets</h2>
-            <p id="modal-description">Enter your <strong style="color: var(--btpc-secondary);">wallet encryption password</strong> to access your wallet data.</p>
-            <p id="modal-description" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 4px;">(This is different from your application master password)</p>
+            <!-- Icon Circle -->
+            <div class="password-modal-icon" id="password-modal-icon">
+                <span id="password-modal-emoji">🔒</span>
+            </div>
 
+            <!-- Title and Description -->
+            <h3 id="modal-title">Unlock Your Wallets</h3>
+            <p id="modal-description">Enter your master password to access your wallet data.</p>
+
+            <!-- Migration Notice (hidden by default) -->
             <div id="migration-notice" class="migration-notice">
-                <h3>⚡ Upgrade to Encrypted Wallets</h3>
+                <div class="migration-notice-header">⚡ Upgrade to Encrypted Wallets</div>
                 <p>Your wallet metadata is currently stored in plaintext. For better security, we recommend encrypting it with a password.</p>
                 <ul>
                     <li>Encrypts wallet addresses and balances</li>
                     <li>Protects against unauthorized access</li>
                     <li>Creates backup before migration</li>
                 </ul>
-                <p style="margin-top: 10px;"><strong>Choose a strong password and remember it!</strong> Without it, you won't be able to access your wallets.</p>
+                <p class="migration-warning"><strong>Choose a strong password and remember it!</strong></p>
             </div>
 
+            <!-- Password Input -->
             <div class="password-input-group">
-                <label for="master-password">Wallet Encryption Password</label>
+                <label for="master-password">Master Password</label>
                 <div class="password-input-wrapper">
-                    <input type="password" id="master-password" placeholder="Enter wallet password" autocomplete="current-password" />
-                    <button type="button" class="toggle-password" id="toggle-password" title="Show/hide password">👁️</button>
+                    <input type="password" id="master-password" placeholder="Enter your password" autocomplete="current-password" />
+                    <button type="button" class="toggle-password" id="toggle-password" title="Show/hide password">
+                        <img src="src/assets/icons-svg/eye.svg" alt="Show password" style="width: 20px; height: 20px; filter: brightness(0);">
+                    </button>
                 </div>
             </div>
 
+            <!-- Error Message -->
             <div id="password-error" class="password-error"></div>
 
+            <!-- Loading Spinner -->
             <div id="password-loading" class="password-loading">
                 <div class="spinner"></div>
                 <p>Unlocking wallets...</p>
             </div>
 
+            <!-- Action Buttons -->
             <div class="password-modal-buttons">
-                <button type="button" class="btn-unlock" id="btn-unlock">Unlock Wallets</button>
-                <button type="button" class="btn-cancel" id="btn-cancel" style="display: none;">Cancel</button>
+                <button type="button" class="btn btn-confirm-cancel" id="btn-cancel" style="display: none;">Cancel</button>
+                <button type="button" class="btn btn-confirm-action" id="btn-unlock">Unlock Wallets</button>
             </div>
         </div>
     </div>

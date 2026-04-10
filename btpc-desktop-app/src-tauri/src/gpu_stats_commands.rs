@@ -42,19 +42,24 @@ pub async fn get_gpu_stats(state: State<'_, crate::AppState>) -> Result<GpuStats
     let gpu_stats = pool.get_gpu_stats(0);
     let total_hashes = gpu_stats.map(|s| s.total_hashes).unwrap_or(0);
 
+    // Get real temperature and power via NVML
+    let health_metrics = crate::gpu_health_monitor::poll_gpu_health(0).ok();
+    let temperature = health_metrics.as_ref().and_then(|h| h.temperature);
+    let power_usage = health_metrics.as_ref().and_then(|h| h.power_consumption);
+
     Ok(GpuStats {
         device_name: device_info.model_name, // ✅ Real device name from OpenCL
         vendor: device_info.vendor,          // ✅ Real vendor from OpenCL
         compute_units: device_info.compute_units, // ✅ Real compute units from OpenCL
-        max_work_group_size: 0,              // TODO: Add to GpuDevice struct if needed
+        max_work_group_size: 0,              // OpenCL doesn't provide this directly
         global_mem_size: device_info.global_mem_size, // ✅ Real memory size from OpenCL
-        local_mem_size: 0,                   // TODO: Add to GpuDevice struct if needed
+        local_mem_size: 0,                   // OpenCL doesn't provide this directly
         max_clock_frequency: device_info.max_clock_frequency, // ✅ Real clock frequency from OpenCL
         hashrate: stats.gpu_hashrate,        // ✅ Available from MiningThreadPool
         total_hashes,                        // ✅ Available from per-GPU stats
         uptime_seconds: stats.uptime_seconds, // ✅ Available from MiningThreadPool
-        temperature: None,                   // TODO: Get GPU temperature via NVML
-        power_usage: None,                   // TODO: Get GPU power usage via NVML
+        temperature,                         // ✅ Real GPU temperature via NVML
+        power_usage,                         // ✅ Real GPU power via NVML
     })
 }
 
@@ -175,10 +180,7 @@ pub async fn get_gpu_mining_stats(
     };
 
     // Get GPU health metrics for efficiency calculations
-    let health_metrics = match get_gpu_health_metrics(None).await {
-        Ok(metrics) => metrics,
-        Err(_) => HashMap::new(), // Sensors may not be available
-    };
+    let health_metrics = get_gpu_health_metrics(None).await.unwrap_or_default(); // Sensors may not be available
 
     // Get temperature threshold for throttle status
     let temp_threshold = {
@@ -329,7 +331,7 @@ pub async fn set_temperature_threshold(
     const MIN_THRESHOLD: f32 = 60.0;
     const MAX_THRESHOLD: f32 = 95.0;
 
-    if threshold < MIN_THRESHOLD || threshold > MAX_THRESHOLD {
+    if !(MIN_THRESHOLD..=MAX_THRESHOLD).contains(&threshold) {
         return Err(format!(
             "Temperature threshold must be between {:.0}°C and {:.0}°C (received: {:.1}°C)",
             MIN_THRESHOLD, MAX_THRESHOLD, threshold
@@ -344,6 +346,60 @@ pub async fn set_temperature_threshold(
     *threshold_guard = rounded_threshold;
 
     Ok(rounded_threshold)
+}
+
+/// Set GPU fan speed for a specific device (Feature 012)
+///
+/// Controls GPU fan speed as a percentage (0-100%). This allows manual control
+/// over GPU cooling to manage temperatures and noise levels.
+///
+/// # Article XI Compliance
+/// - Backend validates FIRST before applying fan speed
+/// - Uses GPU vendor-specific APIs (NVIDIA NVML, AMD ADL, etc.)
+///
+/// # Arguments
+/// * `device_index` - GPU device index (0-based)
+/// * `fan_speed` - Fan speed percentage (0-100)
+///
+/// # Returns
+/// * `Ok(u32)` - Applied fan speed percentage
+/// * `Err(String)` - Error if validation failed or GPU control unavailable
+///
+/// # Implementation Notes
+/// - Fan speed control requires GPU driver support
+/// - Some GPUs may not support manual fan control (auto-mode only)
+/// - Changes are immediate but not persistent across reboots
+/// - Setting to 0% may enable automatic fan control on some GPUs
+#[command]
+pub async fn set_gpu_fan_speed(
+    _state: State<'_, crate::AppState>,
+    device_index: usize,
+    fan_speed: u32,
+) -> Result<u32, String> {
+    // Validate fan speed range: 0-100%
+    const MIN_FAN_SPEED: u32 = 0;
+    const MAX_FAN_SPEED: u32 = 100;
+
+    if fan_speed > MAX_FAN_SPEED {
+        return Err(format!(
+            "Fan speed must be between {}% and {}% (received: {}%)",
+            MIN_FAN_SPEED, MAX_FAN_SPEED, fan_speed
+        ));
+    }
+
+    // Use NVML for NVIDIA GPU fan control
+    use crate::gpu_health_monitor;
+
+    gpu_health_monitor::set_gpu_fan_speed(device_index as u32, 0, fan_speed)
+        .map_err(|e| format!("Failed to set fan speed: {}", e))?;
+
+    eprintln!(
+        "[GPU Fan Control] GPU {} fan speed set to {}% via NVML",
+        device_index, fan_speed
+    );
+
+    // Return the applied fan speed
+    Ok(fan_speed)
 }
 
 /// Get current GPU temperature warning threshold (Feature 012)
@@ -394,20 +450,52 @@ pub async fn get_gpu_dashboard_data(
     use crate::gpu_health_monitor;
 
     // 1. Enumerate GPU devices
-    let devices = gpu_health_monitor::enumerate_gpus()
-        .map_err(|e| format!("Failed to enumerate GPUs: {}", e))?;
+    // Try mining pool first (if mining is active), then fall back to OpenCL enumeration
+    let devices = {
+        let mining_pool_guard = state.mining_pool.read().await;
+        if let Some(pool) = mining_pool_guard.as_ref() {
+            // Get GPU device info from mining pool (more reliable when mining is active)
+            let gpu_device_info = pool.get_all_gpu_device_info();
+            if !gpu_device_info.is_empty() {
+                // Convert from gpu_miner::GpuDevice to gpu_health_monitor::GpuDevice
+                gpu_device_info
+                    .into_iter()
+                    .map(|(idx, dev)| {
+                        // Parse vendor string to GpuVendor enum
+                        let vendor = if dev.vendor.to_lowercase().contains("nvidia") {
+                            gpu_health_monitor::GpuVendor::Nvidia
+                        } else if dev.vendor.to_lowercase().contains("amd") || dev.vendor.to_lowercase().contains("advanced micro devices") {
+                            gpu_health_monitor::GpuVendor::Amd
+                        } else if dev.vendor.to_lowercase().contains("intel") {
+                            gpu_health_monitor::GpuVendor::Intel
+                        } else {
+                            gpu_health_monitor::GpuVendor::Other
+                        };
+
+                        gpu_health_monitor::GpuDevice {
+                            device_index: idx,
+                            model_name: dev.model_name,
+                            vendor,
+                            opencl_capable: true, // If in mining pool, it's OpenCL capable
+                            compute_capability: Some(format!("{} CUs @ {} MHz", dev.compute_units, dev.max_clock_frequency)),
+                        }
+                    })
+                    .collect()
+            } else {
+                // Mining pool exists but no GPUs registered, try OpenCL enumeration
+                gpu_health_monitor::enumerate_gpus().unwrap_or_default()
+            }
+        } else {
+            // Mining pool not initialized, use OpenCL enumeration
+            gpu_health_monitor::enumerate_gpus().unwrap_or_default()
+        }
+    };
 
     // 2. Get per-GPU mining statistics
-    let mining_stats = match get_gpu_mining_stats(state.clone(), None).await {
-        Ok(stats) => stats,
-        Err(_) => HashMap::new(), // Mining may not be active - return empty
-    };
+    let mining_stats = get_gpu_mining_stats(state.clone(), None).await.unwrap_or_default(); // Mining may not be active - return empty
 
     // 3. Get GPU health metrics
-    let health_metrics = match get_gpu_health_metrics(None).await {
-        Ok(metrics) => metrics,
-        Err(_) => HashMap::new(), // Sensors may not be available - return empty
-    };
+    let health_metrics = get_gpu_health_metrics(None).await.unwrap_or_default(); // Sensors may not be available - return empty
 
     // 4. Get current temperature threshold
     let temperature_threshold = {

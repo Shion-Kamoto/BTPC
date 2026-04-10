@@ -9,7 +9,7 @@
 //! - Support for network configuration, preferences, and user settings
 //!
 //! # Usage
-//! ```rust
+//! ```rust,ignore
 //! let settings = SettingsStorage::open("~/.btpc/settings")?;
 //! settings.save_setting("network", "regtest")?;
 //! let network = settings.load_setting("network")?;
@@ -23,13 +23,16 @@ use std::path::Path;
 use std::sync::Arc;
 
 /// Column family name for settings storage
+#[allow(dead_code)]
 const CF_SETTINGS: &str = "settings";
 
 /// Settings storage backed by RocksDB
+#[allow(dead_code)] // Reserved for persistent settings
 pub struct SettingsStorage {
     db: Arc<DB>,
 }
 
+#[allow(dead_code)]
 impl SettingsStorage {
     /// Open or create a new settings storage database
     ///
@@ -72,7 +75,13 @@ impl SettingsStorage {
             .put_cf(&cf, key.as_bytes(), value.as_bytes())
             .map_err(|e| anyhow!("Failed to save setting '{}': {}", key, e))?;
 
-        println!("💾 Saved setting: {} = {}", key, value);
+        // FIX 2025-12-03: Explicit flush to ensure data is persisted to disk
+        // Without this, data might be lost if app is killed abruptly (e.g., dev restart)
+        self.db
+            .flush()
+            .map_err(|e| anyhow!("Failed to flush settings to disk: {}", e))?;
+
+        println!("💾 Saved setting: {} = {} (flushed to disk)", key, value);
         Ok(())
     }
 
@@ -190,6 +199,7 @@ impl SettingsStorage {
 }
 
 /// Type-safe wrapper for common settings
+#[allow(dead_code)] // Reserved for structured settings API
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     /// Active network (mainnet, testnet, regtest)
@@ -206,6 +216,7 @@ pub struct AppSettings {
     pub mining_threads: Option<u32>,
 }
 
+#[allow(dead_code)]
 impl AppSettings {
     /// Load settings from storage
     pub fn load(storage: &SettingsStorage) -> Result<Self> {

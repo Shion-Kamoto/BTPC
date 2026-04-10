@@ -37,6 +37,7 @@ pub struct TransactionInfo {
     pub timestamp: u64,
 }
 
+#[allow(dead_code)] // Reserved for explorer API
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlockchainInfo {
     pub height: u64,
@@ -56,64 +57,12 @@ pub enum SearchResult {
 // Helper Functions
 // ============================================================================
 
-/// Convert compact difficulty bits to a human-readable difficulty value
-///
-/// # Format
-/// Compact bits format (4 bytes): 0xAABBCCDD
-/// - AA: exponent (number of bytes)
-/// - BBCCDD: mantissa (coefficient)
-///
-/// # Network Baselines
-/// - Mainnet/Testnet: 0x1d00ffff = difficulty 1
-/// - Regtest: 0x207fffff = difficulty 1 (easier target for testing)
-///
-/// # Examples
-/// - 0x1d00ffff = difficulty 1 (mainnet minimum)
-/// - 0x207fffff = difficulty 1 (regtest minimum)
-/// - 0x1b0404cb = difficulty ~16,307
-///
-/// # Returns
-/// Difficulty as a floating-point number (difficulty 1 = easiest for that network)
-pub fn bits_to_difficulty(bits: u32) -> f64 {
-    // Special case: if bits is 0 or invalid, return 1
-    if bits == 0 {
-        return 1.0;
-    }
-
-    // Regtest minimum difficulty (very easy, for testing)
-    const REGTEST_MIN_BITS: u32 = 0x207fffff;
-    // Mainnet/Testnet minimum difficulty (Bitcoin standard)
-    const MAINNET_MIN_BITS: u32 = 0x1d00ffff;
-
-    // Determine baseline based on the bits value
-    // If bits indicates an easier target than mainnet minimum, use regtest baseline
-    let baseline_bits = if bits >= 0x20000000 {
-        // Exponent >= 0x20 indicates regtest-level easy difficulty
-        REGTEST_MIN_BITS
-    } else {
-        MAINNET_MIN_BITS
-    };
-
-    // Extract exponent and mantissa from compact format
-    let base_exponent = (baseline_bits >> 24) as i32;
-    let base_mantissa = (baseline_bits & 0x00ffffff) as f64;
-
-    let current_exponent = (bits >> 24) as i32;
-    let current_mantissa = (bits & 0x00ffffff) as f64;
-
-    // Difficulty = baseline_target / current_target
-    // target = mantissa * 256^(exponent - 3)
-    // So: difficulty = (base_mantissa * 256^(base_exp - 3)) / (current_mantissa * 256^(current_exp - 3))
-    //              = (base_mantissa / current_mantissa) * 256^(base_exp - current_exp)
-
-    let mantissa_ratio = base_mantissa / current_mantissa;
-    let exponent_diff = base_exponent - current_exponent;
-    let scale_factor = 256_f64.powi(exponent_diff);
-
-    let difficulty = mantissa_ratio * scale_factor;
-
-    // Ensure minimum difficulty is 1.0
-    difficulty.max(1.0)
+/// Convert compact difficulty bits to decimal representation (simple version)
+/// DEPRECATED: Use bits_to_difficulty() instead which calculates proper difficulty value
+#[allow(dead_code)]
+fn bits_to_decimal(bits: u32) -> f64 {
+    // Simply return the bits value as a decimal number
+    bits as f64
 }
 
 /// Calculate effective difficulty based on actual block mining rate
@@ -124,13 +73,17 @@ pub fn bits_to_difficulty(bits: u32) -> f64 {
 /// Formula: effective_difficulty = (target_time / actual_time) * base_difficulty
 ///
 /// If blocks are being mined faster than the 10-minute target, difficulty is higher.
+///
+/// NOTE: Currently unused - we display network consensus difficulty instead.
+/// Kept for future use (e.g., difficulty estimation before adjustment blocks).
+#[allow(dead_code)]
 async fn calculate_effective_difficulty(
     node: &btpc_desktop_app::embedded_node::EmbeddedNode,
     current_height: u64,
 ) -> Result<f64, String> {
     // Need at least 10 blocks to calculate meaningful difficulty
     if current_height < 10 {
-        eprintln!("DEBUG: Height {} < 10, returning 1.0", current_height);
+        eprintln!("[BTPC::Chain] Height {} < 10, returning 1.0", current_height);
         return Ok(1.0);
     }
 
@@ -140,17 +93,41 @@ async fn calculate_effective_difficulty(
     let db = node.get_database();
 
     // Find the end block by searching backwards from current_height
+    // IMPORTANT: The current_height might be the network consensus height (e.g., 21320),
+    // but we only have locally stored blocks (e.g., 0-100). We need to search
+    // aggressively to find the highest block that actually exists in our database.
     let mut end_block = None;
     let mut end_height = 0u64;
-    for h in (0..current_height).rev().take(50) {
+
+    // Strategy 1: Try recent blocks first (maybe we're synced)
+    for h in (0..current_height).rev().take(100) {
         if let Ok(Some(block)) = db.get_block(h as u32) {
             end_block = Some(block);
             end_height = h;
+            tracing::debug!("Found end block at height {} (searched from {})", end_height, current_height);
             break;
         }
     }
 
-    let end_block = end_block.ok_or_else(|| "End block not found".to_string())?;
+    // Strategy 2: If no recent blocks found, search from 0 upwards to find highest stored block
+    if end_block.is_none() {
+        tracing::debug!("No recent blocks found, searching from genesis...");
+        for h in 0..1000 {
+            if let Ok(Some(block)) = db.get_block(h as u32) {
+                end_block = Some(block);
+                end_height = h;
+                // Don't break - keep searching to find the highest one
+            }
+        }
+        if end_block.is_some() {
+            tracing::debug!("Found highest stored block at height {}", end_height);
+        }
+    }
+
+    let end_block = end_block.ok_or_else(|| {
+        tracing::debug!("Failed to find ANY blocks in database (searched 0-999)");
+        "End block not found - no blocks in local database".to_string()
+    })?;
 
     // Try to find a start block with progressively smaller sample sizes
     let mut start_block = None;
@@ -179,7 +156,7 @@ async fn calculate_effective_difficulty(
         "No start block found for difficulty calculation".to_string()
     })?;
 
-    eprintln!("DEBUG: Calculating difficulty for height {}, using {} block sample",
+    tracing::debug!("Calculating difficulty for height {}, using {} block sample",
               current_height, actual_sample_size);
 
     // Calculate actual time for these blocks
@@ -187,7 +164,7 @@ async fn calculate_effective_difficulty(
     let end_ts = end_block.header.timestamp;
     let actual_time_seconds = end_ts.saturating_sub(start_ts);
 
-    eprintln!("DEBUG: Start timestamp: {}, End timestamp: {}, Time diff: {} seconds",
+    tracing::debug!("Start timestamp: {}, End timestamp: {}, Time diff: {} seconds",
               start_ts, end_ts, actual_time_seconds);
 
     // Target time: 10 minutes per block = 600 seconds
@@ -198,7 +175,7 @@ async fn calculate_effective_difficulty(
     if actual_time_seconds < actual_sample_size {
         // Blocks mined extremely fast - very high difficulty
         let ratio = expected_time_seconds as f64 / actual_sample_size as f64;
-        eprintln!("DEBUG: Blocks mined very fast, effective difficulty: {}", ratio);
+        tracing::debug!("Blocks mined very fast, effective difficulty: {}", ratio);
         return Ok(ratio.max(1.0));
     }
 
@@ -206,7 +183,7 @@ async fn calculate_effective_difficulty(
     // If blocks take 1 second instead of 600, difficulty should be 600x higher
     let effective_difficulty = expected_time_seconds as f64 / actual_time_seconds as f64;
 
-    eprintln!("DEBUG: Expected time: {}s, Actual time: {}s, Effective difficulty: {:.2}",
+    tracing::debug!("Expected time: {}s, Actual time: {}s, Effective difficulty: {:.2}",
               expected_time_seconds, actual_time_seconds, effective_difficulty);
 
     // Ensure minimum of 1.0
@@ -219,54 +196,113 @@ async fn calculate_effective_difficulty(
 
 #[tauri::command]
 pub async fn get_blockchain_info(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    eprintln!("=== get_blockchain_info CALLED ===");
+    tracing::debug!("get_blockchain_info called");
 
-    // Feature 013: Use embedded node instead of external RPC (self-contained app)
-    let node = state.embedded_node.read().await;
-    eprintln!("DEBUG: Got node lock");
+    // FIX 2025-11-26: Use EmbeddedNode instead of external RPC client
+    // This ensures blockchain info comes from the same database where mining stores blocks
+    // Previously used RpcClient which connected to external btpc_node with separate database
+    let embedded_node = state.embedded_node.read().await;
 
-    // Get blockchain state from embedded node
-    let blockchain_state = node
+    // Get blockchain state from embedded node (same database as mining)
+    let blockchain_state = embedded_node
         .get_blockchain_state()
         .await
         .map_err(|e| format!("Failed to get blockchain state: {}", e))?;
 
-    eprintln!("DEBUG: blockchain_state.current_height = {}", blockchain_state.current_height);
+    let current_height = blockchain_state.current_height;
+    let best_hash = blockchain_state.best_block_hash.clone();
+    let difficulty_bits = blockchain_state.difficulty_bits;
 
-    // Get sync progress for connection count
-    let sync_progress = node
-        .get_sync_progress()
-        .map_err(|e| format!("Failed to get sync progress: {}", e))?;
+    tracing::debug!("blockchain height from EmbeddedNode = {}", current_height);
 
-    // Get network type
-    let network = node.get_network();
+    // Convert difficulty bits to human-readable difficulty value
+    // Using the same formula as integrated_handlers.rs
+    let difficulty = bits_to_difficulty(difficulty_bits);
 
-    // Calculate effective difficulty based on actual mining rate
-    // This shows what the difficulty SHOULD be if we had proper adjustment
-    let difficulty = match calculate_effective_difficulty(&node, blockchain_state.current_height).await {
-        Ok(diff) => {
-            eprintln!("DEBUG: Effective difficulty calculated: {:.2}", diff);
-            diff
+    tracing::debug!("Network difficulty at height {}: {:.2} (bits: 0x{:08x})",
+              current_height, difficulty, difficulty_bits);
+
+    // Get network type from embedded node
+    let network = embedded_node.get_network();
+
+    // Get sync stats from sync service for accurate sync progress
+    let sync_stats = {
+        let sync_service_guard = state
+            .sync_service
+            .lock()
+            .map_err(|_| "Failed to lock sync service".to_string())?;
+
+        if let Some(service) = sync_service_guard.as_ref() {
+            service.get_stats()
+        } else {
+            use crate::sync_service::SyncStats;
+            SyncStats::default()
         }
-        Err(e) => {
-            eprintln!("DEBUG: Failed to calculate effective difficulty: {}, falling back to bits_to_difficulty", e);
-            bits_to_difficulty(blockchain_state.difficulty_bits)
-        }
+    };
+
+    // Calculate sync progress from sync service stats
+    let (sync_progress, is_synced) = if sync_stats.node_height > 0 {
+        let progress = (sync_stats.current_height as f64 / sync_stats.node_height as f64) * 100.0;
+        let synced = progress >= 99.9;
+        (progress, synced)
+    } else {
+        // Fallback: If sync service hasn't started, consider us synced with current blockchain state
+        (100.0, true)
+    };
+
+    eprintln!("DEBUG: Sync progress: {:.1}% (local: {}, node: {})",
+              sync_progress, sync_stats.current_height, sync_stats.node_height);
+
+    // FIX 2025-12-27: Get actual peer count from embedded node instead of hardcoded 1
+    // Also check if node is running - show 0 connections when stopped
+    // When running, count includes local node (1) + any connected peers
+    let node_running = state.node_status.read().map(|s| s.running).unwrap_or(false);
+    let connections = if node_running {
+        1 + embedded_node.get_peer_count()  // Local node + remote peers
+    } else {
+        0
     };
 
     // Return blockchain info in the format the frontend expects
     Ok(serde_json::json!({
-        "blocks": blockchain_state.current_height,
-        "height": blockchain_state.current_height,  // Alias for compatibility
-        "headers": blockchain_state.current_height,  // In embedded node, headers == blocks
+        "blocks": current_height,
+        "height": current_height,  // Alias for compatibility
+        "headers": current_height,
         "chain": network,
-        "difficulty": difficulty,  // Human-readable difficulty (1.0 for regtest)
-        "difficulty_bits": blockchain_state.difficulty_bits,  // Raw bits value for debugging
-        "best_block_hash": blockchain_state.best_block_hash,
-        "bestblockhash": blockchain_state.best_block_hash,  // Alias for compatibility
-        "connections": sync_progress.connected_peers,
-        "node_offline": false,  // Embedded node is always "online" when app is running
+        "difficulty": difficulty,  // Difficulty calculated from bits
+        "difficulty_bits": difficulty_bits,  // Raw bits value
+        "best_block_hash": best_hash,
+        "bestblockhash": best_hash.clone(),  // Alias for compatibility
+        "connections": connections,  // Actual peer count when running, 0 when stopped
+        "node_offline": !node_running,
+        "sync_progress": sync_progress,  // Accurate sync progress from sync service
+        "is_synced": is_synced,
     }))
+}
+
+/// Get network health information (bootstrap status, hashrate, EDA triggers)
+///
+/// Returns comprehensive health metrics for monitoring network stability
+/// during the bootstrap phase (first 20,160 blocks) and beyond.
+#[tauri::command]
+pub async fn get_network_health_info(
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let node = state.embedded_node.read().await;
+    Ok(node.get_network_health_info())
+}
+
+/// Convert compact bits format to difficulty value for display
+///
+/// For BTPC, we display the raw bits value in decimal format.
+/// This matches the frontend expectation (e.g., 545,259,519 for 0x207fffff regtest)
+///
+/// Note: Bitcoin-style difficulty calculation would produce tiny values for regtest
+/// (0x207fffff → ~4.66e-10), which is not useful for display.
+pub fn bits_to_difficulty(bits: u32) -> f64 {
+    // Return raw bits value as decimal for display
+    // This is what the frontend expects and displays as "Bits (decimal)"
+    bits as f64
 }
 
 #[tauri::command]
@@ -414,8 +450,11 @@ pub async fn get_block_message(state: State<'_, AppState>, txid: String) -> Resu
     // CONSTITUTION COMPLIANCE: Use RocksDB indexed lookup (O(log n))
     // Backend is single source of truth (Article XI.1)
     // Direct transaction lookup by txid - avoids O(n*m) scan
+    // FIX 2025-12-05: Use .read().await for RwLock access
     let tx = state
         .tx_storage
+        .read()
+        .await
         .get_transaction(&txid)
         .map_err(|e| format!("Failed to get transaction: {}", e))?
         .ok_or_else(|| "Transaction not found".to_string())?;

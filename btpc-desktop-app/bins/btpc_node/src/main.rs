@@ -312,6 +312,10 @@ impl Node {
             println!("Press Ctrl+C to stop the node");
             tokio::signal::ctrl_c().await?;
             println!("Shutting down BTPC Node...");
+
+            // Save address book on clean shutdown
+            let peers_dat = self.config.datadir.join("peers.dat");
+            self.peer_manager.save_peers(&peers_dat).await;
         }
 
         Ok(())
@@ -321,23 +325,44 @@ impl Node {
     async fn start_networking(&self) -> Result<(), Box<dyn std::error::Error>> {
         println!("Starting P2P networking on {}", self.config.listen_addr);
 
-        // Start listening for incoming connections
+        // ── Bitcoin-style bootstrap ──────────────────────────────────────────
+
+        // 1. Load peers.dat — reconnect to previously-known peers instantly
+        //    without waiting for DNS resolution on every restart.
+        let peers_dat = self.config.datadir.join("peers.dat");
+        self.peer_manager.load_peers(&peers_dat).await;
+
+        // 2. Start accepting inbound connections
         self.peer_manager.start_listening().await?;
 
-        // Bootstrap peer discovery
-        let mut discovery = self.peer_discovery.write().await;
-        discovery.query_dns_seeds().await.ok(); // Best effort
-        drop(discovery);
+        // 3. Query DNS seeds via the peer manager's internal address book
+        //    (replaces the old separate peer_discovery field)
+        self.peer_manager
+            .discovery
+            .write()
+            .await
+            .query_dns_seeds()
+            .await
+            .ok(); // Best effort
 
-        // Connect to specific peers if configured
+        // 4. Connect to any explicitly-specified peers (--connect flag)
         for peer_addr_str in &self.config.connect_peers {
             if let Ok(peer_addr) = peer_addr_str.parse() {
                 println!("Connecting to peer: {}", peer_addr);
-                self.peer_manager.connect_to_peer(peer_addr).await.ok(); // Best effort
+                self.peer_manager.connect_to_peer(peer_addr).await.ok();
             } else {
                 eprintln!("Invalid peer address: {}", peer_addr_str);
             }
         }
+
+        // 5. Auto-connection manager — maintains 8 outbound peers, re-queries
+        //    DNS when isolated.  Mirrors Bitcoin Core's ThreadOpenConnections.
+        SimplePeerManager::start_connection_manager(Arc::clone(&self.peer_manager));
+
+        // 6. Auto-save peers.dat every 15 minutes
+        SimplePeerManager::start_peer_saver(Arc::clone(&self.peer_manager), peers_dat);
+
+        // ────────────────────────────────────────────────────────────────────
 
         Ok(())
     }
@@ -362,7 +387,7 @@ impl Node {
         tokio::spawn(async move {
             while let Some(event) = event_rx.recv().await {
                 match event {
-                    PeerEvent::PeerConnected { addr, height } => {
+                    PeerEvent::PeerConnected { addr, height, .. } => {
                         println!("🔗 Peer {} connected (height: {})", addr, height);
                     }
                     PeerEvent::PeerDisconnected { addr, reason } => {
@@ -611,7 +636,7 @@ impl Node {
 
                         let block_hash = mined_block.hash();
                         println!("🎉 Block mined! Hash: {}", block_hash.to_hex());
-                        println!("   Height: {}, Reward: {} satoshis", height, reward);
+                        println!("   Height: {}, Reward: {} credits", height, reward);
 
                         // Validate block
                         if let Err(e) = block_validator.validate_block(&mined_block) {

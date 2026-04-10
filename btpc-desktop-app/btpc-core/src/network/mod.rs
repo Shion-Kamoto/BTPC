@@ -181,6 +181,8 @@ pub struct NetworkConfig {
     pub connection_timeout: u64,
     /// Enable testnet
     pub testnet: bool,
+    /// Enable regtest (local testing)
+    pub regtest: bool,
     /// User agent string
     pub user_agent: String,
     /// Initial seed nodes
@@ -193,13 +195,17 @@ pub struct NetworkConfig {
     pub peer_message_queue_size: usize,
     /// Progressive connection timeouts (Issue #8 - Slowloris attack prevention)
     pub timeouts: ConnectionTimeouts,
+    /// DNS seed hostnames resolved at startup for peer discovery
+    pub dns_seeds: Vec<String>,
+    /// Hardcoded seed node addresses (fallback when DNS fails)
+    pub hardcoded_seeds: Vec<SocketAddr>,
 }
 
 impl NetworkConfig {
     /// Create default mainnet configuration
     pub fn mainnet() -> Self {
         NetworkConfig {
-            listen_addr: "0.0.0.0:8333"
+            listen_addr: "0.0.0.0:18341"
                 .parse()
                 .expect("Valid mainnet listen address"),
             max_connections: 125,
@@ -208,21 +214,26 @@ impl NetworkConfig {
             max_per_subnet_16: 20, // Max 20 connections per /16 subnet
             connection_timeout: 30,
             testnet: false,
-            user_agent: "/BTPC:0.1.0/".to_string(),
-            seed_nodes: vec![
-                // Add mainnet seed nodes here
-            ],
+            regtest: false,
+            user_agent: "/BTPC:1.0.0/".to_string(),
+            seed_nodes: vec![],
             rate_limiter: RateLimiterConfig::default(),
             event_queue_size: 10_000,      // 10K events max in queue
             peer_message_queue_size: 1000, // 1K messages per peer
             timeouts: ConnectionTimeouts::default(),
+            dns_seeds: vec![],
+            // Hardcoded seed nodes — Bitcoin-style, no DNS required.
+            // These are compiled into the binary as the sole peer discovery mechanism.
+            hardcoded_seeds: vec![
+                "101.115.230.117:18341".parse().expect("valid mainnet seed"),
+            ],
         }
     }
 
     /// Create default testnet configuration
     pub fn testnet() -> Self {
         NetworkConfig {
-            listen_addr: "0.0.0.0:18333"
+            listen_addr: "0.0.0.0:18351"
                 .parse()
                 .expect("Valid testnet listen address"),
             max_connections: 125,
@@ -231,23 +242,63 @@ impl NetworkConfig {
             max_per_subnet_16: 20,
             connection_timeout: 30,
             testnet: true,
-            user_agent: "/BTPC:0.1.0-testnet/".to_string(),
-            seed_nodes: vec![
-                // Add testnet seed nodes here
-            ],
+            regtest: false,
+            user_agent: "/BTPC:1.0.0-testnet/".to_string(),
+            seed_nodes: vec![],
             rate_limiter: RateLimiterConfig::default(),
             event_queue_size: 10_000,
             peer_message_queue_size: 1000,
             timeouts: ConnectionTimeouts::default(),
+            dns_seeds: vec![],
+            hardcoded_seeds: vec![
+                "101.115.230.117:18351".parse().expect("valid testnet seed"),
+            ],
+        }
+    }
+
+    /// Create default regtest configuration (local-only, no DNS seeds)
+    pub fn regtest() -> Self {
+        NetworkConfig {
+            listen_addr: "0.0.0.0:18361"
+                .parse()
+                .expect("Valid regtest listen address"),
+            max_connections: 25,
+            max_per_ip: 10,        // Relaxed for local testing
+            max_per_subnet_24: 25, // Relaxed
+            max_per_subnet_16: 25, // Relaxed
+            connection_timeout: 10,
+            testnet: false,
+            regtest: true,
+            user_agent: "/BTPC:1.0.0-regtest/".to_string(),
+            seed_nodes: vec![],
+            rate_limiter: RateLimiterConfig::default(),
+            event_queue_size: 1_000,
+            peer_message_queue_size: 500,
+            timeouts: ConnectionTimeouts::relaxed(),
+            dns_seeds: vec![], // Regtest is local-only
+            hardcoded_seeds: vec![],
         }
     }
 
     /// Get network magic bytes
     pub fn magic_bytes(&self) -> [u8; 4] {
-        if self.testnet {
+        if self.regtest {
+            protocol::BTPC_REGTEST_MAGIC
+        } else if self.testnet {
             protocol::BTPC_TESTNET_MAGIC
         } else {
             protocol::BTPC_MAINNET_MAGIC
+        }
+    }
+
+    /// Get the default P2P port for this network configuration
+    pub fn default_port(&self) -> u16 {
+        if self.regtest {
+            18361
+        } else if self.testnet {
+            18351
+        } else {
+            18341
         }
     }
 }
