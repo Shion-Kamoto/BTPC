@@ -1,5 +1,3 @@
-[workspace]
-
 [package]
 name = "create_wallet_w2"
 version = "0.1.0"
