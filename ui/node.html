@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BTPC Wallet - Node</title>
+    <link rel="stylesheet" href="btpc-styles.css">
+    <style>
+        .tab-nav {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .tab-btn {
+            padding: 12px 24px;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 0.9375rem;
+            font-weight: 500;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 200ms ease;
+        }
+        .tab-btn:hover {
+            color: var(--text-primary);
+            background: var(--bg-hover);
+        }
+        .tab-btn.active {
+            color: var(--btpc-primary);
+            border-bottom-color: var(--btpc-primary);
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            padding: 20px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+        }
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background: var(--bg-card);
+            border-radius: 8px;
+        }
+        .status-item-label {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+        }
+        .status-item-value {
+            font-size: 0.9375rem;
+            color: var(--text-primary);
+            font-weight: 600;
+            font-family: 'SF Mono', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="page-container">
+        <!-- Sidebar Navigation -->
+        <div class="sidebar">
+            <div class="logo-section">
+                <div class="logo-image">
+                    <div class="btpc-animated-logo">
+                        <span class="btpc-letter">₿</span>
+                        <span class="btpc-letter">T</span>
+                        <span class="btpc-letter">P</span>
+                        <span class="btpc-letter">C</span>
+                    </div>
+                    <div class="quantum-orbital"></div>
+                    <div class="quantum-orbital"></div>
+                    <div class="quantum-symbol">
+                        <span class="btc-symbol">₿</span>
+                        <span class="q-symbol">Q</span>
+                    </div>
+                </div>
+                <div class="logo-header">BTPC Wallet</div>
+                <div class="logo-subtitle">Quantum-Resistant</div>
+
+                <!-- Balance Card inside logo section -->
+                <div class="account-info">
+                    <div class="account-name">Total Balance</div>
+                    <div class="balance-amount">
+                        <span id="wallet-balance">0.00000000</span>
+                        <span class="balance-unit">BTPC</span>
+                    </div>
+                    <div class="spendable-row">
+                        <div class="spendable-label">Spendable</div>
+                        <div class="spendable-amount">
+                            <span id="spendable-balance">0.00000000</span>
+                            <span class="balance-unit">BTPC</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <nav>
+                <a href="index.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-home"></span></span>
+                    <span class="nav-text">Dashboard</span>
+                </a>
+                <a href="wallet-manager.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-wallet"></span></span>
+                    <span class="nav-text">Wallet</span>
+                </a>
+                <a href="transactions.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-transactions"></span></span>
+                    <span class="nav-text">Transactions</span>
+                </a>
+                <a href="mining.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-pickaxe"></span></span>
+                    <span class="nav-text">Mining</span>
+                </a>
+                <a href="node.html" class="nav-item active">
+                    <span class="nav-icon"><span class="icon icon-link"></span></span>
+                    <span class="nav-text">Node</span>
+                </a>
+                <a href="settings.html" class="nav-item">
+                    <span class="nav-icon"><span class="icon icon-settings"></span></span>
+                    <span class="nav-text">Settings</span>
+                </a>
+            </nav>
+
+            <!-- Network Status -->
+            <div class="network-status-footer">
+                <div class="network-status-row">
+                    <span class="network-status-label">Network</span>
+                    <span class="network-status-value" id="network-name">Mainnet</span>
+                </div>
+                <div class="network-status-row">
+                    <span class="network-status-label">Status</span>
+                    <span class="network-status-value" id="sync-status">Syncing...</span>
+                </div>
+                <div class="sync-progress-bar">
+                    <div class="sync-progress-fill" id="sync-progress-sidebar" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="page-header">
+                <div class="page-header-left">
+                    <h1>Node Management</h1>
+                    <p>Monitor and control your BTPC blockchain node</p>
+                </div>
+                <div class="logout-container">
+                    <button id="logout-btn" class="btn-logout">
+                        <img src="src/assets/icons-svg/unlock.svg" alt="Logout" class="logout-icon">
+                        <span>Logout</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tab Navigation -->
+            <div class="tab-nav">
+                <button class="tab-btn active" onclick="switchTab('status')">Status</button>
+                <button class="tab-btn" onclick="switchTab('blockchain')">Blockchain Info</button>
+                <button class="tab-btn" onclick="switchTab('peers')">Peers</button>
+            </div>
+
+            <!-- Status Tab -->
+            <div id="tab-status" class="tab-content active">
+                <!-- Node Status Summary -->
+                <div class="card">
+                    <div class="card-header">
+                        <span>Node Status</span>
+                    </div>
+                    <div id="status-container">
+                        <div style="padding: 40px 20px;">
+                            <div style="text-align: center; margin-bottom: 32px;">
+                                <div id="node-status" style="font-size: 3rem; font-weight: 600; color: var(--btpc-primary);">OFFLINE</div>
+                                <div id="node-status-label" style="font-size: 1.125rem; color: var(--text-secondary); margin-top: 8px;">Node State</div>
+                            </div>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+                                <div style="padding: 16px; background: var(--bg-card); border-radius: 8px; text-align: center;">
+                                    <div style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 8px;">Uptime</div>
+                                    <div id="node-uptime" style="font-size: 1rem; color: var(--status-success);">0s</div>
+                                </div>
+                                <div style="padding: 16px; background: var(--bg-card); border-radius: 8px; text-align: center;">
+                                    <div style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 8px;">Sync Progress</div>
+                                    <div id="sync-percent" style="font-size: 1rem; color: var(--text-primary);">0%</div>
+                                </div>
+                                <div style="padding: 16px; background: var(--bg-card); border-radius: 8px; text-align: center;">
+                                    <div style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 8px;">Connections</div>
+                                    <div id="peer-count" style="font-size: 1rem; color: var(--status-success);">0</div>
+                                </div>
+                            </div>
+                            <div style="margin-top: 24px; padding: 16px; background: rgba(139, 92, 246, 0.1); border-left: 3px solid var(--btpc-primary); border-radius: 6px; display: flex; gap: 12px; justify-content: center;">
+                                <button class="btn btn-toggle" id="node-toggle-btn" onclick="toggleNode()">
+                                    <span class="status-dot"></span>
+                                    <span class="icon icon-link"></span>
+                                    <span class="toggle-text">Start Node</span>
+                                </button>
+                                <button class="btn btn-secondary" onclick="restartNode()">
+                                    <span class="icon icon-refresh"></span> Restart Node
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Blockchain Info Tab -->
+            <div id="tab-blockchain" class="tab-content">
+                <div class="card">
+                    <div class="card-header">
+                        <span>Blockchain Information</span>
+                        <button class="btn btn-secondary" onclick="refreshBlockchainInfo()" style="padding: 6px 16px;"><span class="icon icon-refresh"></span> Refresh</button>
+                    </div>
+                    <div id="blockchain-container">
+                        <div style="padding: 40px 20px;">
+                            <div style="text-align: center; margin-bottom: 32px;">
+                                <div id="info-blocks" style="font-size: 3rem; font-weight: 600; color: var(--btpc-primary);">0</div>
+                                <div style="font-size: 1.125rem; color: var(--text-secondary); margin-top: 8px;">BLOCKS MINED</div>
+                            </div>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+                                <div style="padding: 16px; background: var(--bg-card); border-radius: 8px; text-align: center;">
+                                    <div style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 8px;">BTPC Chain</div>
+                                    <div id="info-chain" style="font-size: 1rem; color: var(--status-success);">-</div>
+                                </div>
+                                <div style="padding: 16px; background: var(--bg-card); border-radius: 8px; text-align: center;">
+                                    <div style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 8px;">Mining Difficulty</div>
+                                    <div id="info-difficulty" style="font-size: 1.25rem; font-weight: 600; color: var(--status-success);">-</div>
+                                    <div id="info-difficulty-target" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; font-family: 'SF Mono', monospace;">-</div>
+                                </div>
+                                <div style="padding: 16px; background: var(--bg-card); border-radius: 8px; text-align: center;">
+                                    <div style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 8px;">Network Nodes</div>
+                                    <div id="info-network-nodes" style="font-size: 1rem; color: var(--status-success);">0</div>
+                                </div>
+                            </div>
+                            <div style="margin-top: 24px; padding: 16px; background: rgba(139, 92, 246, 0.1); border-left: 3px solid var(--btpc-primary); border-radius: 6px; font-size: 0.875rem; color: var(--text-secondary);">
+                                <strong style="color: var(--btpc-primary);">Best Block Hash:</strong> <span id="info-best-block" style="font-family: 'SF Mono', monospace; word-break: break-all;">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Peers Tab -->
+            <div id="tab-peers" class="tab-content">
+                <div class="card">
+                    <div class="card-header">
+                        <span>Connected Peers</span>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="btn btn-secondary" onclick="clearAllPeers()" style="padding: 6px 16px;"><span class="icon icon-delete"></span> Clear</button>
+                            <button class="btn btn-secondary" onclick="refreshPeers()" style="padding: 6px 16px;"><span class="icon icon-refresh"></span> Refresh</button>
+                        </div>
+                    </div>
+
+                    <!-- Connect to Peer Form -->
+                    <div style="padding: 16px; border-bottom: 1px solid var(--border-color); background: rgba(139, 92, 246, 0.05);">
+                        <div style="display: flex; gap: 12px; align-items: center;">
+                            <label style="color: var(--text-secondary); font-weight: 500; white-space: nowrap;">Connect to Peer:</label>
+                            <input type="text" id="peer-address-input" placeholder="192.168.1.100:8333"
+                                   style="flex: 1; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-secondary); color: var(--text-primary); font-family: monospace;">
+                            <button class="btn btn-primary" onclick="connectToPeer()" style="padding: 8px 20px; white-space: nowrap;">
+                                <span class="icon icon-link"></span> Connect
+                            </button>
+                        </div>
+                        <div style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">
+                            Enter IP:port of a BTPC node to establish a P2P connection
+                        </div>
+                    </div>
+
+                    <div id="peers-container">
+                        <div style="padding: 60px 20px; text-align: center;">
+                            <div style="font-size: 3rem; margin-bottom: 16px;"><span class="icon icon-link" style="width: 48px; height: 48px;"></span></div>
+                            <div style="font-size: 1.125rem; color: var(--text-primary); margin-bottom: 8px;">No peers connected</div>
+                            <div style="color: var(--text-muted);">Enter a peer address above to connect</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="btpc-tauri-context.js"></script>
+    <script src="btpc-event-listeners.js"></script>
+    <script src="btpc-navigation-guard.js"></script>
+    <script src="btpc-event-manager.js"></script>
+    <script src="btpc-backend-first.js"></script>
+    <script src="btpc-storage.js"></script>
+    <script src="btpc-common.js"></script>
+    <script src="btpc-corruption-check.js"></script>
+    <script src="btpc-update-manager.js"></script>
+    <script src="password-modal.js"></script>
+    <script src="btpc-logout.js"></script>
+    <script>
+        let nodeStatusInterval = null;
+        let nodeStartTime = null;
+        let uptimeInterval = null;
+        const updateManager = window.btpcUpdateManager;
+        const NODE_START_TIME_KEY = 'btpc_node_start_time';
+
+        // Format uptime as human-readable string
+        function formatUptime(seconds) {
+            if (seconds < 60) return `${seconds}s`;
+            if (seconds < 3600) {
+                const mins = Math.floor(seconds / 60);
+                const secs = seconds % 60;
+                return `${mins}m ${secs}s`;
+            }
+            if (seconds < 86400) {
+                const hours = Math.floor(seconds / 3600);
+                const mins = Math.floor((seconds % 3600) / 60);
+                return `${hours}h ${mins}m`;
+            }
+            const days = Math.floor(seconds / 86400);
+            const hours = Math.floor((seconds % 86400) / 3600);
+            return `${days}d ${hours}h`;
+        }
+
+        // FIX 2025-12-30: Calculate fractional difficulty bits from compact bits value
+        // Formula: base_bits + fractional where fractional is based on mantissa
+        // Higher bits = harder mining (more leading zeros required in hash)
+        function calculateDifficultyBits(compactBits) {
+            if (!compactBits || compactBits === 0) return { bits: 0, hex: '0x00000000' };
+
+            // Extract exponent and mantissa from compact bits format
+            // Format: 0xEE_MMMMMM where EE = exponent, MMMMMM = 24-bit mantissa
+            const exponent = (compactBits >> 24) & 0xff;
+            const mantissa = compactBits & 0x00ffffff;
+            const maxMantissa = 0x7fffff; // Maximum mantissa value
+
+            // Base bits = leading zero bytes × 8
+            // Position in 64-byte target = 64 - exponent
+            const position = 64 - exponent;
+            const baseBits = position * 8;
+
+            // Fractional part based on mantissa (0x7fffff = 0.0, 0x000001 ≈ 1.0)
+            // As mantissa decreases, difficulty increases (more leading zeros effectively)
+            const fractional = mantissa > 0 ? (1 - (mantissa / maxMantissa)) : 1;
+
+            // Total difficulty in bits (e.g., 32.5 bits)
+            const totalBits = baseBits + fractional;
+
+            // Format hex string
+            const hexStr = '0x' + compactBits.toString(16).padStart(8, '0');
+
+            return {
+                bits: totalBits,
+                hex: hexStr
+            };
+        }
+
+        // Format difficulty for display (e.g., "32.0 bits" or "32.5 bits")
+        function formatDifficultyBits(compactBits) {
+            const { bits, hex } = calculateDifficultyBits(compactBits);
+            return {
+                display: bits.toFixed(1) + ' bits',
+                target: 'Target: ' + hex
+            };
+        }
+
+        // Update uptime display
+        function updateUptimeDisplay() {
+            if (nodeStartTime) {
+                const uptimeSeconds = Math.floor((Date.now() - nodeStartTime) / 1000);
+                document.getElementById('node-uptime').textContent = formatUptime(uptimeSeconds);
+            }
+        }
+
+        // Start uptime tracking (persists to localStorage)
+        // FIX 2025-12-27: ALWAYS set a fresh start time when node starts
+        // Previously this reused old stored time, causing "3+ days" uptime bug
+        function startUptimeTracking() {
+            // Always start fresh - clear any old stored time
+            nodeStartTime = Date.now();
+            localStorage.setItem(NODE_START_TIME_KEY, nodeStartTime.toString());
+            updateUptimeDisplay();
+            if (uptimeInterval) clearInterval(uptimeInterval);
+            uptimeInterval = setInterval(updateUptimeDisplay, 1000);
+        }
+
+        // Stop uptime tracking (clears localStorage)
+        function stopUptimeTracking() {
+            nodeStartTime = null;
+            localStorage.removeItem(NODE_START_TIME_KEY);
+            if (uptimeInterval) {
+                clearInterval(uptimeInterval);
+                uptimeInterval = null;
+            }
+            document.getElementById('node-uptime').textContent = '0s';
+        }
+
+        // Resume uptime tracking if node is already running (page load/navigation)
+        function resumeUptimeTracking() {
+            const storedTime = localStorage.getItem(NODE_START_TIME_KEY);
+            if (storedTime) {
+                nodeStartTime = parseInt(storedTime, 10);
+                updateUptimeDisplay();
+                if (uptimeInterval) clearInterval(uptimeInterval);
+                uptimeInterval = setInterval(updateUptimeDisplay, 1000);
+            }
+        }
+
+        // Tab switching
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+            event.target.classList.add('active');
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+        }
+
+        // Toggle node on/off with single button
+        let isNodeRunning = false;
+
+        async function toggleNode() {
+            if (isNodeRunning) {
+                await stopNode();
+            } else {
+                await startNode();
+            }
+        }
+
+        function updateNodeToggleButton(isActive) {
+            isNodeRunning = isActive;
+            const btn = document.getElementById('node-toggle-btn');
+            const textEl = btn.querySelector('.toggle-text');
+
+            if (isActive) {
+                btn.classList.add('active');
+                textEl.textContent = 'Stop Node';
+            } else {
+                btn.classList.remove('active');
+                textEl.textContent = 'Start Node';
+            }
+        }
+
+        async function startNode() {
+            if (!window.invoke) {
+                toast.error('Tauri API not ready. Please wait a moment and try again.');
+                return;
+            }
+
+            showLoading('Starting node...', 'Initializing blockchain node');
+
+            try {
+                // Set flag to prevent duplicate toast notifications
+                window.nodeActionInitiatedByThisPage = true;
+
+                await window.invoke('start_node');
+
+                hideLoading();
+
+                updateNodeToggleButton(true);
+                document.getElementById('node-status').textContent = 'RUNNING';
+                document.getElementById('node-status').style.color = 'var(--status-success)';
+
+                startUptimeTracking();
+                startStatusUpdates();
+                toast.success('Node started successfully!');
+            } catch (e) {
+                hideLoading();
+                // Reset flag on error
+                window.nodeActionInitiatedByThisPage = false;
+                toast.error(`Failed to start node: ${e}`);
+                console.error('Node start error:', e);
+            }
+        }
+
+        async function stopNode() {
+            showLoading('Stopping node...', 'Shutting down gracefully');
+
+            try {
+                // Set flag to prevent duplicate toast notifications
+                window.nodeActionInitiatedByThisPage = true;
+
+                // Call backend kill command (immediate SIGKILL, no timeout)
+                await window.invoke('stop_node');
+
+                hideLoading();
+
+                // Update UI immediately
+                updateNodeToggleButton(false);
+                document.getElementById('node-status').textContent = 'OFFLINE';
+                document.getElementById('node-status').style.color = 'var(--btpc-primary)';
+
+                // Reset all status displays
+                document.getElementById('sync-percent').textContent = '0%';
+                document.getElementById('sync-percent').style.color = '';
+                document.getElementById('peer-count').textContent = '0';
+                const progressBar = document.getElementById('sync-progress-sidebar');
+                if (progressBar) progressBar.style.width = '0%';
+
+                // Reset Blockchain Info tab
+                document.getElementById('info-chain').textContent = '-';
+                document.getElementById('info-blocks').textContent = '-';
+                document.getElementById('info-network-nodes').textContent = '0';
+                document.getElementById('info-best-block').textContent = '-';
+
+                stopUptimeTracking();
+                stopStatusUpdates();
+                toast.success('Node stopped successfully');
+
+            } catch (e) {
+                hideLoading();
+                // Reset flag on error
+                window.nodeActionInitiatedByThisPage = false;
+                toast.error(`Failed to stop node: ${e}`);
+                console.error('Node stop error:', e);
+            } finally {
+                // Reset flag after handling
+                setTimeout(() => {
+                    window.nodeActionInitiatedByThisPage = false;
+                }, 1000);
+            }
+        }
+
+        function restartNode() {
+            showRestartConfirmModal();
+        }
+
+        async function confirmRestartNode() {
+            closeRestartConfirmModal();
+            await stopNode();
+            setTimeout(async () => {
+                await startNode();
+            }, 2000);
+        }
+
+        function showSuccessModal(message) {
+            document.getElementById('success-message').textContent = message;
+            document.getElementById('success-modal').style.display = 'flex';
+        }
+
+        function closeSuccessModal() {
+            document.getElementById('success-modal').style.display = 'none';
+        }
+
+        function showErrorModal(message) {
+            document.getElementById('error-message').textContent = message;
+            document.getElementById('error-modal').style.display = 'flex';
+        }
+
+        function closeErrorModal() {
+            document.getElementById('error-modal').style.display = 'none';
+        }
+
+        function showRestartConfirmModal() {
+            document.getElementById('restart-confirm-modal').style.display = 'flex';
+        }
+
+        function closeRestartConfirmModal() {
+            document.getElementById('restart-confirm-modal').style.display = 'none';
+        }
+
+        // REMOVED: refreshNodeStatus() - Duplicate of updateManager subscription
+        // All node status updates now handled by centralized updateManager (lines 611-678)
+
+        // Connect to a real P2P peer
+        async function connectToPeer() {
+            if (!window.invoke) {
+                toast.error('Tauri API not ready');
+                return;
+            }
+
+            const addressInput = document.getElementById('peer-address-input');
+            const address = addressInput.value.trim();
+
+            if (!address) {
+                toast.error('Please enter a peer address (e.g., 192.168.1.100:8333)');
+                return;
+            }
+
+            // Validate format: IP:port
+            const addressRegex = /^[\d.]+:\d+$/;
+            if (!addressRegex.test(address)) {
+                toast.error('Invalid address format. Use IP:port (e.g., 192.168.1.100:8333)');
+                return;
+            }
+
+            // Show connecting state
+            toast.info(`Connecting to ${address}...`);
+
+            try {
+                const result = await window.invoke('connect_to_peer', { address });
+
+                if (result.success) {
+                    toast.success(`Connected to peer: ${result.address} (height: ${result.height})`);
+                    addressInput.value = ''; // Clear input on success
+                    refreshPeers();
+                } else {
+                    toast.error(`Connection failed: ${result.message}`);
+                }
+            } catch (e) {
+                toast.error(`Failed to connect: ${e}`);
+                console.error('Connect to peer error:', e);
+            }
+        }
+
+        // Clear all connected peers
+        async function clearAllPeers() {
+            if (!window.invoke) {
+                toast.error('Tauri API not ready');
+                return;
+            }
+
+            try {
+                await window.invoke('clear_peers');
+                toast.success('All peers cleared');
+                refreshPeers();
+            } catch (e) {
+                toast.error(`Failed to clear peers: ${e}`);
+                console.error('Clear peers error:', e);
+            }
+        }
+
+        // Format connection time as human-readable string
+        function formatConnectionTime(unixTimestamp) {
+            if (!unixTimestamp) return 'Unknown';
+            const connectedAt = new Date(unixTimestamp * 1000);
+            const now = new Date();
+            const diffMs = now - connectedAt;
+            const diffSecs = Math.floor(diffMs / 1000);
+
+            if (diffSecs < 60) return `${diffSecs}s ago`;
+            if (diffSecs < 3600) return `${Math.floor(diffSecs / 60)}m ago`;
+            if (diffSecs < 86400) return `${Math.floor(diffSecs / 3600)}h ago`;
+            return `${Math.floor(diffSecs / 86400)}d ago`;
+        }
+
+        async function refreshPeers() {
+            // Check if Tauri API is ready
+            if (!window.invoke) {
+                console.log('Tauri API not ready, skipping peers refresh');
+                return;
+            }
+
+            try {
+                // Fetch both blockchain info and detailed peer info
+                const [info, peerInfo] = await Promise.all([
+                    window.invoke('get_blockchain_info'),
+                    window.invoke('get_peer_info')
+                ]);
+
+                const peerCount = info.connections || 0;
+                const peers = peerInfo.peers || [];
+                const container = document.getElementById('peers-container');
+
+                if (peerCount === 0 && peers.length === 0) {
+                    container.innerHTML = `
+                        <div style="padding: 60px 20px; text-align: center;">
+                            <div style="font-size: 3rem; margin-bottom: 16px;"><span class="icon icon-link" style="width: 48px; height: 48px;"></span></div>
+                            <div style="font-size: 1.125rem; color: var(--text-primary); margin-bottom: 8px;">No peers connected</div>
+                            <div style="color: var(--text-muted);">Node is running but no peers connected yet</div>
+                        </div>
+                    `;
+                } else {
+                    // Build peer list HTML
+                    let peerListHtml = '';
+                    if (peers.length > 0) {
+                        peerListHtml = `
+                            <div style="margin-top: 24px;">
+                                <div style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 12px; font-weight: 500;">PEER DETAILS</div>
+                                <div style="display: flex; flex-direction: column; gap: 12px;">
+                                    ${peers.map((peer, index) => `
+                                        <div style="padding: 16px; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border-color);">
+                                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                                <div style="display: flex; align-items: center; gap: 8px;">
+                                                    <span style="width: 8px; height: 8px; background: var(--status-success); border-radius: 50%;"></span>
+                                                    <span style="font-family: 'SF Mono', monospace; font-size: 0.875rem; color: var(--text-primary);">${peer.address || 'Unknown'}</span>
+                                                </div>
+                                                <span style="font-size: 0.75rem; color: var(--text-muted);">Peer #${index + 1}</span>
+                                            </div>
+                                            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;">
+                                                <div>
+                                                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Version</div>
+                                                    <div style="font-size: 0.875rem; color: var(--text-primary);">${peer.version || '-'}</div>
+                                                </div>
+                                                <div>
+                                                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Height</div>
+                                                    <div style="font-size: 0.875rem; color: var(--text-primary);">${peer.height ? peer.height.toLocaleString() : '-'}</div>
+                                                </div>
+                                                <div>
+                                                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Ping</div>
+                                                    <div style="font-size: 0.875rem; color: ${peer.ping_ms < 100 ? 'var(--status-success)' : peer.ping_ms < 500 ? 'var(--status-warning)' : 'var(--status-error)'};">${peer.ping_ms ? peer.ping_ms + 'ms' : '-'}</div>
+                                                </div>
+                                                <div>
+                                                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Connected</div>
+                                                    <div style="font-size: 0.875rem; color: var(--text-primary);">${formatConnectionTime(peer.connected_since)}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        // No peers connected - show hint
+                        peerListHtml = `
+                            <div style="margin-top: 24px; padding: 16px; background: rgba(139, 92, 246, 0.1); border-left: 3px solid var(--btpc-primary); border-radius: 6px; font-size: 0.875rem; color: var(--text-secondary); text-align: center;">
+                                Enter a peer address above to connect.
+                            </div>
+                        `;
+                    }
+
+                    // Display peer summary with detailed list
+                    container.innerHTML = `
+                        <div style="padding: 40px 20px;">
+                            <div style="text-align: center; margin-bottom: 32px;">
+                                <div style="font-size: 3rem; font-weight: 600; color: var(--btpc-primary);">${Math.max(peerCount, peers.length)}</div>
+                                <div style="font-size: 1.125rem; color: var(--text-secondary); margin-top: 8px;">ACTIVE CONNECTIONS</div>
+                            </div>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+                                <div style="padding: 16px; background: var(--bg-card); border-radius: 8px; text-align: center;">
+                                    <div style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 8px;">Network</div>
+                                    <div style="font-size: 1rem; color: var(--status-success);">${(info.chain || 'mainnet').toUpperCase()}</div>
+                                </div>
+                                <div style="padding: 16px; background: var(--bg-card); border-radius: 8px; text-align: center;">
+                                    <div style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 8px;">Protocol</div>
+                                    <div style="font-size: 1rem; color: var(--status-success);">BTPC P2P</div>
+                                </div>
+                                <div style="padding: 16px; background: var(--bg-card); border-radius: 8px; text-align: center;">
+                                    <div style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 8px;">Status</div>
+                                    <div style="font-size: 1rem; color: var(--status-success);">ACTIVE</div>
+                                </div>
+                            </div>
+                            ${peerListHtml}
+                        </div>
+                    `;
+                }
+            } catch (e) {
+                console.log('Failed to refresh peers:', e);
+                const container = document.getElementById('peers-container');
+                container.innerHTML = `
+                    <div style="padding: 60px 20px; text-align: center;">
+                        <div style="font-size: 3rem; margin-bottom: 16px; opacity: 0.3;"><span class="icon icon-link" style="width: 48px; height: 48px;"></span></div>
+                        <div style="font-size: 1.125rem; color: var(--status-error); margin-bottom: 8px;">Unable to fetch peer information</div>
+                        <div style="color: var(--text-muted);">Please ensure the node is running</div>
+                    </div>
+                `;
+            }
+        }
+
+        async function refreshBlockchainInfo() {
+            if (!window.invoke) {
+                console.log('Tauri API not ready, skipping blockchain info refresh');
+                return;
+            }
+
+            try {
+                const info = await window.invoke('get_blockchain_info');
+                const height = info.height || 0;
+                const difficultyBits = info.difficulty_bits || info.difficulty || 0;
+                const connections = info.connections || 0;
+                const bestBlockHash = info.best_block_hash || info.bestblockhash || '-';
+
+                // Get network from backend config (user's selected network, not blockchain genesis)
+                let chain = info.chain || 'mainnet';
+                try {
+                    const networkConfig = await window.invoke('get_network_config');
+                    if (networkConfig && networkConfig.network) {
+                        chain = networkConfig.network.toUpperCase();
+                    }
+                } catch (e) {
+                    console.log('Could not fetch network config, using blockchain chain:', e);
+                }
+
+                document.getElementById('info-blocks').textContent = height.toLocaleString();
+                document.getElementById('info-chain').textContent = chain.toUpperCase();
+
+                // FIX 2025-12-30: Display difficulty as fractional bits with hex target
+                const diffDisplay = formatDifficultyBits(difficultyBits);
+                document.getElementById('info-difficulty').textContent = diffDisplay.display;
+                document.getElementById('info-difficulty-target').textContent = diffDisplay.target;
+
+                document.getElementById('info-network-nodes').textContent = connections;
+                document.getElementById('info-best-block').textContent = bestBlockHash;
+            } catch (e) {
+                console.log('Failed to refresh blockchain info:', e);
+            }
+        }
+
+        // REMOVED: Duplicate polling - using global updateManager instead (Article XI, Section 11.3)
+        function startStatusUpdates() {
+            // No longer creates duplicate interval - update manager handles this globally
+        }
+
+        function stopStatusUpdates() {
+            // No longer needed - update manager continues running
+        }
+
+        // Subscribe to updates (one-time only - prevent duplicate subscriptions causing stack overflow)
+        if (!window.nodePageSubscribed) {
+            window.nodePageSubscribed = true;
+            updateManager.subscribe((type, data, fullState) => {
+                if (type === 'node') {
+                    if (data.running) {
+                        document.getElementById('node-status').textContent = 'RUNNING';
+                        document.getElementById('node-status').style.color = 'var(--status-success)';
+                        updateNodeToggleButton(true);
+                        // FIX 2025-12-27: Only resume uptime if we don't already have a local tracker
+                        // startUptimeTracking() is called by startNode() when user clicks Start
+                        // This is for page loads/navigation when node is already running
+                        if (!nodeStartTime) resumeUptimeTracking();
+                    } else {
+                        document.getElementById('node-status').textContent = 'OFFLINE';
+                        document.getElementById('node-status').style.color = 'var(--btpc-primary)';
+                        updateNodeToggleButton(false);
+                        // Reset all status displays when node is off
+                        document.getElementById('sync-percent').textContent = '0%';
+                        document.getElementById('sync-percent').style.color = '';
+                        document.getElementById('peer-count').textContent = '0';
+                        const progressBar = document.getElementById('sync-progress-sidebar');
+                        if (progressBar) progressBar.style.width = '0%';
+                        // Reset Blockchain Info tab
+                        document.getElementById('info-chain').textContent = '-';
+                        document.getElementById('info-blocks').textContent = '0';
+                        document.getElementById('info-difficulty').textContent = '-';
+                        document.getElementById('info-difficulty-target').textContent = '-';
+                        document.getElementById('info-network-nodes').textContent = '0';
+                        document.getElementById('info-best-block').textContent = '-';
+                        // Stop uptime tracking
+                        if (nodeStartTime) stopUptimeTracking();
+                    }
+                } else if (type === 'blockchain') {
+                    const height = data.height || 0;
+                    document.getElementById('info-blocks').textContent = height.toLocaleString();
+                    document.getElementById('info-best-block').textContent = data.best_block_hash || data.bestblockhash || '-';
+
+                    // Get network from backend config (user's selected network, not blockchain genesis)
+                    (async () => {
+                        try {
+                            const networkConfig = await window.invoke('get_network_config');
+                            if (networkConfig && networkConfig.network) {
+                                document.getElementById('info-chain').textContent = networkConfig.network.toUpperCase();
+                            } else {
+                                document.getElementById('info-chain').textContent = (data.chain || 'mainnet').toUpperCase();
+                            }
+                        } catch (e) {
+                            document.getElementById('info-chain').textContent = (data.chain || 'mainnet').toUpperCase();
+                        }
+                    })();
+
+                    // Update difficulty - FIX 2025-12-30: Use fractional bits display
+                    const difficultyBits = data.difficulty_bits || data.difficulty;
+                    if (difficultyBits !== undefined) {
+                        const diffDisplay = formatDifficultyBits(difficultyBits);
+                        document.getElementById('info-difficulty').textContent = diffDisplay.display;
+                        document.getElementById('info-difficulty-target').textContent = diffDisplay.target;
+                    }
+
+                    // Update peer count
+                    if (data.connections !== undefined) {
+                        const peerCount = data.connections;
+                        document.getElementById('peer-count').textContent = peerCount;
+                        document.getElementById('info-network-nodes').textContent = peerCount;
+                    }
+
+                    // Update sync progress
+                    const syncPercent = document.getElementById('sync-percent');
+                    const syncProgressBar = document.getElementById('sync-progress-sidebar');
+                    if (data.sync_progress !== undefined) {
+                        const progress = data.sync_progress.toFixed(1);
+                        syncPercent.textContent = `${progress}%`;
+                        if (syncProgressBar) syncProgressBar.style.width = `${progress}%`;
+
+                        // Update color based on sync status
+                        if (data.is_synced) {
+                            syncPercent.style.color = 'var(--status-success)';
+                        } else if (data.sync_progress > 0) {
+                            syncPercent.style.color = 'var(--status-warning)';
+                        } else {
+                            syncPercent.style.color = '';
+                        }
+                    } else if (data.headers && height) {
+                        // Fallback calculation
+                        const progress = Math.min(100, (height / data.headers) * 100).toFixed(1);
+                        syncPercent.textContent = `${progress}%`;
+                        if (syncProgressBar) syncProgressBar.style.width = `${progress}%`;
+                    }
+                } else if (type === 'wallet') {
+                    document.getElementById('wallet-balance').textContent = (data.balance || 0).toFixed(8);
+                    const spendableEl = document.getElementById('spendable-balance');
+                    if (spendableEl) spendableEl.textContent = (data.spendable_balance || 0).toFixed(8);
+                }
+            });
+        }
+
+        // REMOVED: initNodePage() - No longer needed
+        // updateManager subscription (lines 540-609) handles all status updates automatically
+        // Only initialize peers display on page load
+        // Disk space display moved to Settings > Disk Space tab (FR-058)
+        function initNodePage() {
+            if (window.invoke) {
+                refreshPeers();
+            } else {
+                setTimeout(initNodePage, 200);
+            }
+        }
+        initNodePage();
+
+        // REMOVED: setupStateManagerEvents() - Duplicate of updateManager subscription
+        // The StateManager event listener was competing with updateManager polling (lines 542-608)
+        // causing buttons to toggle back and forth. All node status updates now handled
+        // exclusively by updateManager subscription to prevent race conditions.
+
+        // REMOVED: Duplicate 10-second interval - update manager handles this (Article XI, Section 11.3)
+        // REMOVED: Page-specific update manager start - handled globally in btpc-common.js
+        // Close modals when clicking outside
+        window.addEventListener('click', (event) => {
+            const successModal = document.getElementById('success-modal');
+            if (event.target === successModal) {
+                closeSuccessModal();
+            }
+
+            const errorModal = document.getElementById('error-modal');
+            if (event.target === errorModal) {
+                closeErrorModal();
+            }
+
+            const restartModal = document.getElementById('restart-confirm-modal');
+            if (event.target === restartModal) {
+                closeRestartConfirmModal();
+            }
+        });
+    </script>
+
+    <!-- Success Modal -->
+    <div id="success-modal" class="modal">
+        <div class="modal-content" style="max-width: 450px;">
+            <div class="modal-header">
+                <h2>Success</h2>
+                <button class="modal-close" onclick="closeSuccessModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="margin-bottom: 16px; color: var(--text-secondary);">
+                    <span id="success-message"></span>
+                </div>
+
+                <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                    <button class="btn btn-primary" onclick="closeSuccessModal()">OK</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Error Modal -->
+    <div id="error-modal" class="modal">
+        <div class="modal-content" style="max-width: 450px;">
+            <div class="modal-header">
+                <h2>Error</h2>
+                <button class="modal-close" onclick="closeErrorModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="margin-bottom: 16px; color: var(--status-error);">
+                    <span id="error-message"></span>
+                </div>
+
+                <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                    <button class="btn btn-primary" onclick="closeErrorModal()">OK</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Restart Confirmation Modal -->
+    <div id="restart-confirm-modal" class="modal">
+        <div class="modal-content" style="max-width: 450px;">
+            <div class="modal-header">
+                <h2>Confirm Node Restart</h2>
+                <button class="modal-close" onclick="closeRestartConfirmModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="margin-bottom: 16px; color: var(--text-secondary);">
+                    Are you sure you want to restart the node? This will temporarily interrupt your connection to the BTPC network.
+                </div>
+
+                <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                    <button class="btn btn-secondary" onclick="closeRestartConfirmModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="confirmRestartNode()">Restart Node</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Password Modal for Wallet Encryption -->
+    <div id="password-modal-overlay">
+        <div class="password-modal">
+            <h2 id="modal-title">🔒 Unlock Your Wallets</h2>
+            <p id="modal-description">Enter your master password to access your encrypted wallet metadata.</p>
+
+            <div id="migration-notice" class="migration-notice">
+                <h3>⚡ Upgrade to Encrypted Wallets</h3>
+                <p>Your wallet metadata is currently stored in plaintext. For better security, we recommend encrypting it with a master password.</p>
+                <ul>
+                    <li>Encrypts wallet addresses and balances</li>
+                    <li>Protects against unauthorized access</li>
+                    <li>Creates backup before migration</li>
+                </ul>
+                <p style="margin-top: 10px;"><strong>Choose a strong password and remember it!</strong> Without it, you won't be able to access your wallets.</p>
+            </div>
+
+            <div class="password-input-group">
+                <label for="master-password">Master Password</label>
+                <div class="password-input-wrapper">
+                    <input type="password" id="master-password" placeholder="Enter your password" autocomplete="current-password" />
+                    <button type="button" class="toggle-password" id="toggle-password" title="Show/hide password">👁️</button>
+                </div>
+            </div>
+
+            <div id="password-error" class="password-error"></div>
+
+            <div id="password-loading" class="password-loading">
+                <div class="spinner"></div>
+                <p>Unlocking wallets...</p>
+            </div>
+
+            <div class="password-modal-buttons">
+                <button type="button" class="btn-unlock" id="btn-unlock">Unlock Wallets</button>
+                <button type="button" class="btn-cancel" id="btn-cancel" style="display: none;">Cancel</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

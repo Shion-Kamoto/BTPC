@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- FIX: Prevent WebView from caching old page content -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>BTPC Wallet - Login</title>
+    <link rel="stylesheet" href="btpc-styles.css">
+    <style>
+        /* Login-specific styles */
+        .login-container {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg-primary);
+            padding: 20px;
+        }
+
+        .login-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 48px 40px;
+            max-width: 420px;
+            width: 100%;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .login-icon {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 24px;
+            background: linear-gradient(135deg, rgba(99,102,241,0.2) 0%, rgba(139,92,246,0.2) 100%);
+            border: 2px solid var(--border-color);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .login-icon img {
+            width: 36px;
+            height: 36px;
+            filter: brightness(0) invert(1);
+        }
+
+        .login-title {
+            font-size: 1.75rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+
+        .login-subtitle {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+        }
+
+        .login-form {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .form-label {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+
+        .form-input {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-size: 1rem;
+            color: var(--text-primary);
+            transition: all 0.2s;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--btpc-primary);
+            box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+        }
+
+        .form-input:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .password-requirements {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            padding: 8px 12px;
+            background: rgba(99,102,241,0.05);
+            border: 1px solid rgba(99,102,241,0.1);
+            border-radius: 6px;
+            line-height: 1.5;
+        }
+
+        .error-message {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 8px;
+            padding: 12px 16px;
+            color: var(--status-error);
+            font-size: 0.875rem;
+            display: none;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
+        .success-message {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 8px;
+            padding: 12px 16px;
+            color: var(--status-success);
+            font-size: 0.875rem;
+            display: none;
+        }
+
+        .success-message.show {
+            display: block;
+        }
+
+        .submit-btn {
+            background: var(--btpc-primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 14px 24px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 8px;
+        }
+
+        .submit-btn:hover:not(:disabled) {
+            background: #4F46E5;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(99,102,241,0.4);
+        }
+
+        .submit-btn:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        .submit-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .footer-text {
+            text-align: center;
+            margin-top: 24px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        /* Password Strength Meter (T174 - FR-001) */
+        .password-strength-container {
+            margin-top: 8px;
+        }
+
+        .password-strength-bar {
+            height: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 6px;
+        }
+
+        .password-strength-fill {
+            height: 100%;
+            width: 0%;
+            transition: all 0.3s ease;
+            border-radius: 3px;
+        }
+
+        .password-strength-fill.weak {
+            width: 25%;
+            background: #ef4444;
+        }
+
+        .password-strength-fill.fair {
+            width: 50%;
+            background: #f59e0b;
+        }
+
+        .password-strength-fill.good {
+            width: 75%;
+            background: #3b82f6;
+        }
+
+        .password-strength-fill.strong {
+            width: 100%;
+            background: #10b981;
+        }
+
+        .password-strength-text {
+            font-size: 0.75rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .password-strength-label {
+            font-weight: 500;
+        }
+
+        .password-strength-label.weak { color: #ef4444; }
+        .password-strength-label.fair { color: #f59e0b; }
+        .password-strength-label.good { color: #3b82f6; }
+        .password-strength-label.strong { color: #10b981; }
+
+        .entropy-bits {
+            color: var(--text-muted);
+            font-family: 'SF Mono', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <!-- FIX: Hide card initially to prevent flash of cached old content -->
+        <div class="login-card" id="login-card" style="opacity: 0; transition: opacity 0.15s ease-in;">
+            <div class="login-header">
+                <div class="login-icon">
+                    <img src="src/assets/icons-svg/lock.svg" alt="Lock Icon">
+                </div>
+                <h1 class="login-title" id="login-title">Welcome to BTPC</h1>
+                <p class="login-subtitle" id="login-subtitle">Loading...</p>
+                <p class="login-subtitle" style="color: var(--btpc-primary); margin-top: 8px; font-weight: 500;">Application Master Password</p>
+            </div>
+
+            <!-- Error Message -->
+            <div class="error-message" id="error-message"></div>
+
+            <!-- Success Message -->
+            <div class="success-message" id="success-message"></div>
+
+            <!-- Create Password Form (First Launch) -->
+            <form class="login-form" id="create-password-form" style="display: none;">
+                <div class="form-group">
+                    <label for="new-password" class="form-label">Master Password</label>
+                    <input
+                        type="password"
+                        id="new-password"
+                        class="form-input"
+                        placeholder="Enter a strong password"
+                        minlength="8"
+                        required
+                    >
+                    <!-- Password Strength Meter (T174 - FR-001: 80 bits entropy required) -->
+                    <div class="password-strength-container" id="strength-container" style="display: none;">
+                        <div class="password-strength-bar">
+                            <div class="password-strength-fill" id="strength-fill"></div>
+                        </div>
+                        <div class="password-strength-text">
+                            <span class="password-strength-label" id="strength-label">Weak</span>
+                            <span class="entropy-bits" id="entropy-bits">0 bits</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="confirm-password" class="form-label">Confirm Password</label>
+                    <input
+                        type="password"
+                        id="confirm-password"
+                        class="form-input"
+                        placeholder="Re-enter your password"
+                        minlength="8"
+                        required
+                    >
+                </div>
+
+                <div class="password-requirements">
+                    <strong>Password Requirements:</strong><br>
+                    • Minimum 12 characters<br>
+                    • Use a unique password (not used elsewhere)<br>
+                    • Store in a secure password manager
+                </div>
+
+                <button type="submit" class="submit-btn" id="create-btn">
+                    Create Master Password
+                </button>
+            </form>
+
+            <!-- Login Form (Subsequent Launches) -->
+            <form class="login-form" id="login-form" style="display: none;">
+                <div class="form-group">
+                    <label for="password" class="form-label">Master Password</label>
+                    <input
+                        type="password"
+                        id="password"
+                        class="form-input"
+                        placeholder="Enter your password"
+                        required
+                        autofocus
+                    >
+                </div>
+
+                <button type="submit" class="submit-btn" id="login-btn">
+                    Login
+                </button>
+            </form>
+
+            <div class="footer-text">
+                BTPC Wallet v1.0 | Quantum-Resistant Cryptocurrency<br>
+                <span style="color: var(--text-muted); font-size: 0.7rem;">
+                    Secured with AES-256-GCM + Argon2id
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <script src="btpc-tauri-context.js"></script>
+    <script src="btpc-event-listeners.js"></script>
+    <script src="btpc-navigation-guard.js"></script>
+    <script>
+
+        // Import Tauri API
+        const { invoke } = window.btpcInvoke || window.__TAURI__.core;
+
+        // DOM elements
+        const loginTitle = document.getElementById('login-title');
+        const loginSubtitle = document.getElementById('login-subtitle');
+        const createPasswordForm = document.getElementById('create-password-form');
+        const loginForm = document.getElementById('login-form');
+        const errorMessage = document.getElementById('error-message');
+        const successMessage = document.getElementById('success-message');
+
+        // Show error message
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.classList.add('show');
+            successMessage.classList.remove('show');
+        }
+
+        // Show success message
+        function showSuccess(message) {
+            successMessage.textContent = message;
+            successMessage.classList.add('show');
+            errorMessage.classList.remove('show');
+        }
+
+        // Hide all messages
+        function hideMessages() {
+            errorMessage.classList.remove('show');
+            successMessage.classList.remove('show');
+        }
+
+        // T174 - Password Entropy Calculator (FR-001: 80 bits minimum)
+        // Uses NIST SP 800-63B inspired entropy estimation
+        function calculatePasswordEntropy(password) {
+            if (!password || password.length === 0) return 0;
+
+            // Character set size calculation
+            let charsetSize = 0;
+            if (/[a-z]/.test(password)) charsetSize += 26; // lowercase
+            if (/[A-Z]/.test(password)) charsetSize += 26; // uppercase
+            if (/[0-9]/.test(password)) charsetSize += 10; // digits
+            if (/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(password)) charsetSize += 32; // special chars
+            if (/\s/.test(password)) charsetSize += 1; // space
+
+            // Basic entropy: log2(charsetSize^length) = length * log2(charsetSize)
+            const basicEntropy = password.length * Math.log2(charsetSize || 1);
+
+            // Penalty for common patterns (reduces entropy)
+            let penalty = 0;
+
+            // Repeated characters penalty
+            const repeats = password.match(/(.)\1{2,}/g);
+            if (repeats) penalty += repeats.length * 5;
+
+            // Sequential characters penalty (abc, 123, etc.)
+            const sequences = password.match(/(abc|bcd|cde|def|efg|fgh|ghi|hij|ijk|jkl|klm|lmn|mno|nop|opq|pqr|qrs|rst|stu|tuv|uvw|vwx|wxy|xyz|012|123|234|345|456|567|678|789)/gi);
+            if (sequences) penalty += sequences.length * 5;
+
+            // Keyboard patterns penalty (qwerty, asdf, etc.)
+            const keyboard = password.match(/(qwert|asdf|zxcv|qazwsx|1qaz|2wsx)/gi);
+            if (keyboard) penalty += keyboard.length * 10;
+
+            // Common words penalty
+            const commonWords = ['password', 'bitcoin', 'wallet', '123456', 'qwerty', 'admin', 'letmein', 'welcome'];
+            for (const word of commonWords) {
+                if (password.toLowerCase().includes(word)) penalty += 20;
+            }
+
+            return Math.max(0, basicEntropy - penalty);
+        }
+
+        function updatePasswordStrength(password) {
+            const container = document.getElementById('strength-container');
+            const fill = document.getElementById('strength-fill');
+            const label = document.getElementById('strength-label');
+            const bits = document.getElementById('entropy-bits');
+
+            if (!password || password.length === 0) {
+                container.style.display = 'none';
+                return;
+            }
+
+            container.style.display = 'block';
+            const entropy = calculatePasswordEntropy(password);
+
+            // Update entropy display
+            bits.textContent = `${Math.round(entropy)} bits`;
+
+            // Clear previous classes
+            fill.className = 'password-strength-fill';
+            label.className = 'password-strength-label';
+
+            // FR-001: 80 bits is the threshold for "strong"
+            if (entropy < 40) {
+                fill.classList.add('weak');
+                label.classList.add('weak');
+                label.textContent = 'Weak';
+            } else if (entropy < 60) {
+                fill.classList.add('fair');
+                label.classList.add('fair');
+                label.textContent = 'Fair';
+            } else if (entropy < 80) {
+                fill.classList.add('good');
+                label.classList.add('good');
+                label.textContent = 'Good';
+            } else {
+                fill.classList.add('strong');
+                label.classList.add('strong');
+                label.textContent = 'Strong (80+ bits)';
+            }
+        }
+
+        // Attach real-time password strength meter
+        document.getElementById('new-password').addEventListener('input', (e) => {
+            updatePasswordStrength(e.target.value);
+        });
+
+        // Check if master password exists (first launch vs subsequent launch)
+        // T011-001: Updated to use check_wallet_lock_status (existing command)
+        async function checkFirstLaunch() {
+            try {
+                // check_wallet_lock_status returns boolean: true if locked, false if unlocked/no wallets
+                const isLocked = await invoke('check_wallet_lock_status');
+
+                if (isLocked) {
+                    // Wallets exist and are locked - show login form
+                    loginTitle.textContent = 'Welcome Back';
+                    loginSubtitle.textContent = 'Enter your master password to continue';
+                    loginForm.style.display = 'flex';
+                    createPasswordForm.style.display = 'none';
+                } else {
+                    // First launch or no wallets - show create password form
+                    loginTitle.textContent = 'Create Master Password';
+                    loginSubtitle.textContent = 'Secure your wallet with a master password';
+                    createPasswordForm.style.display = 'flex';
+                    loginForm.style.display = 'none';
+                }
+
+                // FIX: Reveal card after determining correct view (prevents cached content flash)
+                document.getElementById('login-card').style.opacity = '1';
+
+                // FIX: Explicitly request GTK-level keyboard focus for the WebView.
+                // On Linux/WebKitGTK the window may have OS focus while the WebView
+                // widget doesn't hold GTK keyboard focus, blocking all keystrokes.
+                try {
+                    if (window.__TAURI__?.window?.getCurrent) {
+                        await window.__TAURI__.window.getCurrent().setFocus();
+                    } else if (window.__TAURI__?.window?.appWindow) {
+                        await window.__TAURI__.window.appWindow.setFocus();
+                    }
+                } catch (_) { /* non-fatal */ }
+
+                // Focus the visible password input after the window grabs focus
+                // 200ms gives WebKitGTK time to settle after setFocus() before focusing the input
+                setTimeout(() => {
+                    const visibleInput = document.querySelector('.login-form[style*="flex"] input[type="password"]');
+                    if (visibleInput) visibleInput.focus();
+                }, 200);
+            } catch (error) {
+                console.error('Failed to check wallet lock status:', error);
+                showError('Failed to initialize authentication system');
+                // Still show the card on error so user sees the error message
+                document.getElementById('login-card').style.opacity = '1';
+            }
+        }
+
+        // Handle create password form submission
+        createPasswordForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            hideMessages();
+
+            const password = document.getElementById('new-password').value;
+            const confirmPassword = document.getElementById('confirm-password').value;
+            const createBtn = document.getElementById('create-btn');
+
+            // Client-side validation
+            if (password.length < 8) {
+                showError('Password must be at least 8 characters long');
+                return;
+            }
+
+            if (password !== confirmPassword) {
+                showError('Passwords do not match');
+                return;
+            }
+
+            // Disable button and show loading
+            createBtn.disabled = true;
+            createBtn.innerHTML = '<span class="loading-spinner"></span>Creating...';
+
+            try {
+                // FIX 2025-12-10: Use create_master_password for fresh installs
+                // migrate_to_encrypted requires wallets_metadata.json which doesn't exist on fresh install
+                const result = await invoke('create_master_password', {
+                    password: password,
+                    password_confirm: confirmPassword
+                });
+
+                // create_master_password returns { success: bool, message?: string, error?: string }
+                if (result.success) {
+                    showSuccess('Master password created successfully! Redirecting...');
+                    setTimeout(() => {
+                        window.location.href = 'index.html';
+                    }, 1500);
+                } else {
+                    // Map error codes to user-friendly messages
+                    const errorMessages = {
+                        'PASSWORD_TOO_SHORT': 'Password must be at least 8 characters',
+                        'PASSWORDS_DONT_MATCH': 'Passwords do not match',
+                        'CREDENTIALS_ALREADY_EXIST': 'Master password already exists. Please login instead.',
+                        'ENCRYPTION_FAILED': 'Failed to encrypt credentials. Please try again.',
+                    };
+                    const errorKey = result.error || '';
+                    const errorMsg = errorKey.startsWith('PASSWORD_TOO_WEAK')
+                        ? 'Password is too weak. Use a stronger password with mix of characters.'
+                        : (errorMessages[errorKey] || result.error || 'An unexpected error occurred');
+                    showError(errorMsg);
+                    createBtn.disabled = false;
+                    createBtn.textContent = 'Create Master Password';
+                }
+            } catch (error) {
+                console.error('Create password error:', error);
+                // Error is thrown as string by backend
+                showError(error.toString() || 'An unexpected error occurred');
+                createBtn.disabled = false;
+                createBtn.textContent = 'Create Master Password';
+            }
+        });
+
+        // Handle login form submission
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            hideMessages();
+
+            const password = document.getElementById('password').value;
+            const loginBtn = document.getElementById('login-btn');
+
+            if (!password) {
+                showError('Please enter your password');
+                return;
+            }
+
+            // Disable button and show loading
+            loginBtn.disabled = true;
+            loginBtn.innerHTML = '<span class="loading-spinner"></span>Logging in...';
+
+            try {
+                // T011-001: Use unlock_wallets (existing command) instead of login
+                const result = await invoke('unlock_wallets', { password });
+
+                // unlock_wallets returns string "Wallets unlocked successfully" on success
+                showSuccess('Login successful! Redirecting...');
+                setTimeout(() => {
+                    window.location.href = 'index.html';
+                }, 1000);
+            } catch (error) {
+                console.error('Login error:', error);
+                // Error is thrown as string by backend (e.g., "Incorrect password")
+                // Show the actual backend error message instead of generic message
+                const errorStr = typeof error === 'string' ? error : (error.message || error.toString());
+                showError(errorStr || 'Authentication failed. Please check your password.');
+                loginBtn.disabled = false;
+                loginBtn.textContent = 'Login';
+                // Clear password field on error
+                document.getElementById('password').value = '';
+            }
+        });
+
+        // Initialize on page load
+        window.addEventListener('DOMContentLoaded', checkFirstLaunch);
+    </script>
+</body>
+</html>

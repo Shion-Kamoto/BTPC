@@ -1,0 +1,22 @@
+[package]
+name = "btpc_miner"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+btpc-core = { path = "../../btpc-core" }
+tokio = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+num_cpus = "1.16"
+rand = "0.8"
+reqwest = { version = "0.11", features = ["blocking", "json"] }
+hex = "0.4"
+# OpenCL for GPU mining
+ocl = { version = "0.19", optional = true }
+
+[features]
+default = []
+gpu = ["ocl"]
