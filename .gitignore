@@ -18,9 +18,41 @@ Cargo.lock
 # Tauri
 btpc-desktop-app/src-tauri/target/
 
-# Node modules
+# Node modules (at any depth)
 node_modules/
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Logs
+*.log
+*.log.*
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Backup files
+*.backup
+
+# PID files
+*.pid
+
+# E2E test runtime data (binary DB files, logs, pids)
+e2e-test/node-data/
+e2e-test/logs/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Cargo local config cache
+.cargo/
+
+# Serena AI tool internal state
+.serena/
+
+# Temp/modified files
+*.modified
