@@ -56,13 +56,8 @@ pub mod stratum;
 // Note: fee_estimator is NOT exported here because it depends on EmbeddedNode
 // which creates circular import issues. It's declared in main.rs instead.
 
-// Command modules
-pub mod commands;
-
-// Wallet and auth commands
-pub mod wallet_commands;
-
-pub mod auth_commands;
+// Note: commands, wallet_commands, and auth_commands are declared in main.rs
+// because they depend on AppState and other binary-only modules.
 
 // Also re-export common items for convenience
 pub use embedded_node::{
