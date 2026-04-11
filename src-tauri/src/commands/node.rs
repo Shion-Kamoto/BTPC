@@ -1,9 +1,11 @@
 //! Node-related Tauri commands for the BTPC desktop application
 //!
 //! This module handles node lifecycle management and blockchain synchronization.
+//! Feature 013: Uses embedded blockchain node (no external btpc_node binary required).
 
 use std::fs;
 use std::io::Write;
+use std::sync::atomic::Ordering;
 use tauri::State;
 
 use crate::error::BtpcError;
@@ -11,64 +13,39 @@ use crate::sync_service::{BlockchainSyncService, SyncConfig, SyncStats};
 use crate::AppState;
 
 // ============================================================================
-// Node Lifecycle Commands
+// Node Lifecycle Commands (Embedded Node - Feature 013)
 // ============================================================================
 
 #[tauri::command]
 pub async fn start_node(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<String, String> {
-    // Check if node is already running using ProcessManager
-    if state.process_manager.is_running("node") {
+    // Check if node is already active via the embedded node flag
+    if state.node_active.load(Ordering::SeqCst) {
         return Ok("Node is already running".to_string());
     }
 
-    let bin_path = state.config.btpc_home.join("bin").join("btpc_node");
-
-    if !bin_path.exists() {
-        return Err("Node binary not found. Please run setup first.".to_string());
-    }
-
-    let data_dir = state.config.data_dir.join("desktop-node");
-    let log_file = state.config.log_dir.join("node.log");
-    let err_file = state.config.log_dir.join("node.err");
-
-    // Ensure directories exist
-    fs::create_dir_all(&data_dir).map_err(|e| format!("Failed to create data dir: {}", e))?;
+    // Ensure log directory exists
     fs::create_dir_all(&state.config.log_dir)
         .map_err(|e| format!("Failed to create log dir: {}", e))?;
 
     // Get active network configuration
     let active_network = state.active_network.read().await.clone();
-    let active_p2p_port = *state.active_p2p_port.read().await;
-    let active_rpc_port = *state.active_rpc_port.read().await;
 
-    let listen_addr = format!("0.0.0.0:{}", active_p2p_port);
-    let args = vec![
-        "--network".to_string(),
-        active_network.to_string(),
-        "--datadir".to_string(),
-        data_dir.to_string_lossy().to_string(),
-        "--rpcport".to_string(),
-        active_rpc_port.to_string(),
-        "--rpcbind".to_string(),
-        "127.0.0.1".to_string(),
-        "--listen".to_string(),
-        listen_addr,
-    ];
+    // Start embedded node sync
+    {
+        let mut node = state.embedded_node.write().await;
+        node.start_sync()
+            .await
+            .map_err(|e| format!("Failed to start embedded node sync: {}", e))?;
+    }
 
-    // Use ProcessManager for detached process (survives page navigation)
-    let process_info = state.process_manager.start_detached(
-        "node".to_string(),
-        bin_path.to_string_lossy().to_string(),
-        args,
-        Some(log_file.clone()),
-        Some(err_file),
-    )?;
+    // Mark node as active
+    state.node_active.store(true, Ordering::SeqCst);
 
     // Update status (old SystemStatus for backward compatibility)
     {
         let mut status = state.status.write().await;
         status.node_status = "Running".to_string();
-        status.node_pid = Some(process_info.pid);
+        status.node_pid = None; // Embedded node has no separate PID
     }
 
     // Update NodeStatus via StateManager (Article XI - auto-emits node_status_changed event)
@@ -77,32 +54,26 @@ pub async fn start_node(app: tauri::AppHandle, state: State<'_, AppState>) -> Re
         .update(
             |status| {
                 status.running = true;
-                status.pid = Some(process_info.pid);
+                status.pid = None; // No separate process - embedded node
                 status.network = active_network.to_string();
             },
             &app,
         )
         .map_err(|e| format!("Failed to update node status: {}", e))?;
 
-    println!("📡 StateManager auto-emitted node_status_changed event: running");
+    println!("📡 Embedded node started — StateManager auto-emitted node_status_changed event: running");
 
-    // Write initial status to log file since node runs silently
-    let initial_log_message = format!("Node started successfully at {} (PID: {})\nListening and synchronizing blockchain data...\nNetwork: {}\nRPC Port: {}\nP2P Port: {}\nData directory: {}\n",
+    // Write status to log file
+    let log_file = state.config.log_dir.join("node.log");
+    let log_message = format!(
+        "Embedded node started at {}\nNetwork: {}\nMode: in-process (no external binary)\n",
         chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC"),
-        process_info.pid,
         active_network,
-        active_rpc_port,
-        active_p2p_port,
-        data_dir.display()
     );
-    let _ = fs::write(&log_file, initial_log_message);
+    let _ = fs::write(&log_file, log_message);
 
     // Auto-start blockchain synchronization service if RPC is enabled
     if state.config.node.enable_rpc {
-        // Give the node a moment to start up before attempting sync
-        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-
-        // Get fork_id before acquiring sync_service lock (avoid holding MutexGuard across await)
         let fork_id = state.active_network.read().await.fork_id();
 
         let mut sync_service_guard = state
@@ -110,7 +81,6 @@ pub async fn start_node(app: tauri::AppHandle, state: State<'_, AppState>) -> Re
             .lock()
             .map_err(|_| BtpcError::mutex_poison("sync_service", "start_node").to_string())?;
 
-        // Only start if not already running
         if sync_service_guard.is_none() {
             let sync_config = SyncConfig {
                 rpc_host: state.config.rpc.host.clone(),
@@ -128,22 +98,18 @@ pub async fn start_node(app: tauri::AppHandle, state: State<'_, AppState>) -> Re
                 }
                 Err(e) => {
                     eprintln!("⚠️ Failed to auto-start blockchain sync: {}", e);
-                    // Don't fail node startup if sync fails to start
                 }
             }
         }
     }
 
-    Ok(format!(
-        "Node started successfully (PID: {})",
-        process_info.pid
-    ))
+    Ok("Node started successfully (embedded)".to_string())
 }
 
 #[tauri::command]
 pub async fn stop_node(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<String, String> {
-    // Check if node is actually running before attempting to kill
-    if !state.process_manager.is_running("node") {
+    // Check if node is active
+    if !state.node_active.load(Ordering::SeqCst) {
         // Node is not running, but update state to ensure consistency
         state
             .node_status
@@ -161,7 +127,16 @@ pub async fn stop_node(app: tauri::AppHandle, state: State<'_, AppState>) -> Res
         return Ok("Node is already stopped".to_string());
     }
 
-    state.process_manager.kill("node")?;
+    // Stop embedded node sync
+    {
+        let mut node = state.embedded_node.write().await;
+        node.stop_sync()
+            .await
+            .map_err(|e| format!("Failed to stop embedded node sync: {}", e))?;
+    }
+
+    // Mark node as inactive
+    state.node_active.store(false, Ordering::SeqCst);
 
     // Stop blockchain sync service if running
     {
@@ -198,12 +173,12 @@ pub async fn stop_node(app: tauri::AppHandle, state: State<'_, AppState>) -> Res
         )
         .map_err(|e| format!("Failed to update node status: {}", e))?;
 
-    println!("📡 StateManager auto-emitted node_status_changed event: stopped");
+    println!("📡 Embedded node stopped — StateManager auto-emitted node_status_changed event: stopped");
 
     // Append stop message to log file
     let log_file = state.config.log_dir.join("node.log");
     let stop_message = format!(
-        "Node stopped at {} by user request\n",
+        "Embedded node stopped at {} by user request\n",
         chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
     );
     let _ = fs::OpenOptions::new()
@@ -217,20 +192,29 @@ pub async fn stop_node(app: tauri::AppHandle, state: State<'_, AppState>) -> Res
 
 #[tauri::command]
 pub async fn get_node_status(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    let running = state.process_manager.is_running("node");
+    let running = state.node_active.load(Ordering::SeqCst);
 
-    let (pid, status_str) = if running {
-        let info = state.process_manager.get_info("node");
-        (info.map(|i| i.pid), "running")
+    // Get additional info from embedded node if running
+    let (block_height, peer_count) = if running {
+        let node = state.embedded_node.read().await;
+        let height = node.get_blockchain_state().await
+            .map(|s| s.current_height)
+            .unwrap_or(0);
+        let peers = node.get_sync_progress()
+            .map(|p| p.connected_peers)
+            .unwrap_or(0);
+        (height, peers)
     } else {
-        (None, "stopped")
+        (0, 0)
     };
 
     Ok(serde_json::json!({
         "is_running": running,
-        "running": running,  // Keep both for compatibility
-        "status": status_str,
-        "pid": pid
+        "running": running,
+        "status": if running { "running" } else { "stopped" },
+        "pid": null,
+        "block_height": block_height,
+        "peer_count": peer_count
     }))
 }
 
