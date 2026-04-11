@@ -9,7 +9,8 @@
  * - Dark theme matching HiveOS aesthetic
  */
 
-const { invoke } = window.__TAURI__.core;
+// Use the lazy invoke proxy from btpc-tauri-context.js (production-safe)
+const invoke = window.invoke;
 
 class GpuDashboardManager {
     constructor() {

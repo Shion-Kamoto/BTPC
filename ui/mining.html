@@ -1055,19 +1055,18 @@
 
         // Initialize Tauri event listeners for mining events
         async function initMiningActivityListener() {
-            // Wait for Tauri API to be fully loaded
-            // Tauri 2.0 uses window.__TAURI__.event.listen
-            const listen = window.__TAURI__?.event?.listen;
-            if (!listen) {
+            // Wait for Tauri API to be fully loaded (use lazy proxy)
+            if (!window.tauriListen) {
                 console.log('[Mining] Tauri event API not ready, retrying in 500ms...');
                 setTimeout(() => initMiningActivityListener(), 500);
                 return;
             }
-            console.log('[Mining] Tauri event API found:', typeof listen);
+            const listen = window.tauriListen;
+            console.log('[Mining] Tauri event API found (lazy proxy)');
 
             try {
                 // Listen for mining_activity events pushed from backend every 500ms
-                activityEventUnlisten = await window.__TAURI__.event.listen('mining_activity', (event) => {
+                activityEventUnlisten = await window.tauriListen('mining_activity', (event) => {
                     // FIX 2025-12-10: Handle both possible payload structures
                     // Tagged enum: { type: "MiningActivity", data: {...} }
                     // Direct data: { device_id: ..., hashrate: ..., ... }
@@ -1094,7 +1093,7 @@
                 console.log('[Mining] ✅ Real-time mining activity listener initialized');
 
                 // Listen for block_mined events for notifications
-                blockMinedUnlisten = await window.__TAURI__.event.listen('block_mined', (event) => {
+                blockMinedUnlisten = await window.tauriListen('block_mined', (event) => {
                     const data = event.payload?.data || event.payload;
                     if (data) {
                         // Calculate block reward using linear decay
@@ -1148,7 +1147,7 @@
                 // FIX 2025-12-08: Listen for block_construction events (COINBASE, MERKLE, HEADER)
                 // Replaces polling-based log fetch with event-driven updates from backend
                 // Note: MiningEvent uses #[serde(tag = "type", content = "data")] so payload is { type, data }
-                blockConstructionUnlisten = await window.__TAURI__.event.listen('block_construction', (event) => {
+                blockConstructionUnlisten = await window.tauriListen('block_construction', (event) => {
                     const payload = event.payload?.data || event.payload; // Handle tagged enum structure
                     if (payload && payload.log_type && payload.message) {
                         const time = new Date().toLocaleTimeString('en-US', { hour12: false });
@@ -1205,7 +1204,7 @@
 
                 // Peer connectivity monitor events (mainnet/testnet only)
                 // Auto-pause mining when no peers connected to prevent orphaned blocks
-                peerPausedUnlisten = await window.__TAURI__.event.listen('mining_paused', (event) => {
+                peerPausedUnlisten = await window.tauriListen('mining_paused', (event) => {
                     const data = event.payload || {};
                     console.log('[Mining] Mining paused due to peer loss:', data);
 
@@ -1221,7 +1220,7 @@
                     isMiningPausedByPeers = true;
                 });
 
-                peerResumedUnlisten = await window.__TAURI__.event.listen('mining_resumed', (event) => {
+                peerResumedUnlisten = await window.tauriListen('mining_resumed', (event) => {
                     const data = event.payload || {};
                     console.log('[Mining] Peers reconnected, auto-resuming mining:', data);
 

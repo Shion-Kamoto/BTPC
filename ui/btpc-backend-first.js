@@ -40,8 +40,8 @@ async function updateSetting(setting) {
         localStorage.setItem(setting.key, setting.value);
 
         // Step 4: Emit event for cross-page synchronization
-        if (window.__TAURI__ && window.__TAURI__.emit) {
-            window.__TAURI__.emit('setting-updated', setting);
+        if (window.tauriEmit) {
+            window.tauriEmit('setting-updated', setting);
         }
 
         return { success: true };
@@ -68,8 +68,8 @@ async function createWallet(walletData) {
         localStorage.setItem('current_wallet', JSON.stringify(backendWallet));
 
         // Emit event for cross-page synchronization
-        if (window.__TAURI__ && window.__TAURI__.emit) {
-            window.__TAURI__.emit('wallet-created', backendWallet);
+        if (window.tauriEmit) {
+            window.tauriEmit('wallet-created', backendWallet);
         }
 
         return {
@@ -103,8 +103,8 @@ async function performNodeAction(action) {
         }
 
         // Emit event for cross-page synchronization
-        if (window.__TAURI__ && window.__TAURI__.emit) {
-            window.__TAURI__.emit('node-status-changed', { action, result });
+        if (window.tauriEmit) {
+            window.tauriEmit('node-status-changed', { action, result });
         }
 
         return { success: true };
@@ -225,8 +225,8 @@ async function resetLocalState() {
         await syncWithBackend();
 
         // Emit reset event
-        if (window.__TAURI__ && window.__TAURI__.emit) {
-            window.__TAURI__.emit('state-reset');
+        if (window.tauriEmit) {
+            window.tauriEmit('state-reset');
         }
     } catch (error) {
         console.error('Failed to reset local state:', error);
@@ -240,19 +240,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // Sync with backend on load
     syncWithBackend();
 
-    // Listen for cross-page updates
-    if (window.__TAURI__ && window.__TAURI__.listen) {
-        window.__TAURI__.listen('setting-updated', (event) => {
+    // Listen for cross-page updates (use lazy proxy)
+    if (window.tauriListen) {
+        window.tauriListen('setting-updated', (event) => {
             const setting = event.payload;
             localStorage.setItem(setting.key, setting.value);
         });
 
-        window.__TAURI__.listen('wallet-created', (event) => {
+        window.tauriListen('wallet-created', (event) => {
             const wallet = event.payload;
             localStorage.setItem('current_wallet', JSON.stringify(wallet));
         });
 
-        window.__TAURI__.listen('state-reset', () => {
+        window.tauriListen('state-reset', () => {
             syncWithBackend();
         });
     }

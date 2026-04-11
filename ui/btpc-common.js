@@ -511,14 +511,14 @@ let unlistenDiskSpaceWarning = null;
  * Set up Tauri event listeners for unified state management
  */
 async function setupTauriEventListeners() {
-    if (!window.__TAURI__) {
+    if (!window.tauriListen) {
         console.warn('Tauri API not available for event listeners');
         return;
     }
 
     try {
-        // Get the event module
-        const { listen } = window.__TAURI__.event;
+        // Use lazy proxy (production-safe)
+        const listen = window.tauriListen;
 
         // Listen for network config changes (store unlisten function)
         unlistenNetworkConfig = await listen('network-config-changed', (event) => {

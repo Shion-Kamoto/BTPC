@@ -35,12 +35,12 @@ class EventListenerManager {
         }
 
         try {
-            if (!window.__TAURI__ || !window.__TAURI__.listen) {
+            if (!window.tauriListen) {
                 console.warn('Tauri API not available for event listening');
                 return null;
             }
 
-            const unlisten = await window.__TAURI__.listen(event, handler);
+            const unlisten = await window.tauriListen(event, handler);
             const id = this.nextId++;
 
             this.listeners.set(id, {

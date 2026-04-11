@@ -465,12 +465,12 @@
 
         // FR-057: Chain Reorganization Event Listeners
         function setupReorgEventListeners() {
-            if (!window.__TAURI__) {
+            if (!window.tauriListen) {
                 setTimeout(setupReorgEventListeners, 200);
                 return;
             }
 
-            const { listen } = window.__TAURI__.event;
+            const listen = window.tauriListen;
             const banner = document.getElementById('reorg-banner');
             const message = document.getElementById('reorg-message');
             const details = document.getElementById('reorg-details');

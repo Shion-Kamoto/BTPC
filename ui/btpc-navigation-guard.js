@@ -49,8 +49,8 @@ const BtpcNavigationGuard = {
      */
     async checkAuthentication() {
         try {
-            // Get Tauri invoke function
-            const invoke = window.btpcInvoke || window.__TAURI__?.core?.invoke;
+            // Use the lazy invoke proxy from btpc-tauri-context.js (production-safe)
+            const invoke = window.invoke;
 
             if (!invoke) {
                 console.warn('[Navigation Guard] Tauri API not available');

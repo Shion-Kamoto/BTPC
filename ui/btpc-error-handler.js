@@ -565,9 +565,9 @@ function initProgressiveDisclosureErrorHandler() {
         });
     }
 
-    // Listen for error events from backend
-    if (window.__TAURI__ && window.__TAURI__.event) {
-        window.__TAURI__.event.listen('error_occurred', (event) => {
+    // Listen for error events from backend (use lazy proxy)
+    if (window.tauriListen) {
+        window.tauriListen('error_occurred', (event) => {
             console.log('Error event received:', event.payload);
             displayError(event.payload);
         });

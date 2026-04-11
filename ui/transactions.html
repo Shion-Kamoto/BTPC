@@ -1533,13 +1533,13 @@
 
         // Initialize transaction event listeners (Article XI, Section 11.3)
         async function setupTransactionEventListeners() {
-            if (!window.__TAURI__ || !window.__TAURI__.event) {
+            if (!window.tauriListen) {
                 console.warn('[Feature 007] Tauri event API not available for transaction listeners');
                 return;
             }
 
             try {
-                const { listen } = window.__TAURI__.event;
+                const listen = window.tauriListen;
 
                 // transaction:initiated
                 transactionEventListeners.push(await listen('transaction:initiated', (event) => {

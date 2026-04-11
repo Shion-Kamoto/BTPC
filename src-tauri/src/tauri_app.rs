@@ -128,6 +128,7 @@ pub fn run() {
             // WebView widget inside it does not, so keyboard events never reach JS.
             let _ = window.set_focus();
 
+
             let pm = process_manager.clone();
             let app_handle_for_close = app.handle().clone();
             window.on_window_event(move |event| {

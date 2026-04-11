@@ -14,9 +14,10 @@
  * @returns {Object} Status of Tauri availability
  */
 function checkTauriRuntime() {
-  // Check for Tauri 2.0 (direct invoke function) or Tauri 1.x (__TAURI__ object)
+  // Check for Tauri runtime: __TAURI_INTERNALS__ (most reliable, always first) → __TAURI__ → __TAURI_INVOKE__
   const isTauriAvailable = typeof window !== 'undefined' &&
-                           (typeof window.__TAURI_INVOKE__ === 'function' ||
+                           (typeof window.__TAURI_INTERNALS__ !== 'undefined' ||
+                            typeof window.__TAURI_INVOKE__ === 'function' ||
                             (typeof window.__TAURI__ !== 'undefined' && window.__TAURI__ !== null));
 
   if (isTauriAvailable) {
@@ -204,16 +205,16 @@ async function safeTauriInvoke(command, args = {}) {
 
   try {
     // Call the actual Tauri API directly to avoid infinite recursion
+    // Priority: __TAURI_INTERNALS__ (most reliable) → __TAURI__.core → fallbacks
     let result;
-    if (typeof window.__TAURI_INVOKE__ === 'function') {
-      // Tauri 2.0
+    if (window.__TAURI_INTERNALS__ && typeof window.__TAURI_INTERNALS__.invoke === 'function') {
+      result = await window.__TAURI_INTERNALS__.invoke(command, args);
+    } else if (window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === 'function') {
+      result = await window.__TAURI__.core.invoke(command, args);
+    } else if (typeof window.__TAURI_INVOKE__ === 'function') {
       result = await window.__TAURI_INVOKE__(command, args);
     } else if (window.__TAURI__ && typeof window.__TAURI__.invoke === 'function') {
-      // Tauri 1.x
       result = await window.__TAURI__.invoke(command, args);
-    } else if (window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === 'function') {
-      // Tauri v2 core API
-      result = await window.__TAURI__.core.invoke(command, args);
     } else {
       throw new Error('Tauri invoke API not found');
     }
@@ -277,27 +278,71 @@ function safeTauriEmit(event, payload) {
   }
 }
 
-// Expose window.invoke IMMEDIATELY (before DOMContentLoaded) for all Tauri versions
+// Expose window.invoke IMMEDIATELY (before DOMContentLoaded) for all Tauri versions.
+// Uses a LAZY proxy pattern — resolves the Tauri API at call time, not load time.
+// Workaround for Tauri bug #12990: window.__TAURI__ is undefined in top-level scripts
+// but window.__TAURI_INTERNALS__ IS available (injected at WebView init level).
 if (typeof window !== 'undefined') {
-  // Try Tauri 2.0 core API first (most common)
-  if (window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === 'function') {
-    window.invoke = (cmd, args) => window.__TAURI__.core.invoke(cmd, args);
-    console.log('[Tauri Init] Using Tauri 2.0 core API (window.__TAURI__.core.invoke)');
-  }
-  // Try Tauri 2.0 direct invoke function
-  else if (typeof window.__TAURI_INVOKE__ === 'function') {
-    window.invoke = window.__TAURI_INVOKE__;
-    console.log('[Tauri Init] Using Tauri 2.0 direct invoke (window.__TAURI_INVOKE__)');
-  }
-  // Try Tauri 1.x or 2.x legacy API
-  else if (window.__TAURI__ && typeof window.__TAURI__.invoke === 'function') {
-    window.invoke = (cmd, args) => window.__TAURI__.invoke(cmd, args);
-    console.log('[Tauri Init] Using Tauri 1.x API (window.__TAURI__.invoke)');
-  }
-  // Tauri API not found
-  else {
-    console.warn('[Tauri Init] No Tauri API found. window.invoke will be undefined.');
-  }
+  window.invoke = function(cmd, args) {
+    // Resolve the correct invoke function at CALL TIME (lazy)
+    // Priority: __TAURI_INTERNALS__ (most reliable, available earliest) → __TAURI__.core → fallbacks
+    if (window.__TAURI_INTERNALS__ && typeof window.__TAURI_INTERNALS__.invoke === 'function') {
+      return window.__TAURI_INTERNALS__.invoke(cmd, args);
+    }
+    if (window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === 'function') {
+      return window.__TAURI__.core.invoke(cmd, args);
+    }
+    if (typeof window.__TAURI_INVOKE__ === 'function') {
+      return window.__TAURI_INVOKE__(cmd, args);
+    }
+    if (window.__TAURI__ && typeof window.__TAURI__.invoke === 'function') {
+      return window.__TAURI__.invoke(cmd, args);
+    }
+    return Promise.reject(new Error('[Tauri Init] No Tauri API found — invoke unavailable for: ' + cmd));
+  };
+  console.log('[Tauri Init] Lazy invoke proxy installed (resolves API at call time)');
+
+  // Lazy proxy for event.listen — resolves at call time with retry if __TAURI__ not ready yet
+  window.tauriListen = function(event, handler) {
+    if (window.__TAURI__ && window.__TAURI__.event && typeof window.__TAURI__.event.listen === 'function') {
+      return window.__TAURI__.event.listen(event, handler);
+    }
+    // __TAURI__ not ready yet — wait up to 5 seconds with polling
+    console.log('[Tauri Init] Event API not ready, waiting for: ' + event);
+    return new Promise(function(resolve) {
+      var attempts = 0;
+      var maxAttempts = 50; // 50 × 100ms = 5s
+      var timer = setInterval(function() {
+        attempts++;
+        if (window.__TAURI__ && window.__TAURI__.event && typeof window.__TAURI__.event.listen === 'function') {
+          clearInterval(timer);
+          window.__TAURI__.event.listen(event, handler).then(resolve);
+        } else if (attempts >= maxAttempts) {
+          clearInterval(timer);
+          console.warn('[Tauri Init] Event API unavailable after 5s for: ' + event);
+          resolve(function() {}); // Return no-op unlisten
+        }
+      }, 100);
+    });
+  };
+
+  // Lazy proxy for event.emit — with retry
+  window.tauriEmit = function(event, payload) {
+    if (window.__TAURI__ && window.__TAURI__.event && typeof window.__TAURI__.event.emit === 'function') {
+      return window.__TAURI__.event.emit(event, payload);
+    }
+    if (window.__TAURI__ && typeof window.__TAURI__.emit === 'function') {
+      return window.__TAURI__.emit(event, payload);
+    }
+    // Retry after short delay
+    setTimeout(function() {
+      if (window.__TAURI__ && window.__TAURI__.event && typeof window.__TAURI__.event.emit === 'function') {
+        window.__TAURI__.event.emit(event, payload);
+      } else {
+        console.warn('[Tauri Init] Emit API not available for: ' + event);
+      }
+    }, 500);
+  };
 }
 
 /**

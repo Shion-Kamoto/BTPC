@@ -354,8 +354,8 @@
     <script src="btpc-navigation-guard.js"></script>
     <script>
 
-        // Import Tauri API
-        const { invoke } = window.btpcInvoke || window.__TAURI__.core;
+        // Use the lazy invoke proxy from btpc-tauri-context.js (production-safe)
+        const invoke = window.invoke;
 
         // DOM elements
         const loginTitle = document.getElementById('login-title');

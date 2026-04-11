@@ -27,13 +27,13 @@ class BtpcEventManager {
      */
     async initialize() {
         try {
-            // Check if Tauri API is available
-            if (!window.__TAURI__?.event) {
+            // Check if Tauri API is available (use lazy proxy)
+            if (!window.tauriListen) {
                 console.warn('[Event Manager] Tauri event API not available');
                 return;
             }
 
-            const { listen } = window.__TAURI__.event;
+            const listen = window.tauriListen;
 
             // Listen for session:login events
             const loginUnlisten = await listen('session:login', (event) => {

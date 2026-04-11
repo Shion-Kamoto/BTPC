@@ -53,8 +53,8 @@ const BtpcLogout = {
         `;
 
         try {
-            // Get Tauri invoke function (from btpc-tauri-context.js or window.__TAURI__)
-            const invoke = window.btpcInvoke || window.__TAURI__?.core?.invoke;
+            // Use the lazy invoke proxy from btpc-tauri-context.js (production-safe)
+            const invoke = window.invoke;
 
             if (!invoke) {
                 throw new Error('Tauri API not available');

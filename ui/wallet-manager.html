@@ -1674,13 +1674,13 @@
         let walletBalanceListener = null;
 
         async function setupWalletBalanceListener() {
-            if (!window.__TAURI__ || !window.__TAURI__.event) {
+            if (!window.tauriListen) {
                 console.warn('[Feature 007] Tauri event API not available for wallet balance listener');
                 return;
             }
 
             try {
-                const { listen } = window.__TAURI__.event;
+                const listen = window.tauriListen;
 
                 // wallet:balance_updated - fires after transaction confirmation
                 walletBalanceListener = await listen('wallet:balance_updated', async (event) => {

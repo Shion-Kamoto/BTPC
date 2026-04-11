@@ -39,14 +39,14 @@ class BtpcUpdateManager {
      * Triggers immediate wallet refresh when blocks are mined
      */
     async initializeEventListeners() {
-        if (!window.__TAURI__ || !window.__TAURI__.event) {
+        if (!window.tauriListen) {
             console.warn('Tauri event API not available, event listeners disabled');
             return;
         }
 
         try {
             // Listen for block_mined events
-            const unlistenBlockMined = await window.__TAURI__.event.listen('block_mined', async (event) => {
+            const unlistenBlockMined = await window.tauriListen('block_mined', async (event) => {
                 console.log('🎉 Block mined event received:', event.payload);
 
                 // Immediately refresh wallet balance and mining stats
@@ -61,7 +61,7 @@ class BtpcUpdateManager {
             this.eventUnlisteners.push(unlistenBlockMined);
 
             // Listen for sync_complete events (affects wallet balance)
-            const unlistenSyncComplete = await window.__TAURI__.event.listen('sync_complete', async (event) => {
+            const unlistenSyncComplete = await window.tauriListen('sync_complete', async (event) => {
                 console.log('🔄 Sync complete event received:', event.payload);
 
                 // Refresh all state after sync completes
