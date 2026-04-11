@@ -836,6 +836,13 @@
                     autoConnect: autoConnectValue,
                 });
 
+                // Persist auto-connect preference to backend (survives localStorage clear)
+                try {
+                    await window.invoke('set_auto_connect', { enabled: autoConnectValue });
+                } catch (e) {
+                    console.warn('[Settings Save] Failed to persist auto-connect to backend:', e);
+                }
+
                 // Save mining configuration to browser storage
                 window.btpcStorage.updateMiningConfig({
                     autoStart: autoStartMiningValue,

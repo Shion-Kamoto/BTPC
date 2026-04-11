@@ -120,6 +120,41 @@ pub fn run() {
                 });
             }
 
+            // Auto-start P2P sync (backend-authoritative, user-overridable via Settings)
+            {
+                let app_state = app.state::<AppState>();
+                let settings = app_state.settings_storage.clone();
+                let should_auto_connect = settings
+                    .load_setting("auto_connect_node")
+                    .unwrap_or(None)
+                    .map(|v| v != "false")
+                    .unwrap_or(true); // Default: always connect on fresh install
+
+                if should_auto_connect {
+                    let embedded_node = app_state.embedded_node.clone();
+                    let node_active = app_state.node_active.clone();
+                    let app_handle = app.handle().clone();
+                    tauri::async_runtime::spawn(async move {
+                        {
+                            let mut node = embedded_node.write().await;
+                            if let Err(e) = node.start_sync().await {
+                                eprintln!("[BTPC::App] Failed to auto-start P2P sync: {}", e);
+                                return;
+                            }
+                        }
+                        node_active.store(true, std::sync::atomic::Ordering::SeqCst);
+                        let app_state_inner = app_handle.state::<AppState>();
+                        let _ = app_state_inner.node_status.update(|status| {
+                            status.running = true;
+                            status.pid = None;
+                        }, &app_handle);
+                        eprintln!("[BTPC::App] P2P sync auto-started successfully");
+                    });
+                } else {
+                    eprintln!("[BTPC::App] P2P auto-connect disabled by user setting");
+                }
+            }
+
             // Cleanup on window close - stop mining, shutdown node, stop processes
             let window = app.get_webview_window("main").unwrap();
 
@@ -316,6 +351,7 @@ pub fn run() {
             commands::node::get_sync_stats,
             commands::node::trigger_manual_sync,
             commands::node::get_address_balance_from_node,
+            commands::node::set_auto_connect,
             // Mining commands
             commands::mining_status::get_mining_status,
             commands::mining_logs::get_mining_logs,

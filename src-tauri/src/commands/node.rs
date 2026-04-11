@@ -219,6 +219,21 @@ pub async fn get_node_status(state: State<'_, AppState>) -> Result<serde_json::V
 }
 
 // ============================================================================
+// Node Settings Commands
+// ============================================================================
+
+#[tauri::command]
+pub async fn set_auto_connect(
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> Result<String, String> {
+    state.settings_storage
+        .save_setting("auto_connect_node", if enabled { "true" } else { "false" })
+        .map_err(|e| format!("Failed to save setting: {}", e))?;
+    Ok(format!("Auto-connect set to {}", enabled))
+}
+
+// ============================================================================
 // Blockchain Sync Commands
 // ============================================================================
 

@@ -72,7 +72,7 @@ class BtpcStorage {
                 rpcHost: '127.0.0.1',
                 rpcPort: 18350,
                 p2pPort: 18351,
-                autoConnect: false,  // Disabled auto-start for better control during testing
+                autoConnect: true,  // Auto-connect to network on launch
                 trustedNodes: [],
             },
             cache: {
