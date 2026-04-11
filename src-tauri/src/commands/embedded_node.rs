@@ -177,9 +177,11 @@ pub async fn start_embedded_blockchain_sync(
         }
     }
 
+    // FIX 2026-04-12: Use block processing variant so received blocks are synced
+    let node_arc = state.embedded_node.clone();
     let mut node_lock = node.write().await;
     node_lock
-        .start_sync()
+        .start_sync_with_block_processing(node_arc)
         .await
         .map_err(|e| format!("Failed to start sync: {}", e))
 }
@@ -330,111 +332,59 @@ pub async fn connect_to_peer(
     node: State<'_, NodeHandle>,
     address: String,
 ) -> Result<PeerConnectionResult, String> {
-    use btpc_core::network::{
-        NetworkConfig, NetworkAddress, ServiceFlags, VersionMessage,
-        ProtocolCodec, PeerConnection,
-    };
-    use tokio::net::TcpStream;
     use std::net::SocketAddr;
 
     // Parse address
     let socket_addr: SocketAddr = address.parse()
         .map_err(|e| format!("Invalid address '{}': {}", address, e))?;
 
-    eprintln!("🔗 Connecting to peer: {}", socket_addr);
+    eprintln!("🔗 Connecting to peer via SimplePeerManager: {}", socket_addr);
 
-    // Connect via TCP with 10 second timeout
-    let stream = tokio::time::timeout(
-        std::time::Duration::from_secs(10),
-        TcpStream::connect(socket_addr)
-    ).await
-        .map_err(|_| format!("Connection to {} timed out", socket_addr))?
-        .map_err(|e| format!("Failed to connect to {}: {}", socket_addr, e))?;
-
-    eprintln!("✅ TCP connected to {}", socket_addr);
-
-    // Get network config from node
+    // FIX 2026-04-12: Use SimplePeerManager::connect_to_peer instead of manual
+    // handshake. This ensures the connection persists with a message handling loop
+    // (handshake, Ping/Pong, block relay, address exchange) rather than closing
+    // immediately after the command returns.
     let node_lock = node.read().await;
-    let network = node_lock.network();
-    let current_height = node_lock.get_sync_progress()
-        .map(|p| p.current_height as u32)
-        .unwrap_or(0);
+    let peer_manager = node_lock.get_peer_manager();
 
-    // Create protocol codec with network-specific magic bytes
-    let config = match network {
-        btpc_core::Network::Mainnet => NetworkConfig::mainnet(),
-        btpc_core::Network::Testnet => NetworkConfig::testnet(),
-        btpc_core::Network::Regtest => NetworkConfig::testnet(), // Use testnet config for regtest
-    };
-    let magic_bytes = config.magic_bytes();
-    let codec = ProtocolCodec::new(magic_bytes);
-    let mut connection = PeerConnection::new(stream, codec);
+    match peer_manager.connect_to_peer(socket_addr).await {
+        Ok(()) => {
+            eprintln!("✅ Peer connection established via SimplePeerManager: {}", socket_addr);
+            // The PeerConnected event will be fired by SimplePeerManager and handled
+            // by the event loop in start_sync, which updates the peers HashMap.
 
-    // Create our version message
-    let our_version = VersionMessage::new(
-        ServiceFlags::NETWORK,
-        NetworkAddress::default(),
-        NetworkAddress::default(),
-        format!("/btpc-desktop:{}/", env!("CARGO_PKG_VERSION")),
-        current_height,
-        true,
-    );
+            // Wait briefly for the PeerConnected event to propagate
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-    // Perform handshake with 30 second timeout
-    let handshake_result = tokio::time::timeout(
-        std::time::Duration::from_secs(30),
-        connection.handshake(our_version)
-    ).await
-        .map_err(|_| format!("Handshake with {} timed out", socket_addr))?
-        .map_err(|e| format!("Handshake with {} failed: {}", socket_addr, e))?;
+            // Read peer info if available
+            let peers = node_lock.get_peer_info();
+            let peer_info = peers.iter().find(|p| p.address == address);
 
-    eprintln!("✅ Handshake complete with {} (height: {}, version: {})",
-        socket_addr, handshake_result.start_height, handshake_result.user_agent);
+            let (version, height) = if let Some(info) = peer_info {
+                (info.version.clone(), info.height)
+            } else {
+                ("/btpc/".to_string(), 0)
+            };
 
-    // Add peer to tracking
-    let peer_version = handshake_result.user_agent.clone();
-    let peer_height = handshake_result.start_height as u64;
-
-    node_lock.add_peer(
-        address.clone(),
-        peer_version.clone(),
-        peer_height,
-    );
-
-    // Measure ping latency (send ping, wait for pong)
-    let ping_start = std::time::Instant::now();
-    let ping_nonce: u64 = rand::random();
-
-    if let Err(e) = connection.send_message(&btpc_core::network::Message::Ping(ping_nonce)).await {
-        eprintln!("⚠️ Failed to send ping: {}", e);
-    } else {
-        // Wait for pong with 5 second timeout
-        match tokio::time::timeout(
-            std::time::Duration::from_secs(5),
-            connection.receive_message()
-        ).await {
-            Ok(Ok(btpc_core::network::Message::Pong(_))) => {
-                let ping_ms = ping_start.elapsed().as_millis() as u64;
-                node_lock.update_peer_ping(&address, ping_ms);
-                eprintln!("📍 Ping: {}ms", ping_ms);
-            }
-            _ => {
-                eprintln!("⚠️ No pong received");
-            }
+            Ok(PeerConnectionResult {
+                address,
+                version,
+                height,
+                success: true,
+                message: "Connected successfully (persistent connection)".to_string(),
+            })
+        }
+        Err(e) => {
+            eprintln!("❌ Failed to connect to peer {}: {}", socket_addr, e);
+            Ok(PeerConnectionResult {
+                address,
+                version: String::new(),
+                height: 0,
+                success: false,
+                message: format!("Connection failed: {}", e),
+            })
         }
     }
-
-    // TODO: Spawn a background task to maintain this connection
-    // For now, the connection will close after this function returns
-    // The peer info is still tracked and displayed
-
-    Ok(PeerConnectionResult {
-        address,
-        version: peer_version,
-        height: peer_height,
-        success: true,
-        message: "Connected successfully".to_string(),
-    })
 }
 
 /// Result of peer connection attempt

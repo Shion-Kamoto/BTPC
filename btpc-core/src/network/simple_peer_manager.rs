@@ -766,6 +766,18 @@ impl SimplePeerManager {
         self.peers.read().await.len()
     }
 
+    /// Send a message to a specific peer by address.
+    ///
+    /// Returns silently if the peer is not connected (fire-and-forget).
+    pub async fn send_to_peer(&self, addr: &SocketAddr, msg: Message) {
+        let peers = self.peers.read().await;
+        if let Some(handle) = peers.get(addr) {
+            if let Err(e) = handle.tx.try_send(msg) {
+                eprintln!("⚠️ Failed to send message to {}: {}", addr, e);
+            }
+        }
+    }
+
     /// Get connection statistics
     pub async fn connection_stats(&self) -> crate::network::ConnectionTrackerStats {
         self.connection_tracker.read().await.stats()

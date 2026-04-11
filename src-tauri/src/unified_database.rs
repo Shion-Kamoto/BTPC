@@ -381,6 +381,24 @@ impl UnifiedDatabase {
         }
     }
 
+    /// Check if a block with the given hash exists in the database.
+    ///
+    /// # Arguments
+    /// * `block_hash_bytes` - Block hash as raw bytes (64-byte SHA-512)
+    ///
+    /// # Returns
+    /// * `Ok(true)` if block exists, `Ok(false)` if not, `Err` on DB error
+    pub fn has_block_hash(&self, block_hash_bytes: &[u8]) -> Result<bool> {
+        // The height mapping key format: "height:" + block_hash
+        let mut height_key = Vec::with_capacity(7 + block_hash_bytes.len());
+        height_key.extend_from_slice(b"height:");
+        height_key.extend_from_slice(block_hash_bytes);
+        match self.db.get(&height_key)? {
+            Some(_) => Ok(true),
+            None => Ok(false),
+        }
+    }
+
     /// Get transaction by txid hash
     ///
     /// # Arguments

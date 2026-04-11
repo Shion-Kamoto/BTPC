@@ -30,10 +30,12 @@ pub async fn start_node(app: tauri::AppHandle, state: State<'_, AppState>) -> Re
     // Get active network configuration
     let active_network = state.active_network.read().await.clone();
 
-    // Start embedded node sync
+    // Start embedded node sync with block processing enabled
+    // FIX 2026-04-12: Pass Arc reference so event loop can process blocks from peers
     {
+        let node_arc = state.embedded_node.clone();
         let mut node = state.embedded_node.write().await;
-        node.start_sync()
+        node.start_sync_with_block_processing(node_arc)
             .await
             .map_err(|e| format!("Failed to start embedded node sync: {}", e))?;
     }
@@ -72,8 +74,16 @@ pub async fn start_node(app: tauri::AppHandle, state: State<'_, AppState>) -> Re
     );
     let _ = fs::write(&log_file, log_message);
 
-    // Auto-start blockchain synchronization service if RPC is enabled
-    if state.config.node.enable_rpc {
+    // FIX 2026-04-12: Disabled RPC-based BlockchainSyncService.
+    // The embedded node does not run a separate RPC server, so the RPC sync
+    // service would silently fail every 10 seconds (rpc_client.ping() fails).
+    // Block synchronization is now handled by the P2P event loop in
+    // start_sync_with_block_processing() which processes BlockReceived and
+    // InventoryReceived events from connected peers.
+    //
+    // The RPC sync service remains available for future use if an external
+    // btpc_node with RPC is running alongside the embedded node.
+    if false && state.config.node.enable_rpc {
         let fork_id = state.active_network.read().await.fork_id();
 
         let mut sync_service_guard = state
@@ -195,14 +205,14 @@ pub async fn get_node_status(state: State<'_, AppState>) -> Result<serde_json::V
     let running = state.node_active.load(Ordering::SeqCst);
 
     // Get additional info from embedded node if running
+    // FIX 2026-04-12: Use get_peer_count() directly for accurate P2P peer count
+    // instead of get_sync_progress().connected_peers which may not update.
     let (block_height, peer_count) = if running {
         let node = state.embedded_node.read().await;
         let height = node.get_blockchain_state().await
             .map(|s| s.current_height)
             .unwrap_or(0);
-        let peers = node.get_sync_progress()
-            .map(|p| p.connected_peers)
-            .unwrap_or(0);
+        let peers = node.get_peer_count();
         (height, peers)
     } else {
         (0, 0)

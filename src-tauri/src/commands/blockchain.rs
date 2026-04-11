@@ -225,40 +225,39 @@ pub async fn get_blockchain_info(state: State<'_, AppState>) -> Result<serde_jso
     // Get network type from embedded node
     let network = embedded_node.get_network();
 
-    // Get sync stats from sync service for accurate sync progress
-    let sync_stats = {
-        let sync_service_guard = state
-            .sync_service
-            .lock()
-            .map_err(|_| "Failed to lock sync service".to_string())?;
-
-        if let Some(service) = sync_service_guard.as_ref() {
-            service.get_stats()
-        } else {
-            use crate::sync_service::SyncStats;
-            SyncStats::default()
+    // FIX 2026-04-12: Use embedded node's sync progress instead of the
+    // (now-disabled) RPC sync service. The P2P event loop handles block sync.
+    // Sync progress is based on comparing our height to the best peer height.
+    let (sync_progress, is_synced) = {
+        let sync_result = embedded_node.get_sync_progress();
+        match sync_result {
+            Ok(progress) if progress.is_syncing => {
+                (progress.sync_percentage as f64, false)
+            }
+            Ok(progress) => {
+                // Not syncing — check if we're behind any peer
+                let peer_count = embedded_node.get_peer_count();
+                if peer_count == 0 && current_height == 0 {
+                    // No peers and empty chain — show 0%
+                    (0.0, false)
+                } else {
+                    (progress.sync_percentage as f64, progress.sync_percentage >= 99.9)
+                }
+            }
+            Err(_) => (100.0, true),
         }
     };
 
-    // Calculate sync progress from sync service stats
-    let (sync_progress, is_synced) = if sync_stats.node_height > 0 {
-        let progress = (sync_stats.current_height as f64 / sync_stats.node_height as f64) * 100.0;
-        let synced = progress >= 99.9;
-        (progress, synced)
-    } else {
-        // Fallback: If sync service hasn't started, consider us synced with current blockchain state
-        (100.0, true)
-    };
-
-    eprintln!("DEBUG: Sync progress: {:.1}% (local: {}, node: {})",
-              sync_progress, sync_stats.current_height, sync_stats.node_height);
+    eprintln!("DEBUG: Sync progress: {:.1}% (height: {}, peers: {})",
+              sync_progress, current_height, embedded_node.get_peer_count());
 
     // FIX 2025-12-27: Get actual peer count from embedded node instead of hardcoded 1
     // Also check if node is running - show 0 connections when stopped
-    // When running, count includes local node (1) + any connected peers
+    // FIX 2026-04-12: Removed phantom +1 that inflated peer count. The local node
+    // is not a "connection" — only actual remote P2P peers should be counted.
     let node_running = state.node_status.read().map(|s| s.running).unwrap_or(false);
     let connections = if node_running {
-        1 + embedded_node.get_peer_count()  // Local node + remote peers
+        embedded_node.get_peer_count()  // Only actual remote peers
     } else {
         0
     };

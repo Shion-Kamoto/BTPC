@@ -136,8 +136,11 @@ pub fn run() {
                     let app_handle = app.handle().clone();
                     tauri::async_runtime::spawn(async move {
                         {
+                            // FIX 2026-04-12: Use start_sync_with_block_processing so
+                            // the event loop actually processes blocks from peers.
+                            let node_arc = embedded_node.clone();
                             let mut node = embedded_node.write().await;
-                            if let Err(e) = node.start_sync().await {
+                            if let Err(e) = node.start_sync_with_block_processing(node_arc).await {
                                 eprintln!("[BTPC::App] Failed to auto-start P2P sync: {}", e);
                                 return;
                             }

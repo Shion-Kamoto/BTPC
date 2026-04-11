@@ -484,6 +484,14 @@ impl EmbeddedNode {
         self.network
     }
 
+    /// Get a reference to the P2P peer manager.
+    ///
+    /// Used by commands like `connect_to_peer` to establish persistent connections
+    /// through the peer manager's connection lifecycle (handshake, message loop, etc.).
+    pub fn get_peer_manager(&self) -> Arc<SimplePeerManager> {
+        Arc::clone(&self.peer_manager)
+    }
+
     /// Update network type
     /// FIX 2025-12-01: Allow network to be updated when user changes network in settings
     /// This ensures UTXOs are created with the correct network prefix to match wallet addresses
@@ -664,11 +672,34 @@ impl EmbeddedNode {
     /// - Validate and add blocks to chain
     /// - Emit blockchain:block_added events
     pub async fn start_sync(&mut self) -> Result<()> {
+        self.start_sync_inner(None).await
+    }
+
+    /// Start P2P sync with a reference to the node Arc for full block processing.
+    ///
+    /// This variant allows the spawned event loop to acquire write access to the
+    /// node for processing blocks received from peers (via `submit_block`).
+    pub async fn start_sync_with_block_processing(
+        &mut self,
+        node_arc: Arc<RwLock<EmbeddedNode>>,
+    ) -> Result<()> {
+        self.start_sync_inner(Some(node_arc)).await
+    }
+
+    async fn start_sync_inner(
+        &mut self,
+        node_arc: Option<Arc<RwLock<EmbeddedNode>>>,
+    ) -> Result<()> {
         // ── Bitcoin-style P2P bootstrap ──────────────────────────────────────
+        eprintln!("📡 Starting P2P sync for network: {:?}", self.network);
+        eprintln!("   Block processing: {}", if node_arc.is_some() { "ENABLED" } else { "DISABLED (peer tracking only)" });
+
         // Load previously-known peers from disk so we can reconnect instantly
         // without waiting for DNS resolution.
         let peers_dat = self._data_dir.join("peers.dat");
         self.peer_manager.load_peers(&peers_dat).await;
+        let known_peer_count = self.peer_manager.discovery.read().await.address_count();
+        eprintln!("   Loaded {} known peer(s) from peers.dat", known_peer_count);
 
         // Start accepting inbound connections on the P2P port
         if let Err(e) = self.peer_manager.start_listening().await {
@@ -678,14 +709,30 @@ impl EmbeddedNode {
             eprintln!("📡 P2P listener started");
         }
 
-        // Query DNS seeds (best-effort — fails gracefully on first run)
-        self.peer_manager
+        // Query DNS seeds — log results instead of silently ignoring failures
+        // FIX 2026-04-12: Previously used .ok() which hid DNS failures, making it
+        // impossible to diagnose "0 peers" issues on fresh installs.
+        match self.peer_manager
             .discovery
             .write()
             .await
             .query_dns_seeds()
             .await
-            .ok();
+        {
+            Ok(addrs) => {
+                if addrs.is_empty() {
+                    eprintln!("⚠️ DNS seed query returned 0 addresses — seeds may be unreachable");
+                    eprintln!("   Tip: Use manual peer connection or ensure bootstrap nodes are running");
+                } else {
+                    eprintln!("📡 DNS seeds returned {} peer address(es)", addrs.len());
+                }
+            }
+            Err(e) => {
+                eprintln!("⚠️ DNS seed query failed: {}", e);
+                eprintln!("   This is expected if DNS seeds are not yet configured for this network.");
+                eprintln!("   The auto-connection manager will retry, or connect manually via the UI.");
+            }
+        }
 
         // Start the auto-connection manager — maintains 8 outbound peers,
         // re-queries DNS when isolated.  Mirrors Bitcoin Core's
@@ -695,8 +742,15 @@ impl EmbeddedNode {
         // FIX 2026-03-29: Consume PeerEvents to keep self.peers in sync with
         // real P2P connections. Previously self.peers was only populated via
         // add_simulated_peers(), so get_peer_info() always returned fake data.
+        // FIX 2026-04-12: Also handle BlockReceived and InventoryReceived events
+        // to actually sync blocks from peers (previously ignored — core sync bug).
         if let Some(mut peer_rx) = self.peer_manager.take_event_receiver().await {
             let peers_arc = Arc::clone(&self.peers);
+            let peer_manager_arc = Arc::clone(&self.peer_manager);
+            let connected_peers_counter = Arc::clone(&self.connected_peers);
+            let current_height_atomic = Arc::clone(&self.current_height);
+            let database_clone = self.database.clone();
+            let node_arc_for_events = node_arc.clone();
             tokio::spawn(async move {
                 use btpc_core::network::simple_peer_manager::PeerEvent;
                 while let Some(event) = peer_rx.recv().await {
@@ -706,22 +760,145 @@ impl EmbeddedNode {
                                 .duration_since(std::time::UNIX_EPOCH)
                                 .unwrap_or_default()
                                 .as_secs();
-                            let mut peers = peers_arc.write().unwrap();
-                            peers.insert(addr.to_string(), PeerInfo {
-                                address: addr.to_string(),
-                                version: user_agent,
-                                height: height as u64,
-                                ping_ms: 0,
-                                connected_since: now,
-                            });
+                            {
+                                let mut peers = peers_arc.write().unwrap();
+                                peers.insert(addr.to_string(), PeerInfo {
+                                    address: addr.to_string(),
+                                    version: user_agent.clone(),
+                                    height: height as u64,
+                                    ping_ms: 0,
+                                    connected_since: now,
+                                });
+                                connected_peers_counter.store(
+                                    peers.len() as u32,
+                                    std::sync::atomic::Ordering::SeqCst,
+                                );
+                            }
                             eprintln!("🔗 Peer connected: {} (height {})", addr, height);
+
+                            // If peer has more blocks than us, request their headers
+                            let our_height = current_height_atomic
+                                .load(std::sync::atomic::Ordering::SeqCst);
+                            if (height as u64) > our_height {
+                                eprintln!(
+                                    "📡 Peer {} has height {} (we have {}), requesting blocks via GetHeaders",
+                                    addr, height, our_height
+                                );
+                                // Build block locator (simplified: just our tip hash)
+                                if let Ok(Some(tip_hash_bytes)) = database_clone
+                                    .get_block_hash_at_height(our_height as u32)
+                                {
+                                    use btpc_core::network::protocol::{
+                                        GetHeadersMessage, Message,
+                                    };
+                                    let mut hash_array = [0u8; 64];
+                                    let copy_len = tip_hash_bytes.len().min(64);
+                                    hash_array[..copy_len]
+                                        .copy_from_slice(&tip_hash_bytes[..copy_len]);
+                                    let locator_hash =
+                                        btpc_core::crypto::Hash::from_bytes(hash_array);
+
+                                    let get_headers = Message::GetHeaders(GetHeadersMessage {
+                                        version: 1,
+                                        block_locator: vec![locator_hash],
+                                        hash_stop: btpc_core::crypto::Hash::zero(),
+                                    });
+                                    peer_manager_arc
+                                        .send_to_peer(&addr, get_headers)
+                                        .await;
+                                }
+                            }
                         }
                         PeerEvent::PeerDisconnected { addr, .. } => {
-                            let mut peers = peers_arc.write().unwrap();
-                            peers.remove(&addr.to_string());
+                            {
+                                let mut peers = peers_arc.write().unwrap();
+                                peers.remove(&addr.to_string());
+                                connected_peers_counter.store(
+                                    peers.len() as u32,
+                                    std::sync::atomic::Ordering::SeqCst,
+                                );
+                            }
                             eprintln!("🔌 Peer disconnected: {}", addr);
                         }
-                        _ => {} // BlockReceived / TransactionReceived handled elsewhere
+                        PeerEvent::BlockReceived { from, block } => {
+                            // FIX 2026-04-12: Actually process blocks from peers
+                            let block_hash = block.hash();
+                            eprintln!(
+                                "📦 Processing block from peer {}: {}",
+                                from,
+                                block_hash.to_hex()
+                            );
+
+                            if let Some(ref node_ref) = node_arc_for_events {
+                                // Serialize block to hex for submit_block
+                                let block_hex = hex::encode(block.serialize());
+                                let mut node = node_ref.write().await;
+                                match node.submit_block(&block_hex).await {
+                                    Ok(msg) => {
+                                        eprintln!(
+                                            "✅ Block from peer {} accepted: {}",
+                                            from, msg
+                                        );
+                                        // Broadcast to other peers
+                                        drop(node); // Release write lock before broadcast
+                                        peer_manager_arc.broadcast_block(&block).await;
+                                    }
+                                    Err(e) => {
+                                        let err_str = e.to_string();
+                                        // Don't spam logs for blocks we already have
+                                        if !err_str.contains("already exists")
+                                            && !err_str.contains("stale block")
+                                        {
+                                            eprintln!(
+                                                "⚠️ Block from peer {} rejected: {}",
+                                                from, err_str
+                                            );
+                                        }
+                                    }
+                                }
+                            } else {
+                                eprintln!(
+                                    "⚠️ BlockReceived but no node_arc — block not processed"
+                                );
+                            }
+                        }
+                        PeerEvent::InventoryReceived { from, inv } => {
+                            // FIX 2026-04-12: Request blocks we don't have
+                            use btpc_core::network::protocol::{
+                                InvType, InventoryVector, Message,
+                            };
+                            let mut needed: Vec<InventoryVector> = Vec::new();
+                            for item in &inv {
+                                if item.inv_type == InvType::Block {
+                                    // Check if we already have this block
+                                    let hash_bytes = item.hash.as_bytes().to_vec();
+                                    let have_it = database_clone
+                                        .has_block_hash(&hash_bytes)
+                                        .unwrap_or(false);
+                                    if !have_it {
+                                        needed.push(item.clone());
+                                    }
+                                }
+                            }
+                            if !needed.is_empty() {
+                                eprintln!(
+                                    "📋 Requesting {} block(s) from peer {}",
+                                    needed.len(),
+                                    from
+                                );
+                                peer_manager_arc
+                                    .send_to_peer(&from, Message::GetData(needed))
+                                    .await;
+                            }
+                        }
+                        PeerEvent::TransactionReceived { from, tx } => {
+                            eprintln!(
+                                "💳 Received tx {} from peer {}",
+                                tx.hash().to_hex(),
+                                from
+                            );
+                            // TODO: Add to mempool when mempool accepts external txs
+                        }
                     }
                 }
             });
