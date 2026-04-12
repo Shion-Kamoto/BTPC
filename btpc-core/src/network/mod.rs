@@ -223,10 +223,17 @@ impl NetworkConfig {
             timeouts: ConnectionTimeouts::default(),
             dns_seeds: vec![],
             // Hardcoded seed nodes — Bitcoin-style, no DNS required.
-            // These are compiled into the binary as the sole peer discovery mechanism.
-            hardcoded_seeds: vec![
-                "101.115.228.73:18341".parse().expect("valid mainnet seed"),
-            ],
+            //
+            // FIX 2026-04-12: Removed stale IPv4 seed `101.115.228.73:18341`.
+            // That address is the project owner's modem WAN IPv4, which is
+            // unreachable from the outside because the network sits behind
+            // Carrier-Grade NAT (CGNAT) — inbound ports cannot be forwarded.
+            // The seed was useless on every fresh install except as a
+            // NAT-loopback self-connection on the seed machine itself.
+            // Mainnet currently has no working hardcoded seed; peer
+            // discovery relies on the peers.dat address book and LAN UDP
+            // discovery until an IPv6 seed is added.
+            hardcoded_seeds: vec![],
         }
     }
 
@@ -250,9 +257,12 @@ impl NetworkConfig {
             peer_message_queue_size: 1000,
             timeouts: ConnectionTimeouts::default(),
             dns_seeds: vec![],
-            hardcoded_seeds: vec![
-                "101.115.228.73:18351".parse().expect("valid testnet seed"),
-            ],
+            // FIX 2026-04-12: Removed stale IPv4 seed `101.115.228.73:18351`
+            // (CGNAT-blocked — see mainnet() for the full explanation).
+            // Testnet currently has no working hardcoded seed; peer discovery
+            // relies on the peers.dat address book, LAN UDP discovery, and
+            // manual peer-add until an IPv6 seed is added.
+            hardcoded_seeds: vec![],
         }
     }
 
