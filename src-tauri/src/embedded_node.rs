@@ -88,6 +88,15 @@ pub struct EmbeddedNode {
     /// address book (peers.dat), GetAddr/Addr exchange, and auto-connection loop.
     peer_manager: Arc<SimplePeerManager>,
 
+    /// Block height value shared with the peer manager so that outgoing version
+    /// messages advertise the correct start_height. Must be kept in sync with
+    /// `current_height` — updated in `load_blockchain_state` on startup and in
+    /// `submit_block` whenever a new block is accepted.
+    /// FIX 2026-04-12: Previously this was a local variable initialized to 0
+    /// and never updated, causing all peers to see start_height=0 regardless
+    /// of actual chain state — breaking sync.
+    block_height_for_pm: Arc<RwLock<u32>>,
+
     // ── Bootstrap Network Stability State ──────────────────────────────
     // Tracks Emergency Difficulty Adjustment (EDA) for health monitoring.
 
@@ -202,7 +211,7 @@ impl EmbeddedNode {
         };
         let peer_manager = Arc::new(SimplePeerManager::new(
             network_config,
-            block_height_for_pm,
+            Arc::clone(&block_height_for_pm),
         ));
 
         // Create node instance
@@ -223,6 +232,7 @@ impl EmbeddedNode {
             tx_storage: None, // Will be set after initialization in main.rs
             peers, // FIX 2025-11-28: P2P peer tracking
             peer_manager,
+            block_height_for_pm,
             // Bootstrap network stability state
             eda_last_trigger_height: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             eda_trigger_count: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -255,6 +265,13 @@ impl EmbeddedNode {
                 self.current_height
                     .store(max_height, std::sync::atomic::Ordering::SeqCst);
                 *self.best_block_hash.write().await = best_hash.clone();
+
+                // FIX 2026-04-12: Also update the block_height_for_pm Arc that
+                // SimplePeerManager reads when constructing outgoing version
+                // messages. Without this, every version message advertises
+                // start_height=0, so peers never realize we have blocks to share
+                // and sync never starts.
+                *self.block_height_for_pm.write().await = max_height as u32;
 
                 // FIX 2025-11-20: Load difficulty from most recent block
                 // FIX 2025-12-20: Handle max_height=0 (genesis only) to prevent underflow
@@ -1888,6 +1905,11 @@ impl EmbeddedNode {
         self.current_height
             .store(next_height, std::sync::atomic::Ordering::SeqCst);
         *self.best_block_hash.write().await = hex::encode(block_hash.as_bytes());
+
+        // FIX 2026-04-12: Keep block_height_for_pm in sync with current_height
+        // so SimplePeerManager's version messages advertise the correct
+        // start_height to peers. See the same fix in load_blockchain_state.
+        *self.block_height_for_pm.write().await = next_height as u32;
 
         // Update cached difficulty for next block template
         // FIX 2025-11-20: Cache difficulty so get_blockchain_state() can return actual value

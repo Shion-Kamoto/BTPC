@@ -685,11 +685,11 @@
                                                 </div>
                                                 <div>
                                                     <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Height</div>
-                                                    <div style="font-size: 0.875rem; color: var(--text-primary);">${peer.height ? peer.height.toLocaleString() : '-'}</div>
+                                                    <div style="font-size: 0.875rem; color: var(--text-primary);">${peer.height != null ? peer.height.toLocaleString() : '-'}</div>
                                                 </div>
                                                 <div>
                                                     <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Ping</div>
-                                                    <div style="font-size: 0.875rem; color: ${peer.ping_ms < 100 ? 'var(--status-success)' : peer.ping_ms < 500 ? 'var(--status-warning)' : 'var(--status-error)'};">${peer.ping_ms ? peer.ping_ms + 'ms' : '-'}</div>
+                                                    <div style="font-size: 0.875rem; color: ${peer.ping_ms < 100 ? 'var(--status-success)' : peer.ping_ms < 500 ? 'var(--status-warning)' : 'var(--status-error)'};">${peer.ping_ms != null ? peer.ping_ms + 'ms' : '-'}</div>
                                                 </div>
                                                 <div>
                                                     <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Connected</div>
