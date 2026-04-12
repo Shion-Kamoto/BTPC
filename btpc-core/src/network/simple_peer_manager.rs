@@ -766,6 +766,16 @@ impl SimplePeerManager {
         self.peers.read().await.len()
     }
 
+    /// Check if a specific peer is currently connected.
+    pub async fn is_connected(&self, addr: &SocketAddr) -> bool {
+        self.peers.read().await.contains_key(addr)
+    }
+
+    /// Get a reference to the network configuration.
+    pub fn network_config(&self) -> &NetworkConfig {
+        &self.config
+    }
+
     /// Send a message to a specific peer by address.
     ///
     /// Returns silently if the peer is not connected (fire-and-forget).

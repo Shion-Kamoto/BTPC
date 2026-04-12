@@ -664,6 +664,112 @@ impl EmbeddedNode {
         }
     }
 
+    /// Start LAN peer discovery via UDP broadcast.
+    ///
+    /// Broadcasts a small announcement packet on the local network every 30 seconds
+    /// and listens for announcements from other BTPC nodes. This allows nodes on the
+    /// same LAN to discover each other without DNS seeds or hardcoded bootstrap nodes.
+    ///
+    /// Protocol: UDP broadcast on port (P2P_port - 1), e.g. testnet uses UDP 18350.
+    /// Packet format: `BTPC-<NETWORK>-ANNOUNCE:<P2P_PORT>` (plaintext, < 50 bytes).
+    fn start_lan_discovery(peer_manager: Arc<SimplePeerManager>, network: Network) {
+        use std::net::{Ipv4Addr, SocketAddrV4};
+        use tokio::net::UdpSocket;
+
+        let p2p_port: u16 = match network {
+            Network::Mainnet => 18341,
+            Network::Testnet => 18351,
+            Network::Regtest => 18361,
+        };
+        // UDP discovery port is one below the P2P port
+        let udp_port = p2p_port - 1;
+        let network_tag = match network {
+            Network::Mainnet => "MAINNET",
+            Network::Testnet => "TESTNET",
+            Network::Regtest => "REGTEST",
+        };
+
+        let announce_msg = format!("BTPC-{}-ANNOUNCE:{}", network_tag, p2p_port);
+        let expected_prefix = format!("BTPC-{}-ANNOUNCE:", network_tag);
+
+        tokio::spawn(async move {
+            // Bind to the UDP discovery port (SO_REUSEADDR so multiple nodes on same machine work)
+            let bind_addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, udp_port);
+            let socket = match UdpSocket::bind(bind_addr).await {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("⚠️  LAN discovery: failed to bind UDP port {}: {}", udp_port, e);
+                    eprintln!("   LAN auto-discovery disabled — use manual peer connection instead.");
+                    return;
+                }
+            };
+
+            // Enable broadcast
+            if let Err(e) = socket.set_broadcast(true) {
+                eprintln!("⚠️  LAN discovery: failed to enable broadcast: {}", e);
+                return;
+            }
+
+            eprintln!("📡 LAN peer discovery active on UDP port {}", udp_port);
+
+            let broadcast_addr = SocketAddrV4::new(Ipv4Addr::BROADCAST, udp_port);
+            let mut buf = [0u8; 128];
+            let mut announce_interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
+
+            loop {
+                tokio::select! {
+                    // Send broadcast announcement
+                    _ = announce_interval.tick() => {
+                        if let Err(e) = socket.send_to(announce_msg.as_bytes(), broadcast_addr).await {
+                            // ENETUNREACH / EACCES are common on some network configs — not fatal
+                            if e.kind() != std::io::ErrorKind::Other {
+                                eprintln!("⚠️  LAN discovery broadcast failed: {}", e);
+                            }
+                        }
+                    }
+                    // Receive announcements from other nodes
+                    result = socket.recv_from(&mut buf) => {
+                        match result {
+                            Ok((len, src_addr)) => {
+                                if let Ok(msg) = std::str::from_utf8(&buf[..len]) {
+                                    if let Some(port_str) = msg.strip_prefix(&expected_prefix) {
+                                        if let Ok(peer_p2p_port) = port_str.trim().parse::<u16>() {
+                                            let peer_addr = std::net::SocketAddr::new(
+                                                src_addr.ip(),
+                                                peer_p2p_port,
+                                            );
+                                            // Add to address book and attempt connection
+                                            // (self-connections are rejected at TCP handshake level)
+                                            let already_connected =
+                                                peer_manager.is_connected(&peer_addr).await;
+                                            if !already_connected {
+                                                eprintln!(
+                                                    "📡 LAN discovery: found peer {} — connecting...",
+                                                    peer_addr
+                                                );
+                                                {
+                                                    let mut disc = peer_manager.discovery.write().await;
+                                                    disc.add_address(
+                                                        peer_addr,
+                                                        btpc_core::network::ServiceFlags::NETWORK,
+                                                    );
+                                                }
+                                                let _ = peer_manager.connect_to_peer(peer_addr).await;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("⚠️  LAN discovery recv error: {}", e);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
     /// Start P2P sync (optional - for testnet/mainnet)
     ///
     /// Spawns background task to:
@@ -700,6 +806,18 @@ impl EmbeddedNode {
         self.peer_manager.load_peers(&peers_dat).await;
         let known_peer_count = self.peer_manager.discovery.read().await.address_count();
         eprintln!("   Loaded {} known peer(s) from peers.dat", known_peer_count);
+
+        // Log hardcoded bootstrap seeds so the operator can verify reachability
+        let net_config = self.peer_manager.network_config();
+        let hardcoded_count = net_config.hardcoded_seeds.len();
+        if hardcoded_count > 0 {
+            eprintln!("   Hardcoded bootstrap seeds ({}):", hardcoded_count);
+            for seed in &net_config.hardcoded_seeds {
+                eprintln!("     - {}", seed);
+            }
+        } else {
+            eprintln!("   No hardcoded bootstrap seeds for this network");
+        }
 
         // Start accepting inbound connections on the P2P port
         if let Err(e) = self.peer_manager.start_listening().await {
@@ -738,6 +856,12 @@ impl EmbeddedNode {
         // re-queries DNS when isolated.  Mirrors Bitcoin Core's
         // ThreadOpenConnections.
         SimplePeerManager::start_connection_manager(Arc::clone(&self.peer_manager));
+
+        // Start LAN peer discovery via UDP broadcast.
+        // This allows BTPC nodes on the same local network to find each other
+        // automatically without requiring DNS seeds or hardcoded bootstrap addresses.
+        // FIX 2026-04-12: Essential for testnet where DNS seeds are not yet deployed.
+        Self::start_lan_discovery(Arc::clone(&self.peer_manager), self.network);
 
         // FIX 2026-03-29: Consume PeerEvents to keep self.peers in sync with
         // real P2P connections. Previously self.peers was only populated via

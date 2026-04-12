@@ -29,6 +29,8 @@ pub struct PeerDiscovery {
     last_dns_query: Option<Instant>,
     /// DNS query interval
     dns_query_interval: Duration,
+    /// Default P2P port for this network (used when resolving DNS seeds)
+    default_port: u16,
 }
 
 /// Information about a peer
@@ -75,18 +77,29 @@ impl PeerDiscovery {
         Self::new_for_network(max_addresses, crate::Network::Mainnet)
     }
 
+    /// Get the default P2P port for this network
+    pub fn default_port(&self) -> u16 {
+        self.default_port
+    }
+
     /// Create a peer discovery manager with network-specific DNS seeds.
     ///
     /// - **Mainnet**: 3 DNS seeds (`seed.btpc.org`, `seed1/2.btpc.network`)
     /// - **Testnet**: 2 DNS seeds (`testnet-seed.btpc.org`, `testnet-seed1.btpc.network`)
     /// - **Regtest**: no DNS seeds (local-only network)
     pub fn new_for_network(max_addresses: usize, network: crate::Network) -> Self {
+        let default_port = match network {
+            crate::Network::Mainnet => 18341,
+            crate::Network::Testnet => 18351,
+            crate::Network::Regtest => 18361,
+        };
         PeerDiscovery {
             addresses: HashMap::new(),
             dns_seeds: Self::dns_seeds_for_network(network),
             max_addresses,
             last_dns_query: None,
             dns_query_interval: Duration::from_secs(300), // 5 minutes
+            default_port,
         }
     }
 
@@ -366,11 +379,11 @@ impl PeerDiscovery {
     async fn resolve_dns_seed(&self, seed: &str) -> Result<Vec<SocketAddr>, DiscoveryError> {
         use tokio::net::lookup_host;
 
-        // Default port for BTPC
+        // Use the correct port for this network (mainnet=18341, testnet=18351, regtest=18361)
         let seed_with_port = if seed.contains(':') {
             seed.to_string()
         } else {
-            format!("{}:18341", seed)
+            format!("{}:{}", seed, self.default_port)
         };
 
         let addresses: Vec<SocketAddr> = lookup_host(&seed_with_port)
