@@ -205,7 +205,7 @@ impl NetworkConfig {
     /// Create default mainnet configuration
     pub fn mainnet() -> Self {
         NetworkConfig {
-            listen_addr: "0.0.0.0:18341"
+            listen_addr: "[::]:18341"
                 .parse()
                 .expect("Valid mainnet listen address"),
             max_connections: 125,
@@ -233,7 +233,7 @@ impl NetworkConfig {
     /// Create default testnet configuration
     pub fn testnet() -> Self {
         NetworkConfig {
-            listen_addr: "0.0.0.0:18351"
+            listen_addr: "[::]:18351"
                 .parse()
                 .expect("Valid testnet listen address"),
             max_connections: 125,
@@ -259,7 +259,7 @@ impl NetworkConfig {
     /// Create default regtest configuration (local-only, no DNS seeds)
     pub fn regtest() -> Self {
         NetworkConfig {
-            listen_addr: "0.0.0.0:18361"
+            listen_addr: "[::]:18361"
                 .parse()
                 .expect("Valid regtest listen address"),
             max_connections: 25,
