@@ -225,7 +225,7 @@ impl NetworkConfig {
             // Hardcoded seed nodes — Bitcoin-style, no DNS required.
             // These are compiled into the binary as the sole peer discovery mechanism.
             hardcoded_seeds: vec![
-                "101.115.230.117:18341".parse().expect("valid mainnet seed"),
+                "101.115.228.73:18341".parse().expect("valid mainnet seed"),
             ],
         }
     }
@@ -251,7 +251,7 @@ impl NetworkConfig {
             timeouts: ConnectionTimeouts::default(),
             dns_seeds: vec![],
             hardcoded_seeds: vec![
-                "101.115.230.117:18351".parse().expect("valid testnet seed"),
+                "101.115.228.73:18351".parse().expect("valid testnet seed"),
             ],
         }
     }

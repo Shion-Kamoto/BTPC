@@ -689,7 +689,12 @@ impl EmbeddedNode {
             Network::Regtest => "REGTEST",
         };
 
-        let announce_msg = format!("BTPC-{}-ANNOUNCE:{}", network_tag, p2p_port);
+        // Generate a unique per-process node ID so we can detect and ignore our own
+        // broadcasts (we receive our own UDP broadcasts because we listen on the same
+        // port we broadcast from). Without this, the node connects to itself and
+        // wastes peer slots on self-connections.
+        let node_id: u64 = rand::random();
+        let announce_msg = format!("BTPC-{}-ANNOUNCE:{}:{}", network_tag, p2p_port, node_id);
         let expected_prefix = format!("BTPC-{}-ANNOUNCE:", network_tag);
 
         tokio::spawn(async move {
@@ -732,8 +737,19 @@ impl EmbeddedNode {
                         match result {
                             Ok((len, src_addr)) => {
                                 if let Ok(msg) = std::str::from_utf8(&buf[..len]) {
-                                    if let Some(port_str) = msg.strip_prefix(&expected_prefix) {
-                                        if let Ok(peer_p2p_port) = port_str.trim().parse::<u16>() {
+                                    if let Some(payload) = msg.strip_prefix(&expected_prefix) {
+                                        // Payload format: "<P2P_PORT>:<NODE_ID>"
+                                        // Reject any broadcast carrying our own node_id (self-loop).
+                                        let mut parts = payload.trim().splitn(2, ':');
+                                        let port_str = parts.next().unwrap_or("");
+                                        let id_str = parts.next().unwrap_or("");
+                                        if let Ok(peer_node_id) = id_str.parse::<u64>() {
+                                            if peer_node_id == node_id {
+                                                // Our own broadcast — ignore.
+                                                continue;
+                                            }
+                                        }
+                                        if let Ok(peer_p2p_port) = port_str.parse::<u16>() {
                                             let peer_addr = std::net::SocketAddr::new(
                                                 src_addr.ip(),
                                                 peer_p2p_port,
