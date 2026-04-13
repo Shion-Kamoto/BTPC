@@ -555,10 +555,11 @@ impl RpcMethods {
     }
 
     fn get_block_hash_by_height(&self, _height: u32) -> Result<Hash, RpcMethodError> {
-        // Height-to-hash lookup requires index not available in base BlockchainDatabase trait
-        // Use integrated_handlers which maintains height index
+        // Height-to-hash lookup requires an index not available in the base
+        // BlockchainDatabase trait. The desktop app resolves this via the
+        // embedded node path, not through btpc-core's RPC layer.
         Err(RpcMethodError::InternalError(
-            "Height-based lookup requires height index (use integrated RPC)".to_string(),
+            "Height-based lookup requires height index".to_string(),
         ))
     }
 
