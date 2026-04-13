@@ -381,6 +381,51 @@ impl UnifiedDatabase {
         }
     }
 
+    /// Look up the height of a block by its 64-byte hash.
+    ///
+    /// Uses the `"height:" + hash` metadata key in the default column family
+    /// written by `put_block`. Returns `Ok(None)` if the block is unknown.
+    pub fn get_height_by_hash(&self, hash: &[u8; 64]) -> Result<Option<u32>> {
+        let mut key = Vec::with_capacity(7 + 64);
+        key.extend_from_slice(b"height:");
+        key.extend_from_slice(hash);
+
+        match self.db.get(&key)? {
+            Some(bytes) if bytes.len() == 4 => Ok(Some(u32::from_le_bytes([
+                bytes[0], bytes[1], bytes[2], bytes[3],
+            ]))),
+            _ => Ok(None),
+        }
+    }
+
+    /// Fetch a full block by its 64-byte hash.
+    ///
+    /// Reads from `CF_BLOCKS` using key format `"block:" + hash`, matching the
+    /// write path in `put_block`. Returns `Ok(None)` if the block is not stored.
+    pub fn get_block_by_hash_bytes(
+        &self,
+        hash: &[u8; 64],
+    ) -> Result<Option<btpc_core::blockchain::Block>> {
+        use btpc_core::blockchain::Block;
+
+        let blocks_cf = self
+            .cf_handle(CF_BLOCKS)
+            .context("CF_BLOCKS column family not found")?;
+
+        let mut block_key = Vec::with_capacity(6 + 64);
+        block_key.extend_from_slice(b"block:");
+        block_key.extend_from_slice(hash);
+
+        match self.db.get_cf(&blocks_cf, &block_key)? {
+            Some(block_bytes) => {
+                let block = Block::deserialize(&block_bytes)
+                    .map_err(|e| anyhow::anyhow!("Failed to deserialize block: {}", e))?;
+                Ok(Some(block))
+            }
+            None => Ok(None),
+        }
+    }
+
     /// Get transaction by txid hash
     ///
     /// # Arguments
