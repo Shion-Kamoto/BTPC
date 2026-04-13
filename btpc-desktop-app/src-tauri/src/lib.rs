@@ -32,6 +32,7 @@ pub mod thermal_throttle; // Thermal throttling for GPU mining
 pub mod debug_logger; // Comprehensive debug event logger
 
 // Embedded blockchain node modules
+pub mod embedded_block_source; // BlockSource impl backing SimplePeerManager's getheaders/getdata
 pub mod embedded_node;
 pub mod unified_database; // Unified RocksDB database for blockchain and UTXO data
 pub mod security; // Security manager for wallet encryption
