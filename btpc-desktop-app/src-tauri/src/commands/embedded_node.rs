@@ -177,13 +177,9 @@ pub async fn start_embedded_blockchain_sync(
         }
     }
 
-    // Clone the handle before taking the write lock so we can pass it into
-    // start_sync — the peer event loop needs it to call submit_block when
-    // blocks arrive from the network (Commit 2 of the P2P sync rewrite).
-    let node_handle_for_sync = Arc::clone(&node);
     let mut node_lock = node.write().await;
     node_lock
-        .start_sync(node_handle_for_sync)
+        .start_sync()
         .await
         .map_err(|e| format!("Failed to start sync: {}", e))
 }

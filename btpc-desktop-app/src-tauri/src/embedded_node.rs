@@ -663,76 +663,12 @@ impl EmbeddedNode {
     /// - Download missing blocks
     /// - Validate and add blocks to chain
     /// - Emit blockchain:block_added events
-    /// Build a Bitcoin-style block locator for headers-first sync.
-    ///
-    /// The locator is a list of block hashes in newest→oldest order, starting
-    /// dense near the tip and stepping back exponentially (tip, tip-1, tip-2,
-    /// tip-4, tip-8, …) with genesis always included as the final entry. The
-    /// remote peer walks this list and identifies the first hash it knows to
-    /// determine the fork point.
-    ///
-    /// Returns an empty vec if the chain has no blocks stored (shouldn't
-    /// happen after genesis init) — caller can treat that as "start from 0".
-    pub fn build_block_locator(&self) -> Vec<btpc_core::crypto::Hash> {
-        let tip_height = self
-            .current_height
-            .load(std::sync::atomic::Ordering::SeqCst) as u32;
-
-        let mut locator: Vec<btpc_core::crypto::Hash> = Vec::new();
-        let mut height = tip_height;
-        let mut step: u32 = 1;
-
-        // Dense region: the first ~10 heights step by 1, then exponential.
-        let mut dense_remaining: u32 = 10;
-
-        loop {
-            if let Ok(Some(block)) = self.database.get_block(height) {
-                locator.push(block.hash());
-            }
-
-            if height == 0 {
-                break;
-            }
-
-            if dense_remaining > 0 {
-                dense_remaining -= 1;
-                height = height.saturating_sub(1);
-            } else {
-                step = step.saturating_mul(2);
-                height = height.saturating_sub(step);
-            }
-        }
-
-        locator
-    }
-
-    /// Start P2P blockchain sync.
-    ///
-    /// `node_handle` is a clone of the outer `Arc<RwLock<Self>>` so that the
-    /// peer event loop can call `submit_block` back on the node when a block
-    /// arrives from the network. Without this, incoming `BlockReceived` events
-    /// would have no way to reach `submit_block` and would be dropped.
-    pub async fn start_sync(
-        &mut self,
-        node_handle: Arc<RwLock<EmbeddedNode>>,
-    ) -> Result<()> {
+    pub async fn start_sync(&mut self) -> Result<()> {
         // ── Bitcoin-style P2P bootstrap ──────────────────────────────────────
         // Load previously-known peers from disk so we can reconnect instantly
         // without waiting for DNS resolution.
         let peers_dat = self._data_dir.join("peers.dat");
         self.peer_manager.load_peers(&peers_dat).await;
-
-        // Inject the read-only blockchain view so incoming GetHeaders/GetData
-        // requests can be served. Must happen before start_listening() so the
-        // first inbound peer doesn't race against an empty block_source.
-        {
-            use crate::embedded_block_source::EmbeddedBlockSource;
-            use btpc_core::network::BlockSource;
-            let source: Arc<dyn BlockSource> =
-                Arc::new(EmbeddedBlockSource::new(self.database.clone()));
-            self.peer_manager.set_block_source(source).await;
-            eprintln!("🔗 BlockSource wired into peer manager");
-        }
 
         // Start accepting inbound connections on the P2P port
         if let Err(e) = self.peer_manager.start_listening().await {
@@ -761,14 +697,8 @@ impl EmbeddedNode {
         // add_simulated_peers(), so get_peer_info() always returned fake data.
         if let Some(mut peer_rx) = self.peer_manager.take_event_receiver().await {
             let peers_arc = Arc::clone(&self.peers);
-            let node_handle_for_events = Arc::clone(&node_handle);
-            let peer_manager_for_events = Arc::clone(&self.peer_manager);
             tokio::spawn(async move {
-                use btpc_core::network::{
-                    protocol::{GetHeadersMessage, InvType, Message, PROTOCOL_VERSION},
-                    simple_peer_manager::PeerEvent,
-                };
-                use btpc_core::crypto::Hash;
+                use btpc_core::network::simple_peer_manager::PeerEvent;
                 while let Some(event) = peer_rx.recv().await {
                     match event {
                         PeerEvent::PeerConnected { addr, height, user_agent } => {
@@ -776,177 +706,22 @@ impl EmbeddedNode {
                                 .duration_since(std::time::UNIX_EPOCH)
                                 .unwrap_or_default()
                                 .as_secs();
-                            {
-                                let mut peers = peers_arc.write().unwrap();
-                                peers.insert(addr.to_string(), PeerInfo {
-                                    address: addr.to_string(),
-                                    version: user_agent,
-                                    height: height as u64,
-                                    ping_ms: 0,
-                                    connected_since: now,
-                                });
-                            }
+                            let mut peers = peers_arc.write().unwrap();
+                            peers.insert(addr.to_string(), PeerInfo {
+                                address: addr.to_string(),
+                                version: user_agent,
+                                height: height as u64,
+                                ping_ms: 0,
+                                connected_since: now,
+                            });
                             eprintln!("🔗 Peer connected: {} (height {})", addr, height);
-
-                            // Commit 3: client-side headers-first sync.
-                            //
-                            // If this peer is ahead of us, ask it for headers
-                            // above our current tip. The response comes back
-                            // as a `HeadersReceived` event (see below) which
-                            // we then turn into `GetData` requests.
-                            let our_height = {
-                                let n = node_handle_for_events.read().await;
-                                n.current_height
-                                    .load(std::sync::atomic::Ordering::SeqCst)
-                                    as u32
-                            };
-                            if height > our_height {
-                                eprintln!(
-                                    "📥 Peer {} is ahead (peer={} ours={}), requesting headers",
-                                    addr, height, our_height
-                                );
-                                let locator = {
-                                    let n = node_handle_for_events.read().await;
-                                    n.build_block_locator()
-                                };
-                                let gh = GetHeadersMessage {
-                                    version: PROTOCOL_VERSION,
-                                    block_locator: locator,
-                                    hash_stop: Hash::zero(),
-                                };
-                                let _ = peer_manager_for_events
-                                    .send_to(addr, Message::GetHeaders(gh))
-                                    .await;
-                            }
                         }
                         PeerEvent::PeerDisconnected { addr, .. } => {
                             let mut peers = peers_arc.write().unwrap();
                             peers.remove(&addr.to_string());
                             eprintln!("🔌 Peer disconnected: {}", addr);
                         }
-
-                        // Commit 2: accept blocks pushed by mining peers.
-                        //
-                        // We serialize the block to hex and call `submit_block`
-                        // on the node. This is spawned in its own task so a
-                        // slow `submit_block` (reorg, UTXO processing) can't
-                        // block the event loop from draining further peer
-                        // events (peer connect/disconnect, subsequent blocks).
-                        PeerEvent::BlockReceived { from, block } => {
-                            let block_hash_hex =
-                                hex::encode(block.hash().as_bytes());
-                            eprintln!(
-                                "📥 BlockReceived from {} — hash {}, forwarding to submit_block",
-                                from,
-                                &block_hash_hex[..16]
-                            );
-                            let handle = Arc::clone(&node_handle_for_events);
-                            tokio::spawn(async move {
-                                // Serialize to the hex format `submit_block` expects.
-                                let bytes = block.serialize();
-                                let hex_str = hex::encode(&bytes);
-                                // Acquire write lock and submit. Will wait behind
-                                // any concurrent mining / RPC call, which is fine.
-                                let mut node = handle.write().await;
-                                match node.submit_block(&hex_str).await {
-                                    Ok(accepted_hash) => {
-                                        eprintln!(
-                                            "✅ Accepted block from {} — {}",
-                                            from, accepted_hash
-                                        );
-                                    }
-                                    Err(e) => {
-                                        eprintln!(
-                                            "❌ Rejected block from {} — {}",
-                                            from, e
-                                        );
-                                    }
-                                }
-                            });
-                        }
-
-                        // Commit 3: headers-first sync — response path.
-                        //
-                        // A peer answered our earlier GetHeaders. For each
-                        // header we don't already have, turn it into a
-                        // `GetData` request for the full block. The blocks
-                        // come back via `BlockReceived` (Commit 2) and flow
-                        // through `submit_block`.
-                        //
-                        // We batch all requests into one `GetData` message
-                        // up to the server-side cap of 128 blocks per msg.
-                        PeerEvent::HeadersReceived { from, headers } => {
-                            if headers.is_empty() {
-                                continue;
-                            }
-                            eprintln!(
-                                "📜 HeadersReceived from {} — {} header(s), requesting blocks",
-                                from,
-                                headers.len()
-                            );
-                            // Build GetData for each header's block hash.
-                            // Cap at 128 to match MAX_BLOCKS_PER_GETDATA.
-                            let mut inv_vecs: Vec<btpc_core::network::protocol::InventoryVector> =
-                                Vec::with_capacity(headers.len().min(128));
-                            for header in headers.iter().take(128) {
-                                inv_vecs.push(
-                                    btpc_core::network::protocol::InventoryVector {
-                                        inv_type: InvType::Block,
-                                        hash: header.hash(),
-                                    },
-                                );
-                            }
-                            let sent = peer_manager_for_events
-                                .send_to(from, Message::GetData(inv_vecs))
-                                .await;
-                            if !sent {
-                                eprintln!(
-                                    "⚠️ Failed to request blocks from {} — peer disconnected?",
-                                    from
-                                );
-                            }
-                        }
-
-                        // Commit 3: live block announcement path.
-                        //
-                        // An already-connected peer is announcing new
-                        // inventory (usually a freshly-mined block). For
-                        // any block hash we don't yet have, immediately
-                        // request it with GetData. Transactions are
-                        // ignored for now (mempool sync comes later).
-                        PeerEvent::InventoryReceived { from, inv } => {
-                            let mut wanted: Vec<btpc_core::network::protocol::InventoryVector> =
-                                Vec::new();
-                            {
-                                let n = node_handle_for_events.read().await;
-                                for item in &inv {
-                                    if matches!(item.inv_type, InvType::Block) {
-                                        // Skip anything we already have.
-                                        let hash_bytes = item.hash.as_bytes();
-                                        let have = n
-                                            .database
-                                            .get_height_by_hash(hash_bytes)
-                                            .map(|opt| opt.is_some())
-                                            .unwrap_or(false);
-                                        if !have {
-                                            wanted.push(item.clone());
-                                        }
-                                    }
-                                }
-                            }
-                            if !wanted.is_empty() {
-                                eprintln!(
-                                    "📋 Inv from {} — requesting {} unknown block(s)",
-                                    from,
-                                    wanted.len()
-                                );
-                                let _ = peer_manager_for_events
-                                    .send_to(from, Message::GetData(wanted))
-                                    .await;
-                            }
-                        }
-
-                        _ => {} // TransactionReceived — handled elsewhere
+                        _ => {} // BlockReceived / TransactionReceived handled elsewhere
                     }
                 }
             });
