@@ -216,7 +216,6 @@ pub async fn get_blockchain_info(state: State<'_, AppState>) -> Result<serde_jso
     tracing::debug!("blockchain height from EmbeddedNode = {}", current_height);
 
     // Convert difficulty bits to human-readable difficulty value
-    // Using the same formula as integrated_handlers.rs
     let difficulty = bits_to_difficulty(difficulty_bits);
 
     tracing::debug!("Network difficulty at height {}: {:.2} (bits: 0x{:08x})",

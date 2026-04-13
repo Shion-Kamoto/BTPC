@@ -4,23 +4,19 @@
 
 pub mod connection_tracker;
 pub mod discovery;
-pub mod integrated_sync;
 pub mod peer_ban_manager;
 pub mod protocol;
 pub mod rate_limiter;
 pub mod simple_peer_manager;
-pub mod sync;
 
 use std::{net::SocketAddr, time::Duration};
 
 pub use connection_tracker::*;
 pub use discovery::*;
-pub use integrated_sync::{IntegratedSyncError, IntegratedSyncManager, SyncConfig, SyncStats};
 pub use peer_ban_manager::*;
 pub use protocol::*;
 pub use rate_limiter::*;
 pub use simple_peer_manager::{DisconnectReason, PeerEvent, SimplePeerManager};
-pub use sync::*;
 use thiserror::Error;
 
 /// Progressive connection timeouts (Issue #8 - Slowloris attack prevention)
