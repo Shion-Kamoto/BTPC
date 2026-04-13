@@ -34,6 +34,7 @@ pub mod debug_logger; // Comprehensive debug event logger
 // Embedded blockchain node modules
 pub mod embedded_node;
 pub mod unified_database; // Unified RocksDB database for blockchain and UTXO data
+pub mod embedded_block_source; // BlockSource adapter bridging UnifiedDatabase to the P2P layer
 pub mod security; // Security manager for wallet encryption
 pub mod btpc_integration; // BTPC node integration
 pub mod wallet_manager; // Wallet management and balance caching (depends on security)

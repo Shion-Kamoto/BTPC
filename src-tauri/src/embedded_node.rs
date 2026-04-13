@@ -852,6 +852,19 @@ impl EmbeddedNode {
             eprintln!("   No hardcoded bootstrap seeds for this network");
         }
 
+        // Inject the read-only blockchain view so incoming GetHeaders/GetData
+        // requests from peers can actually be served. Must happen BEFORE
+        // start_listening so the first inbound peer does not race against
+        // an empty block_source.
+        {
+            use crate::embedded_block_source::EmbeddedBlockSource;
+            use btpc_core::network::BlockSource;
+            let source: Arc<dyn BlockSource> =
+                Arc::new(EmbeddedBlockSource::new(self.database.clone()));
+            self.peer_manager.set_block_source(source).await;
+            eprintln!("🔗 BlockSource wired into peer manager");
+        }
+
         // Start accepting inbound connections on the P2P port
         if let Err(e) = self.peer_manager.start_listening().await {
             eprintln!("⚠️  P2P listener failed to start: {}", e);
@@ -941,23 +954,43 @@ impl EmbeddedNode {
                                     "📡 Peer {} has height {} (we have {}), requesting blocks via GetHeaders",
                                     addr, height, our_height
                                 );
-                                // Build block locator (simplified: just our tip hash)
-                                if let Ok(Some(tip_hash_bytes)) = database_clone
-                                    .get_block_hash_at_height(our_height as u32)
-                                {
+                                // Build a Bitcoin-style block locator: 10
+                                // dense entries stepping back from our tip,
+                                // then doubling step down to genesis. The
+                                // peer uses this to find the fork point.
+                                let mut locator: Vec<btpc_core::crypto::Hash> = Vec::new();
+                                let mut step: u32 = 1;
+                                let mut h: i64 = our_height as i64;
+                                while h >= 0 {
+                                    if let Ok(Some(hash_bytes)) = database_clone
+                                        .get_block_hash_at_height(h as u32)
+                                    {
+                                        let mut hash_array = [0u8; 64];
+                                        let copy_len = hash_bytes.len().min(64);
+                                        hash_array[..copy_len]
+                                            .copy_from_slice(&hash_bytes[..copy_len]);
+                                        locator.push(
+                                            btpc_core::crypto::Hash::from_bytes(hash_array),
+                                        );
+                                    }
+                                    if locator.len() >= 10 {
+                                        step = step.saturating_mul(2);
+                                    }
+                                    if h == 0 {
+                                        break;
+                                    }
+                                    h -= step as i64;
+                                    if h < 0 {
+                                        h = 0;
+                                    }
+                                }
+                                if !locator.is_empty() {
                                     use btpc_core::network::protocol::{
                                         GetHeadersMessage, Message,
                                     };
-                                    let mut hash_array = [0u8; 64];
-                                    let copy_len = tip_hash_bytes.len().min(64);
-                                    hash_array[..copy_len]
-                                        .copy_from_slice(&tip_hash_bytes[..copy_len]);
-                                    let locator_hash =
-                                        btpc_core::crypto::Hash::from_bytes(hash_array);
-
                                     let get_headers = Message::GetHeaders(GetHeadersMessage {
                                         version: 1,
-                                        block_locator: vec![locator_hash],
+                                        block_locator: locator,
                                         hash_stop: btpc_core::crypto::Hash::zero(),
                                     });
                                     peer_manager_arc
@@ -1055,6 +1088,39 @@ impl EmbeddedNode {
                                 from
                             );
                             // TODO: Add to mempool when mempool accepts external txs
+                        }
+
+                        // Headers-first sync response path.
+                        //
+                        // A peer answered our earlier GetHeaders. Turn each
+                        // header we don't already have into a `GetData`
+                        // request for the full block. Blocks come back via
+                        // `BlockReceived` and flow through `submit_block`.
+                        // Cap the batch at MAX_BLOCKS_PER_GETDATA (128) to
+                        // match the server-side serve limit.
+                        PeerEvent::HeadersReceived { from, headers } => {
+                            if headers.is_empty() {
+                                continue;
+                            }
+                            eprintln!(
+                                "📜 HeadersReceived from {} — {} header(s), requesting blocks",
+                                from,
+                                headers.len()
+                            );
+                            use btpc_core::network::protocol::{
+                                InvType, InventoryVector, Message,
+                            };
+                            let mut inv_vecs: Vec<InventoryVector> =
+                                Vec::with_capacity(headers.len().min(128));
+                            for header in headers.iter().take(128) {
+                                inv_vecs.push(InventoryVector {
+                                    inv_type: InvType::Block,
+                                    hash: header.hash(),
+                                });
+                            }
+                            peer_manager_arc
+                                .send_to_peer(&from, Message::GetData(inv_vecs))
+                                .await;
                         }
                     }
                 }

@@ -4,7 +4,6 @@ pqc_dilithium = { path = "vendor/pqc_dilithium" }
 [workspace]
 members = [
     "btpc-core",
-    "bins/btpc_node",
     "bins/btpc_wallet",
     "bins/btpc_miner",
     "bins/genesis_tool",

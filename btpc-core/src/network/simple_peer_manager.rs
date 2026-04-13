@@ -30,12 +30,20 @@ use tokio::{
 };
 
 use crate::{
-    blockchain::Block,
+    blockchain::{Block, BlockHeader},
     network::{
-        discovery::PeerDiscovery, protocol::*, ConnectionTracker, NetworkConfig, NetworkError,
-        NetworkResult, PeerRateLimiter,
+        block_source::BlockSource, discovery::PeerDiscovery, protocol::*, ConnectionTracker,
+        NetworkConfig, NetworkError, NetworkResult, PeerRateLimiter,
     },
 };
+
+/// Maximum number of headers returned in a single `Headers` reply.
+/// Matches Bitcoin Core's limit.
+pub const MAX_HEADERS_PER_MSG: usize = 2000;
+
+/// Maximum number of blocks a single `GetData` reply will serve before
+/// the caller must ask for more.
+pub const MAX_BLOCKS_PER_GETDATA: usize = 128;
 
 /// Peer event messages sent to the application
 #[derive(Debug, Clone)]
@@ -58,6 +66,14 @@ pub enum PeerEvent {
     InventoryReceived {
         from: SocketAddr,
         inv: Vec<InventoryVector>,
+    },
+    /// Block headers received in response to a `GetHeaders` request.
+    ///
+    /// The client side of headers-first sync uses this event to learn which
+    /// block hashes to request next via `GetData`.
+    HeadersReceived {
+        from: SocketAddr,
+        headers: Vec<BlockHeader>,
     },
 }
 
@@ -102,6 +118,10 @@ pub struct SimplePeerManager {
     config: NetworkConfig,
     /// Peer address book — Bitcoin-style AddrMan equivalent
     pub discovery: Arc<RwLock<PeerDiscovery>>,
+    /// Optional read-only view of the local blockchain, used to answer
+    /// inbound `GetHeaders` / `GetData` requests. Injected after
+    /// construction via `set_block_source`.
+    block_source: Arc<RwLock<Option<Arc<dyn BlockSource>>>>,
 }
 
 /// Handle to a connected peer with rate limiting
@@ -144,7 +164,17 @@ impl SimplePeerManager {
             connection_tracker: Arc::new(RwLock::new(ConnectionTracker::new())),
             config,
             discovery: Arc::new(RwLock::new(discovery)),
+            block_source: Arc::new(RwLock::new(None)),
         }
+    }
+
+    /// Inject the read-only blockchain view used to answer inbound
+    /// `GetHeaders` and `GetData` requests.
+    ///
+    /// Must be called before `start_listening` so the first inbound peer
+    /// does not race against an empty source.
+    pub async fn set_block_source(&self, source: Arc<dyn BlockSource>) {
+        *self.block_source.write().await = Some(source);
     }
 
     /// Take the event receiver (can only be called once)
@@ -167,6 +197,7 @@ impl SimplePeerManager {
         let connection_tracker = Arc::clone(&self.connection_tracker);
         let config = self.config.clone();
         let discovery = Arc::clone(&self.discovery);
+        let block_source = Arc::clone(&self.block_source);
 
         tokio::spawn(async move {
             loop {
@@ -188,6 +219,7 @@ impl SimplePeerManager {
                                 let tracker_clone = Arc::clone(&connection_tracker);
                                 let config_clone = config.clone();
                                 let discovery_clone = Arc::clone(&discovery);
+                                let block_source_clone = Arc::clone(&block_source);
 
                                 tokio::spawn(async move {
                                     if let Err(e) = Self::handle_incoming_peer(
@@ -200,6 +232,7 @@ impl SimplePeerManager {
                                         tracker_clone,
                                         config_clone,
                                         discovery_clone,
+                                        block_source_clone,
                                     )
                                     .await
                                     {
@@ -233,6 +266,7 @@ impl SimplePeerManager {
         connection_tracker: Arc<RwLock<ConnectionTracker>>,
         config: NetworkConfig,
         discovery: Arc<RwLock<PeerDiscovery>>,
+        block_source: Arc<RwLock<Option<Arc<dyn BlockSource>>>>,
     ) -> NetworkResult<()> {
         // Register connection (Issue #4)
         {
@@ -315,6 +349,7 @@ impl SimplePeerManager {
                 let event_tx_clone = event_tx.clone();
                 let tracker_clone = Arc::clone(&connection_tracker);
                 let discovery_clone = Arc::clone(&discovery);
+                let block_source_clone = Arc::clone(&block_source);
                 tokio::spawn(async move {
                     let disconnect_reason = loop {
                         tokio::select! {
@@ -343,6 +378,7 @@ impl SimplePeerManager {
                                                     &event_tx_clone,
                                                     &peer_tx_for_handler,
                                                     &discovery_clone,
+                                                    &block_source_clone,
                                                 )
                                                 .await;
                                             }
@@ -500,6 +536,7 @@ impl SimplePeerManager {
                 let event_tx_clone = self.event_tx.clone();
                 let tracker_clone = Arc::clone(&self.connection_tracker);
                 let discovery_clone = Arc::clone(&self.discovery);
+                let block_source_clone = Arc::clone(&self.block_source);
                 tokio::spawn(async move {
                     let disconnect_reason = loop {
                         tokio::select! {
@@ -528,6 +565,7 @@ impl SimplePeerManager {
                                                     &event_tx_clone,
                                                     &peer_tx_for_handler,
                                                     &discovery_clone,
+                                                    &block_source_clone,
                                                 )
                                                 .await;
                                             }
@@ -588,12 +626,15 @@ impl SimplePeerManager {
     /// `peer_tx` is the sender for messages going back to *this* peer (used to
     /// reply to `GetAddr` without taking the global peers lock).
     /// `discovery` is the shared address book (written on incoming `Addr` msgs).
+    /// `block_source` is the optional read-only chain view, needed to answer
+    /// `GetHeaders` and `GetData` requests.
     async fn handle_peer_message(
         msg: &Message,
         from: SocketAddr,
         event_tx: &mpsc::Sender<PeerEvent>,
         peer_tx: &mpsc::Sender<Message>,
         discovery: &Arc<RwLock<PeerDiscovery>>,
+        block_source: &Arc<RwLock<Option<Arc<dyn BlockSource>>>>,
     ) {
         match msg {
             Message::Ping(nonce) => {
@@ -673,6 +714,90 @@ impl SimplePeerManager {
                     tx: tx.clone(),
                 });
             }
+
+            // ── Headers-first P2P sync ─────────────────────────────────
+            //
+            // GetHeaders: peer wants headers above some fork point. Walk
+            // their locator with the injected BlockSource and reply with
+            // up to MAX_HEADERS_PER_MSG headers.
+            Message::GetHeaders(gh) => {
+                let source = block_source.read().await.clone();
+                let Some(source) = source else {
+                    // No local chain view wired yet — ignore.
+                    return;
+                };
+                let fork_height = source.find_fork_point(&gh.block_locator);
+                let headers =
+                    source.headers_after(fork_height, MAX_HEADERS_PER_MSG, &gh.hash_stop);
+                println!(
+                    "📜 GetHeaders from {} — fork at {}, replying with {} header(s)",
+                    from,
+                    fork_height,
+                    headers.len()
+                );
+                let _ = peer_tx.try_send(Message::Headers(headers));
+            }
+
+            // GetData: peer wants specific blocks (or txs) by hash.
+            // Walk the inventory list, serve up to MAX_BLOCKS_PER_GETDATA
+            // full blocks from the BlockSource, and reply with a NotFound
+            // for anything we don't have.
+            Message::GetData(items) => {
+                let source = block_source.read().await.clone();
+                let Some(source) = source else {
+                    return;
+                };
+                let mut served: usize = 0;
+                let mut missing: Vec<InventoryVector> = Vec::new();
+                for inv in items.iter() {
+                    if !matches!(inv.inv_type, InvType::Block) {
+                        continue;
+                    }
+                    if served >= MAX_BLOCKS_PER_GETDATA {
+                        break;
+                    }
+                    match source.get_block_by_hash(&inv.hash) {
+                        Some(block) => {
+                            let _ = peer_tx.try_send(Message::Block(block));
+                            served += 1;
+                        }
+                        None => {
+                            missing.push(inv.clone());
+                        }
+                    }
+                }
+                if served > 0 {
+                    println!("📦 GetData from {} — served {} block(s)", from, served);
+                }
+                if !missing.is_empty() {
+                    let _ = peer_tx.try_send(Message::NotFound(missing));
+                }
+            }
+
+            // NotFound: peer didn't have something we asked for. Log for
+            // now; the client sync loop can reissue to a different peer.
+            Message::NotFound(inv) => {
+                println!(
+                    "🚫 NotFound from {} — {} item(s)",
+                    from,
+                    inv.len()
+                );
+            }
+
+            // Headers: reply from a peer to our earlier `GetHeaders`.
+            // Forward to the client sync loop via an event.
+            Message::Headers(headers) => {
+                println!(
+                    "📜 Headers from {} — {} header(s)",
+                    from,
+                    headers.len()
+                );
+                let _ = event_tx.try_send(PeerEvent::HeadersReceived {
+                    from,
+                    headers: headers.clone(),
+                });
+            }
+
             _ => {}
         }
     }

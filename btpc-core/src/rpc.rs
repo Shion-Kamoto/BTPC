@@ -3,7 +3,6 @@
 //! Provides Bitcoin-compatible JSON-RPC interface for blockchain operations.
 
 pub mod handlers;
-pub mod integrated_handlers;
 pub mod methods;
 pub mod server;
 pub mod types;
