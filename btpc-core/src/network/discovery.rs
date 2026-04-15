@@ -151,6 +151,33 @@ impl PeerDiscovery {
         self.addresses.insert(addr, peer_info);
     }
 
+    /// Add a peer address with an explicit `last_seen` timestamp
+    /// (003-testnet-p2p-hardening — used by `addr` gossip ingestion).
+    pub fn add_address_with_last_seen(
+        &mut self,
+        addr: SocketAddr,
+        services: ServiceFlags,
+        last_seen: SystemTime,
+    ) {
+        if self.addresses.len() >= self.max_addresses {
+            self.evict_oldest();
+        }
+        let network_addr = NetworkAddress::new(addr.ip(), addr.port(), services);
+        let peer_info = PeerInfo {
+            address: network_addr,
+            last_seen,
+            first_seen: last_seen,
+            attempts: 0,
+            failed_attempts: 0,
+            last_attempt: None,
+            services,
+            success_rate: 0.0,
+            avg_latency: None,
+            misbehavior_score: 0,
+        };
+        self.addresses.insert(addr, peer_info);
+    }
+
     /// Add multiple addresses from addr message
     pub fn add_addresses(&mut self, addresses: Vec<NetworkAddress>) {
         for addr in addresses {
@@ -444,6 +471,11 @@ impl PeerDiscovery {
     }
 
     /// Check if an address is known
+    /// Alias for [`PeerDiscovery::has_address`] (003-testnet-p2p-hardening).
+    pub fn contains_address(&self, addr: &SocketAddr) -> bool {
+        self.has_address(addr)
+    }
+
     pub fn has_address(&self, addr: &SocketAddr) -> bool {
         self.addresses.contains_key(addr)
     }
@@ -938,5 +970,163 @@ mod tests {
         manager.add_address(peer_info);
         let addresses = manager.get_random_addresses(5);
         assert!(!addresses.is_empty());
+    }
+}
+
+// ============================================================================
+// 003-testnet-p2p-hardening — addr gossip handlers (T022–T024, FR-005)
+// ============================================================================
+
+/// Maximum number of entries returned by [`handle_getaddr`].
+pub const GETADDR_MAX_ENTRIES: usize = 1000;
+
+/// Maximum age of an `addr` entry that can be gossiped back out (10 days,
+/// matching Bitcoin Core's `ADDRMAN_ADDRMAN_FRESH_WINDOW`).
+pub const GETADDR_MAX_AGE: Duration = Duration::from_secs(10 * 24 * 60 * 60);
+
+/// Threshold below which an inbound `addr` message is considered a
+/// gossip relay candidate (Bitcoin convention: ≤10 entries).
+pub const ADDR_RELAY_THRESHOLD: usize = 10;
+
+/// Decision returned by [`handle_inbound_addr`] telling the caller what
+/// to do with a received `addr` payload.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AddrRelayDecision {
+    /// Small addr — ingest and forward to `peers` other peers.
+    Forward { peers: usize },
+    /// Bulk addr — ingest only, do not relay.
+    IngestOnly,
+}
+
+/// Build a `getaddr` response from a peer discovery state. Filters
+/// stale entries (>10 days) and caps the response at 1000 addresses.
+pub fn handle_getaddr(disc: &PeerDiscovery) -> Vec<NetworkAddress> {
+    let now = SystemTime::now();
+    let mut out = Vec::new();
+    for info in disc.addresses.values() {
+        if let Ok(age) = now.duration_since(info.last_seen) {
+            if age > GETADDR_MAX_AGE {
+                continue;
+            }
+        }
+        out.push(info.address.clone());
+        if out.len() >= GETADDR_MAX_ENTRIES {
+            break;
+        }
+    }
+    out
+}
+
+/// Decide how to process an inbound `addr` message. Small messages
+/// (≤[`ADDR_RELAY_THRESHOLD`] entries) are relayed to exactly two other
+/// peers; larger ones are ingested silently.
+pub fn handle_inbound_addr(
+    _disc: &PeerDiscovery,
+    addrs: &[NetworkAddress],
+) -> AddrRelayDecision {
+    if addrs.len() <= ADDR_RELAY_THRESHOLD {
+        AddrRelayDecision::Forward { peers: 2 }
+    } else {
+        AddrRelayDecision::IngestOnly
+    }
+}
+
+// ============================================================================
+// 003-testnet-p2p-hardening — RED-phase tests for T093 (Phase 2.5)
+// ============================================================================
+//
+// These tests cover FR-005 `addr` gossip + the `getaddr` handler that does
+// not yet exist in the live flat tree. GREEN implementation lands in T022–T024.
+// Compilation failure IS the failing state; do NOT stub symbols.
+
+#[cfg(test)]
+mod red_phase_addr_gossip_tests {
+    use super::*;
+    use crate::network::discovery::{handle_getaddr, handle_inbound_addr, AddrRelayDecision};
+    use std::time::{Duration, SystemTime};
+
+    fn mk_discovery() -> PeerDiscovery {
+        PeerDiscovery::new_for_network(2048, crate::Network::Regtest)
+    }
+
+    #[test]
+    fn getaddr_response_is_capped_at_one_thousand_entries() {
+        // FR-005 / Bitcoin-style: `getaddr` returns ≤1000 addresses even if
+        // we know more, to avoid flooding the requester.
+        let mut disc = mk_discovery();
+        for i in 0..2500 {
+            let a = std::net::SocketAddr::new(
+                std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, (i >> 8) as u8, (i & 0xff) as u8, 1)),
+                18351,
+            );
+            disc.add_address(a, ServiceFlags::NETWORK);
+        }
+        let response = handle_getaddr(&disc);
+        assert!(
+            response.len() <= 1000,
+            "getaddr must cap response at 1000, got {}",
+            response.len()
+        );
+        assert!(!response.is_empty(), "getaddr must return at least some entries");
+    }
+
+    #[test]
+    fn getaddr_filters_entries_older_than_ten_days() {
+        // Stale peers (last_seen > 10 days ago) must NOT be shared via getaddr.
+        let mut disc = mk_discovery();
+        let eleven_days_ago = SystemTime::now() - Duration::from_secs(11 * 24 * 60 * 60);
+        disc.add_address_with_last_seen(
+            "10.0.0.1:18351".parse().unwrap(),
+            ServiceFlags::NETWORK,
+            eleven_days_ago,
+        );
+        disc.add_address(
+            "10.0.0.2:18351".parse().unwrap(),
+            ServiceFlags::NETWORK,
+        );
+        let response = handle_getaddr(&disc);
+        assert!(
+            response.iter().all(|na| !format!("{:?}", na).contains("10.0.0.1")),
+            "stale entry must be filtered out"
+        );
+    }
+
+    #[test]
+    fn small_addr_message_is_relayed_to_two_peers() {
+        // FR-005 Bitcoin rule: `addr` with ≤10 entries gets forwarded to
+        // two randomly-selected peers (relay on gossip).
+        let disc = mk_discovery();
+        let addrs: Vec<NetworkAddress> = (0..8)
+            .map(|i| NetworkAddress::from_socket_addr(
+                &format!("10.1.0.{}:18351", i + 1).parse().unwrap(),
+                ServiceFlags::NETWORK,
+            ))
+            .collect();
+        let decision = handle_inbound_addr(&disc, &addrs);
+        match decision {
+            AddrRelayDecision::Forward { peers } => {
+                assert_eq!(peers, 2, "small addr must relay to exactly 2 peers");
+            }
+            _ => panic!("small addr must trigger Forward decision, got {:?}", decision),
+        }
+    }
+
+    #[test]
+    fn bulk_addr_message_is_not_relayed() {
+        // FR-005: large `addr` dumps (>10 entries) are treated as bulk-ingest,
+        // stored but not relayed onward.
+        let disc = mk_discovery();
+        let addrs: Vec<NetworkAddress> = (0..500)
+            .map(|i| NetworkAddress::from_socket_addr(
+                &format!("10.2.{}.{}:18351", (i >> 8) & 0xff, i & 0xff).parse().unwrap(),
+                ServiceFlags::NETWORK,
+            ))
+            .collect();
+        let decision = handle_inbound_addr(&disc, &addrs);
+        assert!(
+            matches!(decision, AddrRelayDecision::IngestOnly),
+            "bulk addr must NOT be relayed, got {:?}",
+            decision
+        );
     }
 }

@@ -3145,3 +3145,47 @@ mod tests {
         );
     }
 }
+
+
+#[cfg(test)]
+mod red_phase_snapshot_tests {
+    //! T100 RED-phase — `build_node_status_snapshot` must aggregate all fields
+    //! from the extended `NodeStatus` struct in a single atomic pass (US2).
+    //!
+    //! The function does NOT yet exist. Compile failure = RED evidence.
+
+    use crate::embedded_node::{build_node_status_snapshot, EmbeddedNode};
+    use crate::types::status::NodeStatus;
+    use std::sync::Arc;
+
+    #[tokio::test]
+    async fn snapshot_populates_all_extended_fields() {
+        let node: Arc<EmbeddedNode> = EmbeddedNode::test_instance().await;
+        let status: NodeStatus = build_node_status_snapshot(&node).await;
+
+        // Baseline fields (already exist).
+        assert!(!status.network.is_empty(), "network must be set");
+
+        // Extended fields (003-testnet-p2p-hardening).
+        assert!(status.generated_at > 0, "generated_at must be current unix time");
+        assert_eq!(
+            status.peer_count,
+            status.peer_count_in + status.peer_count_out,
+            "peer_count must equal in+out split"
+        );
+        // headers_height must be >= block_height during sync.
+        assert!(status.headers_height >= status.block_height);
+    }
+
+    #[tokio::test]
+    async fn snapshot_emits_on_block_added() {
+        // When a new block is accepted, the embedded node must rebuild and
+        // emit a fresh NodeStatus snapshot via BlockchainEvent::SyncProgressUpdated.
+        let node = EmbeddedNode::test_instance().await;
+        let before = build_node_status_snapshot(&node).await;
+        node.simulate_block_accepted().await;
+        let after = build_node_status_snapshot(&node).await;
+        assert!(after.generated_at >= before.generated_at);
+        assert!(after.block_height > before.block_height);
+    }
+}

@@ -24,6 +24,14 @@ pub const CF_METADATA: &str = "metadata";
 /// NEW column family for desktop app wallet storage
 pub const CF_WALLETS: &str = "wallets";
 
+/// 003-testnet-p2p-hardening: persistent peer address database
+/// (key: network-group+addr bytes, value: serialized PeerAddress entry)
+pub const CF_PEER_ADDRS: &str = "peer_addrs";
+
+/// 003-testnet-p2p-hardening: persistent ban list
+/// (key: address/subnet string, value: serialized BanEntry)
+pub const CF_PEER_BANS: &str = "peer_bans";
+
 /// All column families that must be created
 const COLUMN_FAMILIES: &[&str] = &[
     CF_BLOCKS,
@@ -31,6 +39,8 @@ const COLUMN_FAMILIES: &[&str] = &[
     CF_UTXOS,
     CF_METADATA,
     CF_WALLETS,
+    CF_PEER_ADDRS,
+    CF_PEER_BANS,
 ];
 
 /// Unified database handle with thread-safe Arc wrapper

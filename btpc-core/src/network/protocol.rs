@@ -19,6 +19,55 @@ use crate::{
 /// Bitcoin protocol version
 pub const PROTOCOL_VERSION: u32 = 70015;
 
+/// Minimum protocol version accepted from peers (003-testnet-p2p-hardening, FR-002).
+///
+/// Peers advertising a `version.version` strictly less than this value are
+/// disconnected during handshake without being banned (they may simply be
+/// stale clients). Matches Bitcoin Core's `MIN_PEER_PROTO_VERSION` behaviour.
+pub const MIN_SUPPORTED_PROTOCOL_VERSION: u32 = 70015;
+
+/// Message-type discriminator used by `PeerRateLimiter` per-type quotas
+/// (003-testnet-p2p-hardening, FR-008). Kept deliberately simple — only
+/// the commands with explicit rate budgets in `contracts/p2p-wire.md §6`
+/// have variants here; everything else is `Unknown`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MessageType {
+    Version,
+    VerAck,
+    Ping,
+    Pong,
+    GetAddr,
+    Addr,
+    Inv,
+    GetData,
+    Block,
+    Tx,
+    GetHeaders,
+    Headers,
+    Unknown,
+}
+
+impl MessageType {
+    /// Derive the rate-limiter category from a live `Message`.
+    pub fn from_message(msg: &Message) -> Self {
+        match msg {
+            Message::Version(_) => MessageType::Version,
+            Message::VerAck => MessageType::VerAck,
+            Message::Ping(_) => MessageType::Ping,
+            Message::Pong(_) => MessageType::Pong,
+            Message::GetAddr => MessageType::GetAddr,
+            Message::Addr(_) => MessageType::Addr,
+            Message::Inv(_) => MessageType::Inv,
+            Message::GetData(_) => MessageType::GetData,
+            Message::Block(_) => MessageType::Block,
+            Message::Tx(_) => MessageType::Tx,
+            Message::GetHeaders(_) => MessageType::GetHeaders,
+            Message::Headers(_) => MessageType::Headers,
+            _ => MessageType::Unknown,
+        }
+    }
+}
+
 /// BTPC network magic bytes (Issue #13 - Reviewed for collision safety)
 ///
 /// Magic bytes are used to identify BTPC network messages and prevent
@@ -121,6 +170,17 @@ impl NetworkAddress {
             ip,
             port,
         }
+    }
+
+    /// Construct a [`NetworkAddress`] from a [`std::net::SocketAddr`].
+    /// 003-testnet-p2p-hardening — used by the addr gossip handlers.
+    pub fn from_socket_addr(addr: &std::net::SocketAddr, services: ServiceFlags) -> Self {
+        NetworkAddress::new(addr.ip(), addr.port(), services)
+    }
+
+    /// Return the socket address (ip + port) of this entry.
+    pub fn socket_addr(&self) -> std::net::SocketAddr {
+        std::net::SocketAddr::new(self.ip, self.port)
     }
 }
 
@@ -245,7 +305,13 @@ pub struct VersionMessage {
 }
 
 impl VersionMessage {
-    /// Create a new version message
+    /// Create a new version message.
+    ///
+    /// `node_nonce` MUST be the locally-generated nonce stored on the peer
+    /// manager so that self-connection detection (FR-007) can compare the
+    /// inbound `version.nonce` against the same value for every outbound
+    /// handshake in the process lifetime. Callers should NOT pass a fresh
+    /// `rand::random()` on every call — see `SimplePeerManager::node_nonce`.
     pub fn new(
         services: ServiceFlags,
         addr_recv: NetworkAddress,
@@ -253,6 +319,7 @@ impl VersionMessage {
         user_agent: String,
         start_height: u32,
         relay: bool,
+        node_nonce: u64,
     ) -> Self {
         VersionMessage {
             version: PROTOCOL_VERSION,
@@ -263,7 +330,7 @@ impl VersionMessage {
                 .as_secs() as i64,
             addr_recv,
             addr_from,
-            nonce: rand::random(),
+            nonce: node_nonce,
             user_agent,
             start_height,
             relay,

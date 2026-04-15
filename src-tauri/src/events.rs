@@ -22,6 +22,27 @@ pub enum BlockchainEvent {
         target_height: u64,
         is_syncing: bool,
         connected_peers: u32,
+        // --- 003-testnet-p2p-hardening: extended NodeStatus payload fields ---
+        tip_hash: Option<String>,
+        headers_height: u64,
+        last_block_time: Option<u64>,
+        peer_count_in: u32,
+        peer_count_out: u32,
+        mempool_size: u32,
+        ban_count: u32,
+        generated_at: u64,
+    },
+    /// Peer table shape changed (connect, disconnect, ban). Payload placeholder
+    /// until `PeerSummary` DTO lands in T070; typed as `serde_json::Value` so
+    /// this variant can be wired through without depending on later tasks.
+    PeerListUpdated {
+        peers: Vec<serde_json::Value>,
+    },
+    /// One-shot notification that a peer was banned (for UI toasts/log lines).
+    PeerBanned {
+        address: String,
+        reason: String,
+        expires_at: u64,
     },
 }
 
