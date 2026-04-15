@@ -228,23 +228,29 @@ pub async fn get_blockchain_info(state: State<'_, AppState>) -> Result<serde_jso
     // FIX 2026-04-12: Use embedded node's sync progress instead of the
     // (now-disabled) RPC sync service. The P2P event loop handles block sync.
     // Sync progress is based on comparing our height to the best peer height.
-    let (sync_progress, is_synced) = {
+    // FIX 2026-04-15: Also extract network_height (max peer tip) so the UI can
+    // show "network is at N" independent of local catch-up progress.
+    let (sync_progress, is_synced, network_height) = {
         let sync_result = embedded_node.get_sync_progress();
         match sync_result {
             Ok(progress) if progress.is_syncing => {
-                (progress.sync_percentage as f64, false)
+                (progress.sync_percentage as f64, false, progress.target_height)
             }
             Ok(progress) => {
                 // Not syncing — check if we're behind any peer
                 let peer_count = embedded_node.get_peer_count();
                 if peer_count == 0 && current_height == 0 {
                     // No peers and empty chain — show 0%
-                    (0.0, false)
+                    (0.0, false, progress.target_height)
                 } else {
-                    (progress.sync_percentage as f64, progress.sync_percentage >= 99.9)
+                    (
+                        progress.sync_percentage as f64,
+                        progress.sync_percentage >= 99.9,
+                        progress.target_height,
+                    )
                 }
             }
-            Err(_) => (100.0, true),
+            Err(_) => (100.0, true, current_height),
         }
     };
 
@@ -263,10 +269,17 @@ pub async fn get_blockchain_info(state: State<'_, AppState>) -> Result<serde_jso
     };
 
     // Return blockchain info in the format the frontend expects
+    // FIX 2026-04-15: Added `network_height` = max(peer.height, local_tip).
+    // The Dashboard and Node > Blockchain Info tiles render this as the primary
+    // "block height" so a freshly-booted node shows the network tip (e.g. 6309)
+    // instead of its own local 0 while sync catches up. `height` / `blocks`
+    // still return the local tip for sync_progress math and per-machine state.
     Ok(serde_json::json!({
         "blocks": current_height,
-        "height": current_height,  // Alias for compatibility
-        "headers": current_height,
+        "height": current_height,  // Alias for compatibility (LOCAL tip)
+        "network_height": network_height,  // Max peer tip — what the UI tiles show
+        "local_height": current_height,  // Explicit alias for the local tip
+        "headers": network_height,
         "chain": network,
         "difficulty": difficulty,  // Difficulty calculated from bits
         "difficulty_bits": difficulty_bits,  // Raw bits value

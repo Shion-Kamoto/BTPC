@@ -472,13 +472,23 @@ impl EmbeddedNode {
             .connected_peers
             .load(std::sync::atomic::Ordering::SeqCst);
 
-        // Target height is current height when not syncing
-        let target_height = if is_syncing {
-            // TODO: In full implementation, query max height from peers
-            current_height
+        // FIX 2026-04-15: Query max peer height so `target_height` actually
+        // reflects the network tip the node is catching up to. Previously this
+        // was stubbed as `target_height = current_height`, which caused
+        // `sync_percentage` to always return 100% even when sitting at height 0
+        // with peers advertising height 6309. This fix powers the Dashboard and
+        // Node > Blockchain Info "network height" display.
+        let max_peer_height = if let Ok(peers) = self.peers.read() {
+            peers.values().map(|p| p.height).max().unwrap_or(0)
         } else {
-            current_height
+            0
         };
+        let target_height = max_peer_height.max(current_height);
+        // Re-classify `is_syncing` if peers are clearly ahead of us. The atomic
+        // flag only flips inside the sync loop; if that loop isn't running yet
+        // (or was reverted, per the headers-first regression), we still want
+        // the UI to reflect "we are behind the network."
+        let is_syncing = is_syncing || target_height > current_height;
 
         // Calculate sync percentage
         let sync_percentage = if target_height == 0 {

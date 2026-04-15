@@ -138,7 +138,7 @@
                 <div class="card">
                     <div class="stat-label">Block Height</div>
                     <div class="stat-value" id="chain-height">0</div>
-                    <div class="stat-subtext">Blockchain</div>
+                    <div class="stat-subtext" id="chain-height-subtext">Network</div>
                 </div>
                 <div class="card">
                     <div class="stat-label">Mining Difficulty</div>
@@ -303,7 +303,25 @@
 
         function updateBlockchainDisplay(blockchainData) {
             if (blockchainData && blockchainData.height !== undefined) {
-                document.getElementById('chain-height').textContent = blockchainData.height.toLocaleString();
+                // FIX 2026-04-15: height is now the NETWORK tip (max peer height).
+                // Show local tip as subtext when behind so users see "local 0 / network 6309".
+                const networkHeight = blockchainData.network_height != null
+                    ? blockchainData.network_height
+                    : blockchainData.height;
+                const localHeight = blockchainData.local_height != null
+                    ? blockchainData.local_height
+                    : blockchainData.height;
+                document.getElementById('chain-height').textContent = networkHeight.toLocaleString();
+                const subtextEl = document.getElementById('chain-height-subtext');
+                if (subtextEl) {
+                    if (localHeight < networkHeight) {
+                        subtextEl.textContent = `Local: ${localHeight.toLocaleString()} (syncing)`;
+                        subtextEl.style.color = 'var(--status-warning)';
+                    } else {
+                        subtextEl.textContent = 'Network';
+                        subtextEl.style.color = '';
+                    }
+                }
             }
             // Update mining difficulty display (raw bits value in decimal)
             if (blockchainData && blockchainData.difficulty !== undefined) {

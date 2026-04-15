@@ -194,8 +194,16 @@ class BtpcUpdateManager {
             const nodeIsRunning = nodeStatus && nodeStatus.running;
 
             const info = await window.invoke('get_blockchain_info');
-            const height = info.blocks || info.height || 0;
-            const headers = info.headers || height;
+            const localHeight = info.blocks || info.local_height || info.height || 0;
+            // FIX 2026-04-15: network_height is the primary display field —
+            // max peer tip so the UI shows the network's current block height
+            // independent of local sync state. Falls back to local height for
+            // nodes that haven't updated the backend contract yet.
+            const networkHeight = info.network_height != null
+                ? info.network_height
+                : localHeight;
+            const height = networkHeight;
+            const headers = info.headers || networkHeight;
             const chain = info.chain || 'mainnet';
 
             // Use sync progress from backend if available (more accurate via sync service)
@@ -214,12 +222,16 @@ class BtpcUpdateManager {
                 is_synced = sync_progress >= 99.9;
             }
 
-            const changed = this.state.blockchain.height !== height;
+            const changed = this.state.blockchain.height !== height
+                || this.state.blockchain.local_height !== localHeight;
 
             this.state.blockchain = {
-                height: height,
+                height: height,                  // Primary display = network_height
+                network_height: networkHeight,   // Explicit network tip
+                local_height: localHeight,       // Local node's own tip
                 headers: headers,
                 difficulty: info.difficulty || 0,
+                difficulty_bits: info.difficulty_bits,
                 chain: chain,
                 best_block_hash: info.best_block_hash || info.bestblockhash || '0'.repeat(64),
                 connections: info.connections || 0,
@@ -229,7 +241,7 @@ class BtpcUpdateManager {
             };
 
             if (changed) {
-                console.log('Blockchain updated: height', this.state.blockchain.height, '/', this.state.blockchain.headers, `(${sync_progress.toFixed(1)}%)`);
+                console.log('Blockchain updated: local', localHeight, '/ network', networkHeight, `(${sync_progress.toFixed(1)}%)`);
             }
 
             this.notifyListeners('blockchain', this.state.blockchain);
