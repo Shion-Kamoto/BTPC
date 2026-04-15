@@ -260,6 +260,16 @@
                         </div>
                     </div>
 
+                    <!-- Network Connection Indicator (FIX 2026-04-15) -->
+                    <div id="network-indicator" style="padding: 14px 20px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 12px; background: rgba(239, 68, 68, 0.08);">
+                        <div id="network-indicator-dot" style="width: 12px; height: 12px; border-radius: 50%; background: var(--status-error); box-shadow: 0 0 8px var(--status-error);"></div>
+                        <div style="flex: 1;">
+                            <div id="network-indicator-title" style="font-size: 0.95rem; font-weight: 600; color: var(--text-primary);">Not Connected to BTPC Network</div>
+                            <div id="network-indicator-subtitle" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">No peers — enter an address below to connect</div>
+                        </div>
+                        <div id="network-indicator-count" style="font-size: 1.5rem; font-weight: 700; color: var(--text-muted); font-family: 'SF Mono', monospace;">0</div>
+                    </div>
+
                     <!-- Connect to Peer Form -->
                     <div style="padding: 16px; border-bottom: 1px solid var(--border-color); background: rgba(139, 92, 246, 0.05);">
                         <div style="display: flex; gap: 12px; align-items: center;">
@@ -622,6 +632,59 @@
         }
 
         // Format connection time as human-readable string
+        // FIX 2026-04-15: Network connection indicator on the Peers tab.
+        // Renders a colored status banner showing whether this node is
+        // connected to the BTPC network, how many peers, and whether the
+        // local chain is caught up to the network tip.
+        function updateNetworkIndicator(peerCount, localHeight, networkHeight) {
+            const container = document.getElementById('network-indicator');
+            const dot = document.getElementById('network-indicator-dot');
+            const title = document.getElementById('network-indicator-title');
+            const subtitle = document.getElementById('network-indicator-subtitle');
+            const countEl = document.getElementById('network-indicator-count');
+            if (!container || !dot || !title || !subtitle || !countEl) return;
+
+            const success = 'var(--status-success)';
+            const warning = 'var(--status-warning)';
+            const error = 'var(--status-error)';
+            const muted = 'var(--text-muted)';
+            const primary = 'var(--text-primary)';
+
+            countEl.textContent = peerCount;
+
+            if (peerCount === 0) {
+                // Isolated — red
+                container.style.background = 'rgba(239, 68, 68, 0.08)';
+                dot.style.background = error;
+                dot.style.boxShadow = `0 0 8px ${error}`;
+                title.style.color = primary;
+                title.textContent = 'Not Connected to BTPC Network';
+                subtitle.textContent = 'No peers — enter an address below to connect';
+                countEl.style.color = muted;
+            } else if (localHeight != null && networkHeight != null && localHeight < networkHeight) {
+                // Connected but still catching up — amber
+                container.style.background = 'rgba(234, 179, 8, 0.08)';
+                dot.style.background = warning;
+                dot.style.boxShadow = `0 0 8px ${warning}`;
+                title.style.color = primary;
+                title.textContent = `Connected to BTPC Network — Syncing`;
+                const gap = (networkHeight - localHeight).toLocaleString();
+                subtitle.textContent = `${gap} blocks behind (local ${localHeight.toLocaleString()} / network ${networkHeight.toLocaleString()})`;
+                countEl.style.color = warning;
+            } else {
+                // Connected and synced — green
+                container.style.background = 'rgba(16, 185, 129, 0.08)';
+                dot.style.background = success;
+                dot.style.boxShadow = `0 0 8px ${success}`;
+                title.style.color = primary;
+                title.textContent = `Connected to BTPC Network`;
+                subtitle.textContent = peerCount === 1
+                    ? '1 active peer — chain in sync'
+                    : `${peerCount} active peers — chain in sync`;
+                countEl.style.color = success;
+            }
+        }
+
         function formatConnectionTime(unixTimestamp) {
             if (!unixTimestamp) return 'Unknown';
             const connectedAt = new Date(unixTimestamp * 1000);
@@ -830,6 +893,8 @@
                         document.getElementById('info-difficulty-target').textContent = '-';
                         document.getElementById('info-network-nodes').textContent = '0';
                         document.getElementById('info-best-block').textContent = '-';
+                        // Reset network indicator to disconnected state
+                        updateNetworkIndicator(0, 0, 0);
                         // Stop uptime tracking
                         if (nodeStartTime) stopUptimeTracking();
                     }
@@ -872,6 +937,11 @@
                         const peerCount = data.connections;
                         document.getElementById('peer-count').textContent = peerCount;
                         document.getElementById('info-network-nodes').textContent = peerCount;
+
+                        // FIX 2026-04-15: Update network connection indicator
+                        // on the Peers tab. Green = connected with peers,
+                        // red = isolated. Driven by the same 5s update cycle.
+                        updateNetworkIndicator(peerCount, localHeight, networkHeight);
                     }
 
                     // Update sync progress
