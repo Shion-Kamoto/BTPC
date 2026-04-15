@@ -756,7 +756,11 @@
 
             try {
                 const info = await window.invoke('get_blockchain_info');
-                const height = info.height || 0;
+                // FIX 2026-04-15: Prefer network_height (max peer tip) so the
+                // Blockchain Info tile shows the network's current height even
+                // before local sync has caught up.
+                const localHeight = info.local_height != null ? info.local_height : (info.blocks || info.height || 0);
+                const height = info.network_height != null ? info.network_height : localHeight;
                 const difficultyBits = info.difficulty_bits || info.difficulty || 0;
                 const connections = info.connections || 0;
                 const bestBlockHash = info.best_block_hash || info.bestblockhash || '-';
@@ -830,8 +834,15 @@
                         if (nodeStartTime) stopUptimeTracking();
                     }
                 } else if (type === 'blockchain') {
-                    const height = data.height || 0;
-                    document.getElementById('info-blocks').textContent = height.toLocaleString();
+                    // FIX 2026-04-15: Show network_height as the primary
+                    // "BLOCKS MINED" figure. data.height is already aliased to
+                    // network_height by the update manager; data.local_height
+                    // is the local node's own tip, shown as a secondary line
+                    // if we're behind the network.
+                    const networkHeight = data.network_height != null ? data.network_height : (data.height || 0);
+                    const localHeight = data.local_height != null ? data.local_height : networkHeight;
+                    const height = networkHeight;
+                    document.getElementById('info-blocks').textContent = networkHeight.toLocaleString();
                     document.getElementById('info-best-block').textContent = data.best_block_hash || data.bestblockhash || '-';
 
                     // Get network from backend config (user's selected network, not blockchain genesis)
