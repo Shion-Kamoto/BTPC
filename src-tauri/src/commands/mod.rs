@@ -11,6 +11,7 @@ pub mod gpu_stats;
 pub mod mining_logs;
 pub mod mining_status;
 pub mod node;
+pub mod node_commands;
 pub mod system;
 pub mod utxo;
 pub mod wallet_basic;

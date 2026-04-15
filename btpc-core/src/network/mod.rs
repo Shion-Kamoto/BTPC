@@ -2,6 +2,7 @@
 //!
 //! Provides Bitcoin-compatible P2P networking with quantum-resistant enhancements.
 
+pub mod address_manager;
 pub mod connection_tracker;
 pub mod discovery;
 pub mod integrated_sync;
@@ -10,6 +11,7 @@ pub mod protocol;
 pub mod rate_limiter;
 pub mod simple_peer_manager;
 pub mod sync;
+pub mod testing;
 
 use std::{net::SocketAddr, time::Duration};
 

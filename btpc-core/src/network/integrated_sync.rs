@@ -1273,3 +1273,206 @@ mod tests {
         assert_eq!(stats.best_height, 100);
     }
 }
+
+// ============================================================================
+// 003-testnet-p2p-hardening — Phase 5 US3 stub types
+// ============================================================================
+//
+// These types exist **only** so the Phase 2.5 RED tests below this line
+// type-check under `cargo check --tests`. Every constructor / method
+// calls [`todo!`] at runtime so the tests panic — that panic is the
+// captured RED evidence (see `specs/003-testnet-p2p-hardening/evidence/`).
+// GREEN implementation lands in Phase 5 (T067–T083) where the types
+// gain real scheduling, stall-reaping, and validation behaviour.
+
+use std::net::SocketAddr as _StubSocketAddr;
+use std::time::Duration as _StubDuration;
+
+#[derive(Debug, Clone, Default)]
+pub struct BoundedWindowConfig;
+
+#[derive(Debug)]
+pub struct InFlightTracker;
+
+impl InFlightTracker {
+    pub fn new(_cfg: BoundedWindowConfig) -> Self {
+        InFlightTracker
+    }
+
+    pub fn try_reserve(
+        &mut self,
+        _peer: _StubSocketAddr,
+        _height: u64,
+    ) -> Result<(), ()> {
+        todo!("T067: real in-flight window tracking (Phase 5 US3)")
+    }
+}
+
+#[derive(Debug)]
+pub struct BlockRequestScheduler;
+
+impl BlockRequestScheduler {
+    pub fn new(_cfg: BoundedWindowConfig) -> Self {
+        BlockRequestScheduler
+    }
+
+    pub fn try_schedule(
+        &mut self,
+        _peer: _StubSocketAddr,
+        _height: u64,
+    ) -> Result<(), ()> {
+        todo!("T067: real block request scheduling (Phase 5 US3)")
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JobState {
+    Pending,
+    Running,
+    Stalled,
+    Failed,
+    Completed,
+}
+
+#[derive(Debug, Clone)]
+pub struct SyncJob {
+    pub job_id: u64,
+    pub state: JobState,
+    pub ban_score_penalty: u32,
+}
+
+#[derive(Debug)]
+pub struct StallReaper;
+
+impl StallReaper {
+    pub fn new(_window: _StubDuration) -> Self {
+        StallReaper
+    }
+
+    pub fn schedule(&mut self, _peer: _StubSocketAddr, _height: u64) -> u64 {
+        todo!("T069: real stall scheduling (Phase 5 US3)")
+    }
+
+    pub fn advance_clock(&mut self, _by: _StubDuration) {
+        todo!("T069: virtual clock advancement (Phase 5 US3)")
+    }
+
+    pub fn reap_stalled(&mut self) -> Vec<SyncJob> {
+        todo!("T069: real reap stalled (Phase 5 US3)")
+    }
+}
+
+#[derive(Debug)]
+pub struct BlockHandleOutcome {
+    pub ban_score_delta: u32,
+    pub job_state: JobState,
+    pub peer_banned: bool,
+}
+
+pub fn handle_received_block(
+    _peer: _StubSocketAddr,
+    _valid: bool,
+    _height: u64,
+) -> BlockHandleOutcome {
+    todo!("T071: real received-block handling (Phase 5 US3)")
+}
+
+
+#[cfg(test)]
+mod red_phase_bounded_windows_tests {
+    //! T103 RED-phase — FR-014, FR-015 bounded in-flight windows.
+    //!
+    //! Per-peer in-flight request cap = 16 blocks. Aggregate cap = 128.
+    //! GREEN impl introduces `BlockRequestScheduler`/`InFlightTracker`.
+
+    use crate::network::integrated_sync::{
+        BlockRequestScheduler, BoundedWindowConfig, InFlightTracker,
+    };
+
+    #[test]
+    fn per_peer_window_caps_at_sixteen() {
+        let mut tracker = InFlightTracker::new(BoundedWindowConfig::default());
+        let peer = "198.51.100.1:18351".parse().unwrap();
+        for i in 0..16u32 {
+            assert!(tracker.try_reserve(peer, i.into()).is_ok());
+        }
+        // 17th must be rejected — per-peer cap.
+        assert!(tracker.try_reserve(peer, 999u32.into()).is_err());
+    }
+
+    #[test]
+    fn aggregate_window_caps_at_one_hundred_twenty_eight() {
+        let mut scheduler = BlockRequestScheduler::new(BoundedWindowConfig::default());
+        for i in 0..128u32 {
+            let peer = format!("198.51.100.{}:18351", (i % 250) + 1).parse().unwrap();
+            assert!(scheduler.try_schedule(peer, i.into()).is_ok());
+        }
+        let overflow_peer = "203.0.113.1:18351".parse().unwrap();
+        assert!(
+            scheduler.try_schedule(overflow_peer, 9999u32.into()).is_err(),
+            "aggregate in-flight must not exceed 128 blocks"
+        );
+    }
+}
+
+#[cfg(test)]
+mod red_phase_stall_tests {
+    //! T104 RED-phase — stall detection and penalty (FR-016).
+    //!
+    //! A SyncJob that does not progress for 30s must be reaped, the peer's
+    //! ban_score incremented by 10, and the job re-queued to another peer.
+
+    use crate::network::integrated_sync::{JobState, StallReaper, SyncJob};
+    use std::time::Duration;
+
+    #[test]
+    fn stalled_job_is_reaped_after_thirty_seconds() {
+        let mut reaper = StallReaper::new(Duration::from_secs(30));
+        let peer = "198.51.100.1:18351".parse().unwrap();
+        let job_id = reaper.schedule(peer, /*block_height*/ 100);
+        reaper.advance_clock(Duration::from_secs(31));
+        let reaped = reaper.reap_stalled();
+        assert_eq!(reaped.len(), 1);
+        assert_eq!(reaped[0].job_id, job_id);
+        assert_eq!(reaped[0].state, JobState::Stalled);
+    }
+
+    #[test]
+    fn stalled_peer_receives_ban_score_penalty() {
+        let mut reaper = StallReaper::new(Duration::from_secs(30));
+        let peer = "198.51.100.2:18351".parse().unwrap();
+        reaper.schedule(peer, 200);
+        reaper.advance_clock(Duration::from_secs(31));
+        let reaped = reaper.reap_stalled();
+        let job: &SyncJob = &reaped[0];
+        assert_eq!(job.ban_score_penalty, 10, "stall penalty = +10");
+    }
+}
+
+#[cfg(test)]
+mod red_phase_invalid_block_tests {
+    //! T105 RED-phase — invalid block penalty (FR-017).
+    //!
+    //! A peer that delivers an invalid block receives ban_score += 100
+    //! (immediate ban threshold). The SyncJob transitions to Failed.
+
+    use crate::network::integrated_sync::{handle_received_block, JobState};
+
+    #[test]
+    fn invalid_block_immediately_bans_peer() {
+        let peer = "198.51.100.9:18351".parse().unwrap();
+        let outcome = handle_received_block(peer, /*valid=*/ false, /*height=*/ 500);
+        assert_eq!(outcome.ban_score_delta, 100);
+        assert_eq!(outcome.job_state, JobState::Failed);
+        assert!(outcome.peer_banned, "100+ ban score must trigger ban");
+    }
+
+    #[test]
+    fn valid_block_does_not_penalize() {
+        let peer = "198.51.100.10:18351".parse().unwrap();
+        let outcome = handle_received_block(peer, /*valid=*/ true, 501);
+        assert_eq!(outcome.ban_score_delta, 0);
+        assert_eq!(outcome.job_state, JobState::Completed);
+        assert!(!outcome.peer_banned);
+    }
+}

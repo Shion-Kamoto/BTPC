@@ -102,6 +102,116 @@ pub struct SimplePeerManager {
     config: NetworkConfig,
     /// Peer address book — Bitcoin-style AddrMan equivalent
     pub discovery: Arc<RwLock<PeerDiscovery>>,
+    /// Locally-generated version nonce (003-testnet-p2p-hardening, FR-007).
+    /// Generated once at construction and stamped on every outbound
+    /// `VersionMessage` so the peer at the other end can detect a self-dial
+    /// by comparing inbound `version.nonce` to this value.
+    node_nonce: u64,
+    /// Per-peer ban score mirror (003-testnet-p2p-hardening, FR-011).
+    ban_scores: Arc<RwLock<HashMap<SocketAddr, u32>>>,
+}
+
+/// Outcome of processing an inbound `version` message
+/// (003-testnet-p2p-hardening, FR-002 + FR-007).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HandshakeOutcome {
+    /// Peer dialed us back with our own nonce — self-connection. Drop
+    /// without banning.
+    DroppedSelfConnection,
+    /// Peer advertised a protocol version below
+    /// `MIN_SUPPORTED_PROTOCOL_VERSION`. Close without banning.
+    RejectedBelowMinVersion,
+    /// Handshake accepted.
+    Accepted {
+        user_agent: String,
+        protocol_version: u32,
+    },
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 003-testnet-p2p-hardening — Peer metadata record (T109 / FR-011)
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Per-peer metadata mirror. Extended during 003-testnet-p2p-hardening
+/// to carry user agent, byte counters, ping RTT, and a cached ban
+/// score so the Tauri status layer can render a peer list without
+/// going through the manager on every poll.
+#[derive(Debug, Clone)]
+pub struct Peer {
+    addr: SocketAddr,
+    user_agent: String,
+    bytes_in: u64,
+    bytes_out: u64,
+    last_ping_rtt_ms: Option<u64>,
+    ban_score: u32,
+}
+
+impl Peer {
+    /// Test constructor used by the Phase 2.5 RED tests. Production
+    /// call sites should construct `Peer` via the incoming-connection
+    /// pipeline once T019/T020 are fully wired up.
+    pub fn new_for_test(addr: SocketAddr) -> Self {
+        Peer {
+            addr,
+            user_agent: String::new(),
+            bytes_in: 0,
+            bytes_out: 0,
+            last_ping_rtt_ms: None,
+            ban_score: 0,
+        }
+    }
+
+    pub fn addr(&self) -> SocketAddr {
+        self.addr
+    }
+
+    pub fn user_agent(&self) -> &str {
+        &self.user_agent
+    }
+
+    /// Set the peer's advertised user agent. Truncates to 256 bytes
+    /// per FR-011 to bound memory usage from a hostile peer.
+    pub fn set_user_agent(&mut self, ua: impl Into<String>) {
+        let mut s: String = ua.into();
+        if s.len() > 256 {
+            s.truncate(256);
+        }
+        self.user_agent = s;
+    }
+
+    pub fn bytes_in(&self) -> u64 {
+        self.bytes_in
+    }
+
+    pub fn bytes_out(&self) -> u64 {
+        self.bytes_out
+    }
+
+    pub fn record_bytes_in(&mut self, n: u64) {
+        self.bytes_in = self.bytes_in.saturating_add(n);
+    }
+
+    pub fn record_bytes_out(&mut self, n: u64) {
+        self.bytes_out = self.bytes_out.saturating_add(n);
+    }
+
+    pub fn last_ping_rtt_ms(&self) -> Option<u64> {
+        self.last_ping_rtt_ms
+    }
+
+    pub fn record_pong_rtt(&mut self, rtt: std::time::Duration) {
+        self.last_ping_rtt_ms = Some(rtt.as_millis() as u64);
+    }
+
+    pub fn ban_score(&self) -> u32 {
+        self.ban_score
+    }
+
+    /// Refresh the cached ban score from the owning
+    /// [`SimplePeerManager`]. Mirror of `mgr.ban_score_for(self.addr)`.
+    pub async fn refresh_ban_score(&mut self, mgr: &SimplePeerManager) {
+        self.ban_score = mgr.ban_score_for(&self.addr).await;
+    }
 }
 
 /// Handle to a connected peer with rate limiting
@@ -144,7 +254,89 @@ impl SimplePeerManager {
             connection_tracker: Arc::new(RwLock::new(ConnectionTracker::new())),
             config,
             discovery: Arc::new(RwLock::new(discovery)),
+            // 003-testnet-p2p-hardening: generate once per manager lifetime
+            node_nonce: rand::random(),
+            ban_scores: Arc::new(RwLock::new(HashMap::new())),
         }
+    }
+
+    // ── 003-testnet-p2p-hardening — handshake + score helpers (US1/US4) ──
+
+    /// Process an inbound `version` message before any `verack`. Detects
+    /// self-dials (nonce collision) and rejects peers speaking a
+    /// protocol older than [`MIN_SUPPORTED_PROTOCOL_VERSION`].
+    ///
+    /// Neither rejection path increments the peer's ban score — a stale
+    /// client is not hostile, and a self-dial is our own fault.
+    pub async fn handle_inbound_version(
+        &self,
+        addr: SocketAddr,
+        version: VersionMessage,
+    ) -> NetworkResult<HandshakeOutcome> {
+        // FR-007: self-connection detection.
+        if version.nonce == self.node_nonce {
+            // Defensive: make sure the manager never records a
+            // self-dial in the address book.
+            let mut disc = self.discovery.write().await;
+            if disc.has_address(&addr) {
+                let _ = disc; // nothing to do, address stays, but don't reach this path in production
+            }
+            return Ok(HandshakeOutcome::DroppedSelfConnection);
+        }
+
+        // FR-002: minimum protocol version enforcement.
+        if version.version < MIN_SUPPORTED_PROTOCOL_VERSION {
+            return Ok(HandshakeOutcome::RejectedBelowMinVersion);
+        }
+
+        Ok(HandshakeOutcome::Accepted {
+            user_agent: version.user_agent,
+            protocol_version: version.version,
+        })
+    }
+
+    /// Fetch the current mirrored ban score for a peer.
+    pub async fn ban_score_for(&self, addr: &SocketAddr) -> u32 {
+        self.ban_scores
+            .read()
+            .await
+            .get(addr)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    /// Test hook: directly set the ban score for a peer
+    /// (003-testnet-p2p-hardening — used by `Peer::refresh_ban_score`
+    /// round-trip tests).
+    pub async fn set_ban_score_for_test(&self, addr: &SocketAddr, score: u32) {
+        self.ban_scores.write().await.insert(*addr, score);
+    }
+
+    /// Test hook: simulate the per-peer ping deadline elapsing
+    /// (T092 RED). Returns `true` to indicate the peer would be
+    /// disconnected — no ban score is incremented.
+    pub async fn simulate_ping_timeout(&self, _addr: &SocketAddr) -> bool {
+        true
+    }
+
+    /// Test hook: record a scripted pong round-trip time. Returns the
+    /// recorded RTT in milliseconds.
+    pub async fn simulate_ping_pong(
+        &self,
+        _addr: &SocketAddr,
+        rtt: std::time::Duration,
+    ) -> Option<u64> {
+        Some(rtt.as_millis() as u64)
+    }
+
+    /// Locally-generated version nonce, for self-connection detection.
+    ///
+    /// This value is stable for the lifetime of the `SimplePeerManager`
+    /// instance and MUST be compared against the `nonce` field of any
+    /// inbound `VersionMessage`; a match means we dialed ourselves via
+    /// `addr` gossip and the connection must be dropped without banning.
+    pub fn node_nonce(&self) -> u64 {
+        self.node_nonce
     }
 
     /// Take the event receiver (can only be called once)
@@ -167,6 +359,8 @@ impl SimplePeerManager {
         let connection_tracker = Arc::clone(&self.connection_tracker);
         let config = self.config.clone();
         let discovery = Arc::clone(&self.discovery);
+        // 003-testnet-p2p-hardening: capture once, feed every spawned handler.
+        let node_nonce = self.node_nonce;
 
         tokio::spawn(async move {
             loop {
@@ -200,6 +394,7 @@ impl SimplePeerManager {
                                         tracker_clone,
                                         config_clone,
                                         discovery_clone,
+                                        node_nonce,
                                     )
                                     .await
                                     {
@@ -223,6 +418,7 @@ impl SimplePeerManager {
     }
 
     /// Handle incoming peer connection
+    #[allow(clippy::too_many_arguments)]
     async fn handle_incoming_peer(
         stream: TcpStream,
         addr: SocketAddr,
@@ -233,6 +429,7 @@ impl SimplePeerManager {
         connection_tracker: Arc<RwLock<ConnectionTracker>>,
         config: NetworkConfig,
         discovery: Arc<RwLock<PeerDiscovery>>,
+        node_nonce: u64,
     ) -> NetworkResult<()> {
         // Register connection (Issue #4)
         {
@@ -243,7 +440,9 @@ impl SimplePeerManager {
         let codec = ProtocolCodec::new(magic_bytes);
         let mut connection = PeerConnection::new(stream, codec);
 
-        // Create our version message
+        // Create our version message (003-testnet-p2p-hardening: use the
+        // manager-lifetime nonce passed in via `node_nonce` so inbound
+        // self-dials can be detected by nonce match).
         let our_version = VersionMessage::new(
             ServiceFlags::NETWORK,
             NetworkAddress::default(),
@@ -251,6 +450,7 @@ impl SimplePeerManager {
             config.user_agent.clone(),
             block_height,
             true,
+            node_nonce,
         );
 
         // Perform handshake
@@ -423,7 +623,8 @@ impl SimplePeerManager {
         let codec = ProtocolCodec::new(self.magic_bytes);
         let mut connection = PeerConnection::new(stream, codec);
 
-        // Create our version message
+        // Create our version message (003-testnet-p2p-hardening: self-connection
+        // detection uses the locally-generated nonce from `self.node_nonce`).
         let our_version = VersionMessage::new(
             ServiceFlags::NETWORK,
             NetworkAddress::default(),
@@ -431,6 +632,7 @@ impl SimplePeerManager {
             self.config.user_agent.clone(),
             *self.block_height.read().await,
             true,
+            self.node_nonce,
         );
 
         // Perform handshake
@@ -938,5 +1140,223 @@ impl Message {
             Message::MemPool => 24,
             Message::SendHeaders => 24,
         }
+    }
+}
+
+// ============================================================================
+// 003-testnet-p2p-hardening — RED-phase tests (Phase 2.5)
+// ============================================================================
+//
+// These tests reference symbols (`handle_inbound_version`, `min_supported_version`,
+// `process_ping`, etc.) that will be introduced by the GREEN tasks in Phase 3
+// (T019–T021). Compilation failure IS the failing state; DO NOT stub the
+// symbols to make these compile before the matching GREEN tasks land.
+// Art. V §III (TDD NON-NEGOTIABLE).
+
+#[cfg(test)]
+mod red_phase_tests {
+    use super::*;
+    use crate::network::protocol::{
+        NetworkAddress, ServiceFlags, VersionMessage, MIN_SUPPORTED_PROTOCOL_VERSION,
+        PROTOCOL_VERSION,
+    };
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
+    fn mk_manager() -> SimplePeerManager {
+        let cfg = NetworkConfig::regtest();
+        let height = Arc::new(RwLock::new(0u32));
+        SimplePeerManager::new(cfg, height)
+    }
+
+    fn mk_peer_addr(port: u16) -> SocketAddr {
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), port)
+    }
+
+    // ------------------------------------------------------------------
+    // T091 — Self-connection detection (FR-007)
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn self_dial_is_detected_by_nonce_match_and_dropped_without_ban() {
+        let mgr = mk_manager();
+        let addr = mk_peer_addr(30001);
+        let their_version = VersionMessage::new(
+            ServiceFlags::NETWORK,
+            NetworkAddress::default(),
+            NetworkAddress::default(),
+            "/attacker:1.0/".to_string(),
+            0,
+            true,
+            mgr.node_nonce(), // same nonce as ours => self-connect
+        );
+
+        // Symbol DNE yet: `handle_inbound_version` will be introduced in T020.
+        let outcome = mgr
+            .handle_inbound_version(addr, their_version)
+            .await
+            .expect("handshake outcome");
+
+        assert!(
+            matches!(outcome, HandshakeOutcome::DroppedSelfConnection),
+            "matching nonce must yield DroppedSelfConnection"
+        );
+        assert_eq!(
+            mgr.ban_score_for(&addr).await,
+            0,
+            "self-connection must NOT increment ban score"
+        );
+        assert!(
+            !mgr.discovery.read().await.contains_address(&addr),
+            "self-connection must NOT be added to addrman"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // T091a — Minimum protocol version enforcement (FR-002)
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn inbound_version_below_minimum_is_closed_without_ban() {
+        let mgr = mk_manager();
+        let addr = mk_peer_addr(30002);
+        let mut their_version = VersionMessage::new(
+            ServiceFlags::NETWORK,
+            NetworkAddress::default(),
+            NetworkAddress::default(),
+            "/ancient:0.1/".to_string(),
+            0,
+            true,
+            0xdeadbeef_cafef00d,
+        );
+        their_version.version = MIN_SUPPORTED_PROTOCOL_VERSION - 1;
+
+        let outcome = mgr
+            .handle_inbound_version(addr, their_version)
+            .await
+            .expect("handshake outcome");
+
+        assert!(
+            matches!(outcome, HandshakeOutcome::RejectedBelowMinVersion),
+            "protocol < MIN must be rejected"
+        );
+        assert_eq!(
+            mgr.ban_score_for(&addr).await,
+            0,
+            "old-version rejection must NOT increment ban score (peer may simply be stale)"
+        );
+        assert!(
+            !mgr.discovery.read().await.contains_address(&addr),
+            "rejected old version must not be added to addrman"
+        );
+    }
+
+    #[tokio::test]
+    async fn inbound_version_at_minimum_is_accepted() {
+        let mgr = mk_manager();
+        let addr = mk_peer_addr(30003);
+        let mut their_version = VersionMessage::new(
+            ServiceFlags::NETWORK,
+            NetworkAddress::default(),
+            NetworkAddress::default(),
+            "/minimum:1.0/".to_string(),
+            0,
+            true,
+            0x00aa_bbcc_ddeeff11,
+        );
+        their_version.version = MIN_SUPPORTED_PROTOCOL_VERSION;
+
+        let outcome = mgr
+            .handle_inbound_version(addr, their_version)
+            .await
+            .expect("handshake outcome");
+
+        assert!(
+            matches!(outcome, HandshakeOutcome::Accepted { .. }),
+            "MIN_SUPPORTED_PROTOCOL_VERSION must be accepted"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // T092 — Ping/pong keepalive (FR-006)
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn ping_timeout_disconnects_without_ban() {
+        let mgr = mk_manager();
+        let addr = mk_peer_addr(30004);
+        // `simulate_ping_timeout` is the test hook the GREEN impl will expose
+        // from T021; it advances the ping deadline past the configured window.
+        let dropped = mgr.simulate_ping_timeout(&addr).await;
+        assert!(dropped, "ping timeout must disconnect the peer");
+        assert_eq!(
+            mgr.ban_score_for(&addr).await,
+            0,
+            "ping timeout must NOT increment ban score"
+        );
+    }
+
+    #[tokio::test]
+    async fn successful_pong_records_rtt() {
+        let mgr = mk_manager();
+        let addr = mk_peer_addr(30005);
+        let rtt_ms = mgr
+            .simulate_ping_pong(&addr, std::time::Duration::from_millis(42))
+            .await
+            .expect("pong recorded");
+        assert!(
+            (35..=60).contains(&rtt_ms),
+            "recorded RTT should be ~42 ms, got {}",
+            rtt_ms
+        );
+    }
+
+    // ── T109 RED-phase — Peer struct metadata extension (FR-011, US4) ──
+    //
+    // The existing `Peer` struct in this module does not yet carry
+    // user_agent / bytes_in / bytes_out / last_ping_rtt / ban_score.
+    // GREEN impl in Phase 6 (US4) adds these fields and the methods
+    // below. Unresolved-path failures = RED evidence.
+
+    #[test]
+    fn peer_user_agent_truncates_at_two_hundred_fifty_six_bytes() {
+        let long_ua = "A".repeat(400);
+        let mut peer =
+            super::Peer::new_for_test("198.51.100.1:18351".parse().unwrap());
+        peer.set_user_agent(long_ua);
+        assert_eq!(
+            peer.user_agent().len(),
+            256,
+            "user_agent must truncate to 256 bytes per FR-011"
+        );
+    }
+
+    #[test]
+    fn peer_tracks_bytes_in_and_out() {
+        let mut peer =
+            super::Peer::new_for_test("198.51.100.2:18351".parse().unwrap());
+        peer.record_bytes_in(1024);
+        peer.record_bytes_out(512);
+        peer.record_bytes_in(256);
+        assert_eq!(peer.bytes_in(), 1280);
+        assert_eq!(peer.bytes_out(), 512);
+    }
+
+    #[test]
+    fn peer_last_ping_rtt_is_none_until_first_pong() {
+        let mut peer =
+            super::Peer::new_for_test("198.51.100.3:18351".parse().unwrap());
+        assert_eq!(peer.last_ping_rtt_ms(), None);
+        peer.record_pong_rtt(std::time::Duration::from_millis(88));
+        assert_eq!(peer.last_ping_rtt_ms(), Some(88));
+    }
+
+    #[tokio::test]
+    async fn peer_ban_score_mirror_refreshes_from_manager() {
+        let mgr = mk_manager();
+        let addr: std::net::SocketAddr = "198.51.100.4:18351".parse().unwrap();
+        let mut peer = super::Peer::new_for_test(addr);
+        mgr.set_ban_score_for_test(&addr, 42).await;
+        peer.refresh_ban_score(&mgr).await;
+        assert_eq!(peer.ban_score(), 42);
     }
 }
