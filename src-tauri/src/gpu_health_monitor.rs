@@ -244,8 +244,8 @@ pub fn poll_gpu_health(device_index: u32) -> Result<GpuHealthMetrics, String> {
 ///
 /// Uses nvml-wrapper 0.10 API for real GPU metrics
 fn poll_gpu_health_nvml(device_index: u32) -> Result<GpuHealthMetrics, String> {
-    use nvml_wrapper::Nvml;
     use nvml_wrapper::enum_wrappers::device::{Clock, ClockId, TemperatureSensor};
+    use nvml_wrapper::Nvml;
 
     let nvml = Nvml::init().map_err(|e| format!("NVML initialization failed: {}", e))?;
 
@@ -254,7 +254,10 @@ fn poll_gpu_health_nvml(device_index: u32) -> Result<GpuHealthMetrics, String> {
         .map_err(|e| format!("GPU device {} not found: {}", device_index, e))?;
 
     // Query temperature (nvml-wrapper 0.10 API: requires TemperatureSensor::Gpu)
-    let temperature = device.temperature(TemperatureSensor::Gpu).ok().map(|t| t as f32);
+    let temperature = device
+        .temperature(TemperatureSensor::Gpu)
+        .ok()
+        .map(|t| t as f32);
 
     // Query fan speed (may not be available on all cards, takes fan index)
     let fan_speed = device.fan_speed(0).ok();
@@ -271,14 +274,10 @@ fn poll_gpu_health_nvml(device_index: u32) -> Result<GpuHealthMetrics, String> {
     let memory_total = memory_info.as_ref().map(|info| info.total / (1024 * 1024));
 
     // Query core clock speed (graphics clock in MHz)
-    let core_clock_speed = device
-        .clock(Clock::Graphics, ClockId::Current)
-        .ok();
+    let core_clock_speed = device.clock(Clock::Graphics, ClockId::Current).ok();
 
     // Query memory clock speed (memory clock in MHz)
-    let memory_clock_speed = device
-        .clock(Clock::Memory, ClockId::Current)
-        .ok();
+    let memory_clock_speed = device.clock(Clock::Memory, ClockId::Current).ok();
 
     Ok(GpuHealthMetrics {
         gpu_device_index: device_index,
@@ -331,12 +330,12 @@ fn poll_gpu_health_sysinfo(device_index: u32) -> Result<GpuHealthMetrics, String
     Ok(GpuHealthMetrics {
         gpu_device_index: device_index,
         temperature,
-        fan_speed: None,           // Not available via sysinfo
-        power_consumption: None,   // Not available via sysinfo
-        memory_used: None,         // Not available via sysinfo
-        memory_total: None,        // Not available via sysinfo
-        core_clock_speed: None,    // Not available via sysinfo
-        memory_clock_speed: None,  // Not available via sysinfo
+        fan_speed: None,          // Not available via sysinfo
+        power_consumption: None,  // Not available via sysinfo
+        memory_used: None,        // Not available via sysinfo
+        memory_total: None,       // Not available via sysinfo
+        core_clock_speed: None,   // Not available via sysinfo
+        memory_clock_speed: None, // Not available via sysinfo
         last_updated: Instant::now(),
     })
 }
@@ -354,7 +353,11 @@ fn poll_gpu_health_sysinfo(device_index: u32) -> Result<GpuHealthMetrics, String
 ///
 /// # Returns
 /// * `Err(String)` - Fan control not available via nvml-wrapper 0.10
-pub fn set_gpu_fan_speed(device_index: u32, _fan_index: u32, speed_percent: u32) -> Result<(), String> {
+pub fn set_gpu_fan_speed(
+    device_index: u32,
+    _fan_index: u32,
+    speed_percent: u32,
+) -> Result<(), String> {
     // nvml-wrapper 0.10 doesn't expose fan control methods
     // Options for fan control:
     // 1. Use nvidia-smi command: nvidia-smi -i 0 --fan-speed=75
@@ -365,7 +368,10 @@ pub fn set_gpu_fan_speed(device_index: u32, _fan_index: u32, speed_percent: u32)
         "⚠️ GPU {} fan control to {}% not available via nvml-wrapper 0.10",
         device_index, speed_percent
     );
-    eprintln!("   Use 'nvidia-smi -i {} --fan-speed={}' from terminal instead", device_index, speed_percent);
+    eprintln!(
+        "   Use 'nvidia-smi -i {} --fan-speed={}' from terminal instead",
+        device_index, speed_percent
+    );
 
     Err(format!(
         "Fan speed control not available in nvml-wrapper 0.10. \
@@ -392,7 +398,8 @@ pub fn reset_gpu_fan_speed(device_index: u32, _fan_index: u32) -> Result<(), Str
     );
 
     Err("Fan reset not available in nvml-wrapper 0.10. \
-         Reboot GPU or use nvidia-settings to restore auto control.".to_string())
+         Reboot GPU or use nvidia-settings to restore auto control."
+        .to_string())
 }
 
 /// Get GPU name via NVML (more accurate than OpenCL for NVIDIA GPUs)
@@ -442,9 +449,9 @@ pub fn poll_all_gpu_health() -> Vec<GpuHealthMetrics> {
 // T175: Background GPU Health Monitoring Service (FR-037 - 1 second polling)
 // ============================================================================
 
+use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use tokio::sync::broadcast;
 use tokio::time::{interval, Duration as TokioDuration, Instant as TokioInstant};
-use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 
 /// GPU health monitoring event
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -484,7 +491,11 @@ pub async fn start_gpu_health_monitoring(
     let mut last_poll_time = TokioInstant::now();
 
     eprintln!("🔍 GPU health monitoring started (1-second polling interval)");
-    eprintln!("   Monitoring {} GPU(s): {:?}", device_indices.len(), device_indices);
+    eprintln!(
+        "   Monitoring {} GPU(s): {:?}",
+        device_indices.len(),
+        device_indices
+    );
 
     loop {
         // Check shutdown signal

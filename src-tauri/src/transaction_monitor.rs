@@ -5,10 +5,10 @@
 //!
 //! FIX 2025-11-27: Uses embedded node instead of external RPC for transaction queries
 
-use btpc_desktop_app::embedded_node::{EmbeddedNode, TransactionInfo};
 use crate::events::{ReleaseReason, TransactionEvent, UTXOEvent};
 use crate::utxo_manager::UTXOManager;
 use crate::AppState;
+use btpc_desktop_app::embedded_node::{EmbeddedNode, TransactionInfo};
 use btpc_desktop_app::transaction_state::{
     TransactionState, TransactionStateManager, TransactionStatus,
 };
@@ -73,7 +73,10 @@ impl TransactionMonitor {
             return;
         }
 
-        println!("🔎 Checking {} pending transactions (via embedded node)", pending_txs.len());
+        println!(
+            "🔎 Checking {} pending transactions (via embedded node)",
+            pending_txs.len()
+        );
 
         // Check each transaction using embedded node
         for tx_state in pending_txs {
@@ -104,19 +107,29 @@ impl TransactionMonitor {
                         TransactionStatus::Confirming,
                         None,
                     );
-                    println!("⏳ Transaction {} is confirming (0 confirmations)", &tx_id[..16.min(tx_id.len())]);
+                    println!(
+                        "⏳ Transaction {} is confirming (0 confirmations)",
+                        &tx_id[..16.min(tx_id.len())]
+                    );
                 }
             }
             Ok(None) => {
                 // Transaction not found in mempool or blockchain
                 if tx_state.status == TransactionStatus::Broadcast {
-                    println!("⚠️  Transaction {} not found in embedded node (may be pending)", &tx_id[..16.min(tx_id.len())]);
+                    println!(
+                        "⚠️  Transaction {} not found in embedded node (may be pending)",
+                        &tx_id[..16.min(tx_id.len())]
+                    );
                     // Don't mark as failed immediately - might just be propagating
                 }
             }
             Err(e) => {
                 // Error querying node
-                println!("⚠️  Error checking transaction {}: {}", &tx_id[..16.min(tx_id.len())], e);
+                println!(
+                    "⚠️  Error checking transaction {}: {}",
+                    &tx_id[..16.min(tx_id.len())],
+                    e
+                );
             }
         }
     }
@@ -138,7 +151,8 @@ impl TransactionMonitor {
 
         println!(
             "✅ Transaction {} confirmed ({} confirmations)",
-            &tx_id[..16.min(tx_id.len())], confirmations
+            &tx_id[..16.min(tx_id.len())],
+            confirmations
         );
 
         // Update state to confirmed
@@ -162,7 +176,10 @@ impl TransactionMonitor {
         // Release UTXO reservations
         self.release_utxo_reservation(tx_state).await;
 
-        println!("✅ Transaction {} fully processed and confirmed", &tx_id[..16.min(tx_id.len())]);
+        println!(
+            "✅ Transaction {} fully processed and confirmed",
+            &tx_id[..16.min(tx_id.len())]
+        );
     }
 
     /// Release UTXO reservations for a confirmed transaction

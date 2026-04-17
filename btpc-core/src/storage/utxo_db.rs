@@ -272,10 +272,7 @@ impl UTXODatabase for UtxoDb {
         Ok(())
     }
 
-    fn get_utxos_for_pubkey_hash(
-        &self,
-        pubkey_hash: &[u8; 20],
-    ) -> Result<Vec<UTXO>, UTXODbError> {
+    fn get_utxos_for_pubkey_hash(&self, pubkey_hash: &[u8; 20]) -> Result<Vec<UTXO>, UTXODbError> {
         let mut matching_utxos = Vec::new();
 
         // Iterate all UTXOs and filter by pubkey hash

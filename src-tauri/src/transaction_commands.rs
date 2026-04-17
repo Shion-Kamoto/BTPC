@@ -15,9 +15,7 @@ use crate::AppState;
 use btpc_core::crypto::{Address, Script};
 use btpc_desktop_app::transaction_builder::{TransactionBuilder, TransactionSummary};
 use btpc_desktop_app::transaction_commands_core; // TD-001: Import core business logic from lib.rs
-use btpc_desktop_app::transaction_state::{
-    TransactionState, TransactionStatus,
-};
+use btpc_desktop_app::transaction_state::{TransactionState, TransactionStatus};
 use btpc_desktop_app::utxo_manager::Transaction;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -26,11 +24,11 @@ use tauri::{AppHandle, Emitter, State};
 
 // FIX 2026-02-21 (H1): Helper to verify session is authenticated before transaction operations
 fn require_authenticated_session(session: &RwLock<SessionState>) -> Result<(), String> {
-    let state = session
-        .read()
-        .expect("SessionState RwLock poisoned");
+    let state = session.read().expect("SessionState RwLock poisoned");
     if !state.is_authenticated() {
-        return Err("SESSION_NOT_AUTHENTICATED: Login required for transaction operations".to_string());
+        return Err(
+            "SESSION_NOT_AUTHENTICATED: Login required for transaction operations".to_string(),
+        );
     }
     Ok(())
 }
@@ -110,7 +108,11 @@ pub async fn create_transaction(
 
         // Select UTXOs (with coinbase maturity enforcement)
         let utxos = utxo_manager
-            .select_utxos_for_amount(&request.from_address, request.amount + 500_000, current_height) // Add buffer for fee
+            .select_utxos_for_amount(
+                &request.from_address,
+                request.amount + 500_000,
+                current_height,
+            ) // Add buffer for fee
             .map_err(|e| format!("Failed to select UTXOs: {}", e))?;
 
         if utxos.is_empty() {
@@ -323,9 +325,10 @@ pub async fn sign_transaction(
 
     // Load encrypted wallet file (.dat format with Argon2id encryption)
     // Get wallet info from wallet manager to find the correct file path
-    let wallet_manager = state.wallet_manager.lock().map_err(|e| {
-        format!("Failed to lock wallet manager: {}", e)
-    })?;
+    let wallet_manager = state
+        .wallet_manager
+        .lock()
+        .map_err(|e| format!("Failed to lock wallet manager: {}", e))?;
 
     let wallet_info = wallet_manager
         .get_wallet(&request.wallet_id)
@@ -476,10 +479,12 @@ pub async fn broadcast_transaction(
         .get_state(&request.transaction_id)
         .ok_or_else(|| format!("Transaction {} not found", request.transaction_id))?;
 
-    let transaction = tx_status
-        .transaction
-        .clone()
-        .ok_or_else(|| format!("Transaction {} has no transaction data", request.transaction_id))?;
+    let transaction = tx_status.transaction.clone().ok_or_else(|| {
+        format!(
+            "Transaction {} has no transaction data",
+            request.transaction_id
+        )
+    })?;
 
     // FIX 2025-12-10: Get sender address from state (stored during create_transaction)
     // This is much more reliable than UTXO lookups which often fail
@@ -512,11 +517,7 @@ pub async fn broadcast_transaction(
             tx_state.migrate_transaction_id(&request.transaction_id, txid.clone());
 
             // Update state to Broadcast (using new txid)
-            tx_state.set_state(
-                txid.clone(),
-                TransactionStatus::Broadcast,
-                None,
-            );
+            tx_state.set_state(txid.clone(), TransactionStatus::Broadcast, None);
 
             println!("✅ Transaction broadcast successful: {}", txid);
             println!("   (migrated from temp ID: {})", request.transaction_id);
@@ -549,7 +550,8 @@ pub async fn broadcast_transaction(
                                 pubkey_hash,
                                 network.clone().into(),
                                 btpc_core::crypto::address::AddressType::P2PKH,
-                            ).to_string();
+                            )
+                            .to_string();
                             if !involved_addresses.contains(&address) {
                                 involved_addresses.push(address);
                             }
@@ -563,17 +565,25 @@ pub async fn broadcast_transaction(
                 if let Some(ref sender_addr) = sender_address {
                     if !involved_addresses.contains(sender_addr) {
                         involved_addresses.push(sender_addr.clone());
-                        println!("📝 Added sender address {} from tx_state for broadcast tx", &sender_addr[..20.min(sender_addr.len())]);
+                        println!(
+                            "📝 Added sender address {} from tx_state for broadcast tx",
+                            &sender_addr[..20.min(sender_addr.len())]
+                        );
                     }
                 } else {
                     // Fallback: Try UTXO lookups if sender_address wasn't stored (legacy transactions)
                     eprintln!("⚠️ No sender_address in tx_state, trying UTXO fallback");
                     if let Ok(utxo_manager) = state.utxo_manager.lock() {
                         for input in &storage_tx.inputs {
-                            if let Some(utxo) = utxo_manager.get_utxo(&input.prev_txid, input.prev_vout) {
+                            if let Some(utxo) =
+                                utxo_manager.get_utxo(&input.prev_txid, input.prev_vout)
+                            {
                                 if !involved_addresses.contains(&utxo.address) {
                                     involved_addresses.push(utxo.address.clone());
-                                    println!("📝 Added sender address {} from UTXO fallback", &utxo.address[..20.min(utxo.address.len())]);
+                                    println!(
+                                        "📝 Added sender address {} from UTXO fallback",
+                                        &utxo.address[..20.min(utxo.address.len())]
+                                    );
                                 }
                             }
                         }
@@ -585,9 +595,16 @@ pub async fn broadcast_transaction(
                 let tx_storage_guard = state.tx_storage.read().await;
                 for address in &involved_addresses {
                     if let Err(e) = tx_storage_guard.add_transaction(&storage_tx, address) {
-                        eprintln!("⚠️ Failed to save broadcast tx to storage for {}: {}", address, e);
+                        eprintln!(
+                            "⚠️ Failed to save broadcast tx to storage for {}: {}",
+                            address, e
+                        );
                     } else {
-                        println!("📝 Saved broadcast tx {} for address {}", &txid[..16.min(txid.len())], address);
+                        println!(
+                            "📝 Saved broadcast tx {} for address {}",
+                            &txid[..16.min(txid.len())],
+                            address
+                        );
                     }
                 }
 
@@ -596,7 +613,10 @@ pub async fn broadcast_transaction(
                 if let Err(e) = tx_storage_guard.flush() {
                     eprintln!("⚠️ Failed to flush tx_storage after broadcast: {}", e);
                 } else {
-                    println!("💾 tx_storage flushed after broadcast tx {}", &txid[..16.min(txid.len())]);
+                    println!(
+                        "💾 tx_storage flushed after broadcast tx {}",
+                        &txid[..16.min(txid.len())]
+                    );
                 }
             }
 
@@ -636,7 +656,10 @@ pub async fn broadcast_transaction(
                     .map(|i| format!("{}:{}", i.prev_txid, i.prev_vout))
                     .collect();
                 utxo_manager.release_utxos(&utxo_keys);
-                println!("🔒 Marked {} input UTXOs as spent after broadcast", transaction.inputs.len());
+                println!(
+                    "🔒 Marked {} input UTXOs as spent after broadcast",
+                    transaction.inputs.len()
+                );
             }
 
             println!("✅ Transaction broadcast to network");
@@ -1096,7 +1119,11 @@ pub async fn estimate_fee(
 
     // Select UTXOs (without reserving, with maturity check)
     let utxos = utxo_manager
-        .select_utxos_for_amount(&request.from_address, request.amount + 500_000, current_height)
+        .select_utxos_for_amount(
+            &request.from_address,
+            request.amount + 500_000,
+            current_height,
+        )
         .map_err(|e| format!("Failed to select UTXOs: {}", e))?;
 
     if utxos.is_empty() {

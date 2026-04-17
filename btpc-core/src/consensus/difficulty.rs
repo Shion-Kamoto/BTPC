@@ -656,7 +656,8 @@ mod tests {
         assert!(
             work_min > 0 && work_max * 100 < work_min * 101,
             "Work ratio indicates significant precision loss (work1={}, work2={})",
-            work1, work2
+            work1,
+            work2
         );
     }
 
@@ -841,8 +842,7 @@ mod tests {
         let mainnet_difficulty = DifficultyTarget::minimum_for_network(crate::Network::Mainnet);
 
         assert_eq!(
-            mainnet_difficulty.bits,
-            0x3c7fffff,
+            mainnet_difficulty.bits, 0x3c7fffff,
             "Mainnet difficulty must be 0x3c7fffff for SHA-512 PoW"
         );
     }
@@ -853,8 +853,7 @@ mod tests {
         let testnet_difficulty = DifficultyTarget::minimum_for_network(crate::Network::Testnet);
 
         assert_eq!(
-            testnet_difficulty.bits,
-            0x3c7fffff,
+            testnet_difficulty.bits, 0x3c7fffff,
             "Testnet difficulty must be 0x3c7fffff for SHA-512 PoW"
         );
     }
@@ -865,8 +864,7 @@ mod tests {
         let regtest_difficulty = DifficultyTarget::minimum_for_network(crate::Network::Regtest);
 
         assert_eq!(
-            regtest_difficulty.bits,
-            0x407fffff,
+            regtest_difficulty.bits, 0x407fffff,
             "Regtest difficulty must be 0x407fffff for instant mining"
         );
     }
@@ -878,13 +876,11 @@ mod tests {
 
         // Should not use old SHA-256 compatible values
         assert_ne!(
-            regtest_difficulty.bits,
-            0x1d0fffff,
+            regtest_difficulty.bits, 0x1d0fffff,
             "Regtest should NOT use legacy 0x1d0fffff"
         );
         assert_ne!(
-            regtest_difficulty.bits,
-            0x207fffff,
+            regtest_difficulty.bits, 0x207fffff,
             "Regtest should NOT use legacy 0x207fffff"
         );
     }
@@ -896,8 +892,7 @@ mod tests {
         let mainnet_difficulty = DifficultyTarget::minimum_for_network(crate::Network::Mainnet);
 
         assert_ne!(
-            regtest_difficulty.bits,
-            mainnet_difficulty.bits,
+            regtest_difficulty.bits, mainnet_difficulty.bits,
             "Regtest difficulty should be different from mainnet for easier testing"
         );
 
@@ -931,7 +926,8 @@ mod tests {
         assert!(
             mainnet_work > regtest_work,
             "Mainnet should require more work than regtest (got mainnet={}, regtest={})",
-            mainnet_work, regtest_work
+            mainnet_work,
+            regtest_work
         );
     }
 }

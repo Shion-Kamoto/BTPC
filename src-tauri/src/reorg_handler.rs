@@ -549,12 +549,8 @@ mod tests {
 
     #[test]
     fn test_reorg_event_builder() {
-        let event = ReorgEventBuilder::reorg_detected(
-            "abc123",
-            100,
-            "tip_current",
-            "tip_competing",
-        );
+        let event =
+            ReorgEventBuilder::reorg_detected("abc123", 100, "tip_current", "tip_competing");
 
         match event {
             ChainReorgEvent::ReorgDetected {

@@ -3,7 +3,7 @@
 //! This module provides BIP39-compliant mnemonic generation, parsing, and seed derivation
 //! for deterministic ML-DSA key generation.
 
-use bip39::{Mnemonic as Bip39Mnemonic, Language};
+use bip39::{Language, Mnemonic as Bip39Mnemonic};
 use zeroize::Zeroizing;
 
 /// BIP39 mnemonic phrase wrapper for BTPC wallet recovery
@@ -52,32 +52,31 @@ impl Mnemonic {
 
         // Parse with bip39 crate (validates words, checksum, and normalizes Unicode)
         // `parse` handles NFKD normalization automatically (FR-005)
-        let mnemonic = Bip39Mnemonic::parse(&normalized)
-            .map_err(|e| {
-                // Check error message for specific cases
-                let error_msg = e.to_string();
-                if error_msg.contains("word count") || error_msg.contains("word-count") {
-                    BIP39Error::InvalidWordCount {
-                        expected: 24,
-                        found: word_list.len(),
-                    }
-                } else if error_msg.contains("unknown word") && error_msg.contains("word ") {
-                    // Extract word index from error message like "unknown word (word 23)"
-                    let word_idx = error_msg
-                        .split("word ")
-                        .nth(1)
-                        .and_then(|s| s.trim_end_matches(')').parse::<usize>().ok())
-                        .unwrap_or(0);
-                    BIP39Error::InvalidWord {
-                        position: word_idx + 1, // 1-indexed
-                        word: word_list.get(word_idx).unwrap_or(&"<unknown>").to_string(),
-                    }
-                } else if error_msg.contains("checksum") {
-                    BIP39Error::InvalidChecksum
-                } else {
-                    BIP39Error::ParseError(error_msg)
+        let mnemonic = Bip39Mnemonic::parse(&normalized).map_err(|e| {
+            // Check error message for specific cases
+            let error_msg = e.to_string();
+            if error_msg.contains("word count") || error_msg.contains("word-count") {
+                BIP39Error::InvalidWordCount {
+                    expected: 24,
+                    found: word_list.len(),
                 }
-            })?;
+            } else if error_msg.contains("unknown word") && error_msg.contains("word ") {
+                // Extract word index from error message like "unknown word (word 23)"
+                let word_idx = error_msg
+                    .split("word ")
+                    .nth(1)
+                    .and_then(|s| s.trim_end_matches(')').parse::<usize>().ok())
+                    .unwrap_or(0);
+                BIP39Error::InvalidWord {
+                    position: word_idx + 1, // 1-indexed
+                    word: word_list.get(word_idx).unwrap_or(&"<unknown>").to_string(),
+                }
+            } else if error_msg.contains("checksum") {
+                BIP39Error::InvalidChecksum
+            } else {
+                BIP39Error::ParseError(error_msg)
+            }
+        })?;
 
         Ok(Mnemonic { inner: mnemonic })
     }
@@ -195,7 +194,9 @@ mod tests {
         assert!(result.is_err());
         // Invalid word will be caught as ParseError
         let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("unknown") || err_msg.contains("invalid") || err_msg.contains("BIP39"));
+        assert!(
+            err_msg.contains("unknown") || err_msg.contains("invalid") || err_msg.contains("BIP39")
+        );
     }
 
     #[test]

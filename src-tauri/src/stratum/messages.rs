@@ -262,7 +262,10 @@ mod tests {
 
     #[test]
     fn test_message_type_roundtrip() {
-        assert_eq!(MessageType::from_u16(0x0010), Some(MessageType::NewMiningJob));
+        assert_eq!(
+            MessageType::from_u16(0x0010),
+            Some(MessageType::NewMiningJob)
+        );
         assert_eq!(MessageType::from_u16(0xFFFF), None);
     }
 

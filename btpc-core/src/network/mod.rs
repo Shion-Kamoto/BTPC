@@ -3,6 +3,7 @@
 //! Provides Bitcoin-compatible P2P networking with quantum-resistant enhancements.
 
 pub mod address_manager;
+pub mod block_source;
 pub mod connection_tracker;
 pub mod discovery;
 pub mod integrated_sync;
@@ -207,9 +208,7 @@ impl NetworkConfig {
     /// Create default mainnet configuration
     pub fn mainnet() -> Self {
         NetworkConfig {
-            listen_addr: "[::]:18341"
-                .parse()
-                .expect("Valid mainnet listen address"),
+            listen_addr: "[::]:18341".parse().expect("Valid mainnet listen address"),
             max_connections: 125,
             max_per_ip: 3,         // Bitcoin-style: max 3 connections per IP
             max_per_subnet_24: 10, // Max 10 connections per /24 subnet
@@ -242,9 +241,7 @@ impl NetworkConfig {
     /// Create default testnet configuration
     pub fn testnet() -> Self {
         NetworkConfig {
-            listen_addr: "[::]:18351"
-                .parse()
-                .expect("Valid testnet listen address"),
+            listen_addr: "[::]:18351".parse().expect("Valid testnet listen address"),
             max_connections: 125,
             max_per_ip: 3,
             max_per_subnet_24: 10,
@@ -271,9 +268,7 @@ impl NetworkConfig {
     /// Create default regtest configuration (local-only, no DNS seeds)
     pub fn regtest() -> Self {
         NetworkConfig {
-            listen_addr: "[::]:18361"
-                .parse()
-                .expect("Valid regtest listen address"),
+            listen_addr: "[::]:18361".parse().expect("Valid regtest listen address"),
             max_connections: 25,
             max_per_ip: 10,        // Relaxed for local testing
             max_per_subnet_24: 25, // Relaxed

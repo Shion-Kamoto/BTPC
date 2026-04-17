@@ -1,7 +1,7 @@
-use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
-use super::{NetworkType, NodeConfig, WalletConfig, MiningConfig, RpcConfig};
+use super::{MiningConfig, NetworkType, NodeConfig, RpcConfig, WalletConfig};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LauncherConfig {
@@ -34,7 +34,7 @@ impl Default for LauncherConfig {
                 sync_interval_secs: 5,
                 max_peers: 50,
                 listen_port: p2p_port, // FIX 2025-12-01: Use saved P2P port
-                enable_rpc: true,   // FIXED: Enable RPC for desktop node
+                enable_rpc: true,      // FIXED: Enable RPC for desktop node
             },
             wallet: WalletConfig {
                 default_wallet_file: "wallet.dat".to_string(),
@@ -103,13 +103,16 @@ impl LauncherConfig {
                     _ => default_p2p_port,
                 };
 
-                eprintln!("📁 Loaded saved network settings: {} (RPC: {}, P2P: {})",
+                eprintln!(
+                    "📁 Loaded saved network settings: {} (RPC: {}, P2P: {})",
                     match network {
                         NetworkType::Mainnet => "mainnet",
                         NetworkType::Testnet => "testnet",
                         NetworkType::Regtest => "regtest",
                     },
-                    rpc_port, p2p_port);
+                    rpc_port,
+                    p2p_port
+                );
 
                 (network, rpc_port, p2p_port)
             }

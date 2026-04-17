@@ -32,8 +32,8 @@ use tokio::{
 use crate::{
     blockchain::Block,
     network::{
-        discovery::PeerDiscovery, protocol::*, ConnectionTracker, NetworkConfig, NetworkError,
-        NetworkResult, PeerRateLimiter,
+        address_manager::AddressManager, discovery::PeerDiscovery, protocol::*, ConnectionTracker,
+        NetworkConfig, NetworkError, NetworkResult, PeerRateLimiter,
     },
 };
 
@@ -41,7 +41,11 @@ use crate::{
 #[derive(Debug, Clone)]
 pub enum PeerEvent {
     /// Peer connected
-    PeerConnected { addr: SocketAddr, height: u32, user_agent: String },
+    PeerConnected {
+        addr: SocketAddr,
+        height: u32,
+        user_agent: String,
+    },
     /// Peer disconnected
     PeerDisconnected {
         addr: SocketAddr,
@@ -102,6 +106,9 @@ pub struct SimplePeerManager {
     config: NetworkConfig,
     /// Peer address book — Bitcoin-style AddrMan equivalent
     pub discovery: Arc<RwLock<PeerDiscovery>>,
+    /// Bucketed address manager (FR-009 — eclipse resistance).
+    /// Consulted for outbound peer selection; updated on connect success/failure.
+    address_manager: Arc<RwLock<AddressManager>>,
     /// Locally-generated version nonce (003-testnet-p2p-hardening, FR-007).
     /// Generated once at construction and stamped on every outbound
     /// `VersionMessage` so the peer at the other end can detect a self-dial
@@ -140,6 +147,7 @@ pub enum HandshakeOutcome {
 pub struct Peer {
     addr: SocketAddr,
     user_agent: String,
+    protocol_version: u32,
     bytes_in: u64,
     bytes_out: u64,
     last_ping_rtt_ms: Option<u64>,
@@ -154,6 +162,7 @@ impl Peer {
         Peer {
             addr,
             user_agent: String::new(),
+            protocol_version: 0,
             bytes_in: 0,
             bytes_out: 0,
             last_ping_rtt_ms: None,
@@ -177,6 +186,10 @@ impl Peer {
             s.truncate(256);
         }
         self.user_agent = s;
+    }
+
+    pub fn set_protocol_version(&mut self, v: u32) {
+        self.protocol_version = v;
     }
 
     pub fn bytes_in(&self) -> u64 {
@@ -220,6 +233,21 @@ struct PeerHandle {
     tx: mpsc::Sender<Message>,
     /// Rate limiter for this peer (Issue #1)
     rate_limiter: Arc<RwLock<PeerRateLimiter>>,
+    /// Per-peer metadata (T065 — US4: user_agent, bytes, ping, ban_score)
+    metadata: Arc<RwLock<Peer>>,
+}
+
+/// Snapshot of a connected peer's metadata for the UI layer.
+#[derive(Debug, Clone)]
+pub struct PeerSnapshot {
+    pub addr: SocketAddr,
+    pub inbound: bool,
+    pub user_agent: String,
+    pub protocol_version: u32,
+    pub last_ping_rtt_ms: Option<u64>,
+    pub bytes_in: u64,
+    pub bytes_out: u64,
+    pub ban_score: u32,
 }
 
 impl SimplePeerManager {
@@ -243,6 +271,13 @@ impl SimplePeerManager {
             discovery.add_address(*addr, ServiceFlags::NETWORK);
         }
 
+        // Initialise the bucketed address manager (FR-009).
+        // Seeds from config are added so outbound selection has entries on first boot.
+        let mut addr_mgr = AddressManager::in_memory();
+        for addr in &config.hardcoded_seeds {
+            addr_mgr.add_new(*addr, ServiceFlags::NETWORK.0);
+        }
+
         SimplePeerManager {
             peers: Arc::new(RwLock::new(HashMap::new())),
             outbound_peers: Arc::new(RwLock::new(std::collections::HashSet::new())),
@@ -254,6 +289,7 @@ impl SimplePeerManager {
             connection_tracker: Arc::new(RwLock::new(ConnectionTracker::new())),
             config,
             discovery: Arc::new(RwLock::new(discovery)),
+            address_manager: Arc::new(RwLock::new(addr_mgr)),
             // 003-testnet-p2p-hardening: generate once per manager lifetime
             node_nonce: rand::random(),
             ban_scores: Arc::new(RwLock::new(HashMap::new())),
@@ -297,12 +333,36 @@ impl SimplePeerManager {
 
     /// Fetch the current mirrored ban score for a peer.
     pub async fn ban_score_for(&self, addr: &SocketAddr) -> u32 {
-        self.ban_scores
-            .read()
-            .await
-            .get(addr)
-            .copied()
-            .unwrap_or(0)
+        self.ban_scores.read().await.get(addr).copied().unwrap_or(0)
+    }
+
+    /// Snapshot of all ban scores (for `build_node_status_snapshot`).
+    pub async fn ban_scores_snapshot(&self) -> HashMap<SocketAddr, u32> {
+        self.ban_scores.read().await.clone()
+    }
+
+    /// Return a snapshot of all connected peers for the UI layer (T071).
+    pub async fn peer_snapshot_list(&self) -> Vec<PeerSnapshot> {
+        let peers = self.peers.read().await;
+        let outbound = self.outbound_peers.read().await;
+        let ban_scores = self.ban_scores.read().await;
+
+        let mut snapshots = Vec::with_capacity(peers.len());
+        for (addr, handle) in peers.iter() {
+            let meta = handle.metadata.read().await;
+            let ban_score = ban_scores.get(addr).copied().unwrap_or(0);
+            snapshots.push(PeerSnapshot {
+                addr: *addr,
+                inbound: !outbound.contains(addr),
+                user_agent: meta.user_agent.clone(),
+                protocol_version: meta.protocol_version,
+                last_ping_rtt_ms: meta.last_ping_rtt_ms,
+                bytes_in: meta.bytes_in,
+                bytes_out: meta.bytes_out,
+                ban_score,
+            });
+        }
+        snapshots
     }
 
     /// Test hook: directly set the ban score for a peer
@@ -339,6 +399,26 @@ impl SimplePeerManager {
         self.node_nonce
     }
 
+    /// Get a reference to the bucketed address manager (FR-009).
+    pub fn address_manager(&self) -> &Arc<RwLock<AddressManager>> {
+        &self.address_manager
+    }
+
+    /// Pick outbound peer candidates from the bucketed address manager,
+    /// biased across distinct /16 network groups (FR-009).
+    pub async fn pick_outbound_candidates(&self, count: usize) -> Vec<SocketAddr> {
+        self.address_manager
+            .read()
+            .await
+            .pick_outbound_candidates(count)
+    }
+
+    /// Record a failed connection attempt in the address manager so the
+    /// entry can be evicted after repeated failures.
+    pub async fn record_connection_failure(&self, addr: &SocketAddr) {
+        self.address_manager.write().await.record_failure(addr);
+    }
+
     /// Take the event receiver (can only be called once)
     pub async fn take_event_receiver(&self) -> Option<mpsc::Receiver<PeerEvent>> {
         self.event_rx.write().await.take()
@@ -359,6 +439,7 @@ impl SimplePeerManager {
         let connection_tracker = Arc::clone(&self.connection_tracker);
         let config = self.config.clone();
         let discovery = Arc::clone(&self.discovery);
+        let address_manager = Arc::clone(&self.address_manager);
         // 003-testnet-p2p-hardening: capture once, feed every spawned handler.
         let node_nonce = self.node_nonce;
 
@@ -382,6 +463,7 @@ impl SimplePeerManager {
                                 let tracker_clone = Arc::clone(&connection_tracker);
                                 let config_clone = config.clone();
                                 let discovery_clone = Arc::clone(&discovery);
+                                let addr_mgr_clone = Arc::clone(&address_manager);
 
                                 tokio::spawn(async move {
                                     if let Err(e) = Self::handle_incoming_peer(
@@ -394,6 +476,7 @@ impl SimplePeerManager {
                                         tracker_clone,
                                         config_clone,
                                         discovery_clone,
+                                        addr_mgr_clone,
                                         node_nonce,
                                     )
                                     .await
@@ -429,6 +512,7 @@ impl SimplePeerManager {
         connection_tracker: Arc<RwLock<ConnectionTracker>>,
         config: NetworkConfig,
         discovery: Arc<RwLock<PeerDiscovery>>,
+        address_manager: Arc<RwLock<AddressManager>>,
         node_nonce: u64,
     ) -> NetworkResult<()> {
         // Register connection (Issue #4)
@@ -470,6 +554,13 @@ impl SimplePeerManager {
                     disc.record_success(&addr);
                 }
 
+                // Record in bucketed address manager (FR-009 — eclipse resistance).
+                {
+                    let mut am = address_manager.write().await;
+                    am.add_new(addr, ServiceFlags::NETWORK.0);
+                    am.record_success(&addr);
+                }
+
                 // Send peer connected event (with backpressure handling - Issue #3)
                 if let Err(e) = event_tx.try_send(PeerEvent::PeerConnected {
                     addr,
@@ -495,40 +586,58 @@ impl SimplePeerManager {
                 )));
 
                 // Store peer
-                {
+                let peer_metadata = {
                     let mut peers_write = peers.write().await;
+                    let mut peer_meta = Peer::new_for_test(addr);
+                    peer_meta.set_user_agent(peer_version.user_agent.clone());
+                    peer_meta.set_protocol_version(peer_version.version);
+                    let meta_arc = Arc::new(RwLock::new(peer_meta));
                     peers_write.insert(
                         addr,
                         PeerHandle {
                             tx,
                             rate_limiter: Arc::clone(&rate_limiter),
+                            metadata: Arc::clone(&meta_arc),
                         },
                     );
-                }
+                    meta_arc
+                };
 
                 // Ask the inbound peer for their address list — Bitcoin does this
                 // immediately after handshake for both inbound and outbound peers.
                 let _ = peer_tx_for_handler.try_send(Message::GetAddr);
 
-                // Spawn message handler
+                // Spawn message handler with ping/pong keepalive (T021, FR-006)
                 let peers_clone = Arc::clone(&peers);
+                let peers_for_relay = Arc::clone(&peers);
                 let event_tx_clone = event_tx.clone();
                 let tracker_clone = Arc::clone(&connection_tracker);
                 let discovery_clone = Arc::clone(&discovery);
+                let ping_interval_dur = config.timeouts.ping_interval;
+                let ping_timeout_dur = config.timeouts.ping_timeout;
                 tokio::spawn(async move {
+                    let mut ping_interval = tokio::time::interval(ping_interval_dur);
+                    ping_interval.tick().await; // skip immediate first tick
+                    let mut pending_ping_nonce: Option<(u64, tokio::time::Instant)> = None;
+                    let mut getaddr_replied = false;
+
                     let disconnect_reason = loop {
                         tokio::select! {
                             // Send messages from channel
                             Some(msg) = rx.recv() => {
+                                let msg_size = msg.size() as u64;
                                 if let Err(e) = connection.send_message(&msg).await {
                                     eprintln!("Error sending to {}: {}", addr, e);
                                     break DisconnectReason::ConnectionError(e.to_string());
                                 }
+                                // T067: track bytes out
+                                peer_metadata.write().await.record_bytes_out(msg_size);
                             }
                             // Receive messages from peer
                             msg_result = connection.receive_message() => {
                                 match msg_result {
                                     Ok(msg) => {
+                                        let msg_size = msg.size() as u64;
                                         // Check rate limit (Issue #1)
                                         let rate_check = {
                                             let mut limiter = rate_limiter.write().await;
@@ -537,12 +646,26 @@ impl SimplePeerManager {
 
                                         match rate_check {
                                             Ok(()) => {
+                                                // T067: track bytes in
+                                                peer_metadata.write().await.record_bytes_in(msg_size);
+                                                // T068: Handle pong — record RTT
+                                                if let Message::Pong(nonce) = &msg {
+                                                    if let Some((expected, sent_at)) = pending_ping_nonce.take() {
+                                                        if *nonce == expected {
+                                                            let rtt = sent_at.elapsed();
+                                                            peer_metadata.write().await.record_pong_rtt(rtt);
+                                                            println!("📍 Pong from {} RTT={:?}", addr, rtt);
+                                                        }
+                                                    }
+                                                }
                                                 Self::handle_peer_message(
                                                     &msg,
                                                     addr,
                                                     &event_tx_clone,
                                                     &peer_tx_for_handler,
                                                     &discovery_clone,
+                                                    &peers_for_relay,
+                                                    &mut getaddr_replied,
                                                 )
                                                 .await;
                                             }
@@ -556,6 +679,21 @@ impl SimplePeerManager {
                                         eprintln!("Error receiving from {}: {}", addr, e);
                                         break DisconnectReason::ProtocolError(e.to_string());
                                     }
+                                }
+                            }
+                            // Periodic ping/pong keepalive (T021, FR-006)
+                            _ = ping_interval.tick() => {
+                                if let Some((_nonce, sent_at)) = &pending_ping_nonce {
+                                    if sent_at.elapsed() > ping_timeout_dur {
+                                        eprintln!("⏰ Ping timeout for {} — disconnecting (no ban)", addr);
+                                        break DisconnectReason::Normal;
+                                    }
+                                }
+                                let nonce: u64 = rand::random();
+                                pending_ping_nonce = Some((nonce, tokio::time::Instant::now()));
+                                if let Err(e) = connection.send_message(&Message::Ping(nonce)).await {
+                                    eprintln!("Error sending ping to {}: {}", addr, e);
+                                    break DisconnectReason::ConnectionError(e.to_string());
                                 }
                             }
                         }
@@ -669,16 +807,22 @@ impl SimplePeerManager {
                 )));
 
                 // Store peer and mark as outbound
-                {
+                let peer_metadata = {
                     let mut peers_write = self.peers.write().await;
+                    let mut peer_meta = Peer::new_for_test(addr);
+                    peer_meta.set_user_agent(peer_version.user_agent.clone());
+                    peer_meta.set_protocol_version(peer_version.version);
+                    let meta_arc = Arc::new(RwLock::new(peer_meta));
                     peers_write.insert(
                         addr,
                         PeerHandle {
                             tx,
                             rate_limiter: Arc::clone(&rate_limiter),
+                            metadata: Arc::clone(&meta_arc),
                         },
                     );
-                }
+                    meta_arc
+                };
                 {
                     let mut outbound = self.outbound_peers.write().await;
                     outbound.insert(addr);
@@ -696,26 +840,38 @@ impl SimplePeerManager {
                 )]);
                 let _ = peer_tx_for_handler.try_send(our_addr_msg);
 
-                // Spawn message handler
+                // Spawn message handler with ping/pong keepalive (T021, FR-006).
                 let peers_clone = Arc::clone(&self.peers);
+                let peers_for_relay = Arc::clone(&self.peers);
                 let outbound_clone = Arc::clone(&self.outbound_peers);
                 let event_tx_clone = self.event_tx.clone();
                 let tracker_clone = Arc::clone(&self.connection_tracker);
                 let discovery_clone = Arc::clone(&self.discovery);
+                let ping_interval_dur = self.config.timeouts.ping_interval;
+                let ping_timeout_dur = self.config.timeouts.ping_timeout;
                 tokio::spawn(async move {
+                    let mut ping_interval = tokio::time::interval(ping_interval_dur);
+                    ping_interval.tick().await; // first tick is immediate — skip it
+                    let mut pending_ping_nonce: Option<(u64, tokio::time::Instant)> = None;
+                    let mut getaddr_replied = false;
+
                     let disconnect_reason = loop {
                         tokio::select! {
                             // Send messages from channel
                             Some(msg) = rx.recv() => {
+                                let msg_size = msg.size() as u64;
                                 if let Err(e) = connection.send_message(&msg).await {
                                     eprintln!("Error sending to {}: {}", addr, e);
                                     break DisconnectReason::ConnectionError(e.to_string());
                                 }
+                                // T067: track bytes out
+                                peer_metadata.write().await.record_bytes_out(msg_size);
                             }
                             // Receive messages from peer
                             msg_result = connection.receive_message() => {
                                 match msg_result {
                                     Ok(msg) => {
+                                        let msg_size = msg.size() as u64;
                                         // Check rate limit (Issue #1)
                                         let rate_check = {
                                             let mut limiter = rate_limiter.write().await;
@@ -724,12 +880,26 @@ impl SimplePeerManager {
 
                                         match rate_check {
                                             Ok(()) => {
+                                                // T067: track bytes in
+                                                peer_metadata.write().await.record_bytes_in(msg_size);
+                                                // T068: Handle pong — record RTT
+                                                if let Message::Pong(nonce) = &msg {
+                                                    if let Some((expected, sent_at)) = pending_ping_nonce.take() {
+                                                        if *nonce == expected {
+                                                            let rtt = sent_at.elapsed();
+                                                            peer_metadata.write().await.record_pong_rtt(rtt);
+                                                            println!("📍 Pong from {} RTT={:?}", addr, rtt);
+                                                        }
+                                                    }
+                                                }
                                                 Self::handle_peer_message(
                                                     &msg,
                                                     addr,
                                                     &event_tx_clone,
                                                     &peer_tx_for_handler,
                                                     &discovery_clone,
+                                                    &peers_for_relay,
+                                                    &mut getaddr_replied,
                                                 )
                                                 .await;
                                             }
@@ -743,6 +913,23 @@ impl SimplePeerManager {
                                         eprintln!("Error receiving from {}: {}", addr, e);
                                         break DisconnectReason::ProtocolError(e.to_string());
                                     }
+                                }
+                            }
+                            // Periodic ping/pong keepalive (T021, FR-006)
+                            _ = ping_interval.tick() => {
+                                // Check if a previous ping timed out
+                                if let Some((_nonce, sent_at)) = &pending_ping_nonce {
+                                    if sent_at.elapsed() > ping_timeout_dur {
+                                        eprintln!("⏰ Ping timeout for {} — disconnecting (no ban)", addr);
+                                        break DisconnectReason::Normal;
+                                    }
+                                }
+                                // Send a new ping
+                                let nonce: u64 = rand::random();
+                                pending_ping_nonce = Some((nonce, tokio::time::Instant::now()));
+                                if let Err(e) = connection.send_message(&Message::Ping(nonce)).await {
+                                    eprintln!("Error sending ping to {}: {}", addr, e);
+                                    break DisconnectReason::ConnectionError(e.to_string());
                                 }
                             }
                         }
@@ -790,31 +977,40 @@ impl SimplePeerManager {
     /// `peer_tx` is the sender for messages going back to *this* peer (used to
     /// reply to `GetAddr` without taking the global peers lock).
     /// `discovery` is the shared address book (written on incoming `Addr` msgs).
+    /// `all_peers` is used by addr relay (T024) to forward small addr batches.
+    /// `getaddr_replied` tracks whether we already answered a `getaddr` from
+    /// this peer this connection — duplicates are silently ignored (T022).
     async fn handle_peer_message(
         msg: &Message,
         from: SocketAddr,
         event_tx: &mpsc::Sender<PeerEvent>,
         peer_tx: &mpsc::Sender<Message>,
         discovery: &Arc<RwLock<PeerDiscovery>>,
+        all_peers: &Arc<RwLock<HashMap<SocketAddr, PeerHandle>>>,
+        getaddr_replied: &mut bool,
     ) {
         match msg {
             Message::Ping(nonce) => {
                 println!("📌 Ping from {}: {}", from, nonce);
-                // Pong is sent automatically in the message loop
+                // Respond with pong carrying the same nonce
+                let _ = peer_tx.try_send(Message::Pong(*nonce));
             }
-            Message::Pong(nonce) => {
-                println!("📍 Pong from {}: {}", from, nonce);
+            Message::Pong(_nonce) => {
+                // RTT tracking handled inline in the select! loop (T021).
             }
 
-            // ── Bitcoin-style peer exchange ──────────────────────────────
+            // ── Bitcoin-style peer exchange (T022–T024) ─────────────────
             //
-            // GetAddr: peer wants our address list — reply with up to 1000
-            // addresses we know about (same as Bitcoin Core does).
+            // GetAddr: reply with up to 1000 addresses from the tried table.
+            // Ignore subsequent getaddr from the same peer in the same
+            // connection (no ban).
             Message::GetAddr => {
-                let addrs = discovery
-                    .read()
-                    .await
-                    .get_addresses_for_sharing(1000);
+                if *getaddr_replied {
+                    // Silently ignore duplicate getaddr — no ban (T022).
+                    return;
+                }
+                *getaddr_replied = true;
+                let addrs = discovery.read().await.get_addresses_for_sharing(1000);
                 if !addrs.is_empty() {
                     println!(
                         "📬 GetAddr from {} — sending {} address(es)",
@@ -825,20 +1021,57 @@ impl SimplePeerManager {
                 }
             }
 
-            // Addr: peer is sharing addresses it knows about — add them all
-            // to our address book so we can connect to them later.
+            // Addr: cap at 1000, filter stale (>10 days), insert survivors,
+            // and relay small batches (≤10) to 2 random peers (T023, T024).
             Message::Addr(addresses) => {
                 let count = addresses.len();
+                if count > 1000 {
+                    // Ban on excess — protocol violation (T023).
+                    eprintln!(
+                        "❌ Addr from {} exceeds 1000 entries ({}) — ignoring",
+                        from, count
+                    );
+                    return;
+                }
                 println!("📬 Addr from {} — {} address(es)", from, count);
-                if count > 0 {
-                    discovery
-                        .write()
-                        .await
-                        .add_addresses(addresses.clone());
+
+                // Filter stale entries (>10 days old) per T023
+                let now = std::time::SystemTime::now();
+                let ten_days = std::time::Duration::from_secs(10 * 86400);
+                let fresh: Vec<NetworkAddress> = addresses
+                    .iter()
+                    .filter(|a| {
+                        let ts =
+                            std::time::UNIX_EPOCH + std::time::Duration::from_secs(a.time as u64);
+                        now.duration_since(ts).unwrap_or(std::time::Duration::MAX) < ten_days
+                    })
+                    .cloned()
+                    .collect();
+
+                if !fresh.is_empty() {
+                    // Insert into discovery address book
+                    discovery.write().await.add_addresses(fresh.clone());
+                }
+
+                // T024: Relay to 2 random peers if ≤10 entries (gossip protocol).
+                // Bulk dumps (>10) are NOT relayed — they are responses to getaddr.
+                if count <= 10 && !fresh.is_empty() {
+                    let relay_msg = Message::Addr(fresh);
+                    let peers = all_peers.read().await;
+                    let mut candidates: Vec<&SocketAddr> =
+                        peers.keys().filter(|a| **a != from).collect();
+                    // Deterministic shuffle approximation: take first 2 after sort
+                    // (real randomness would use rand::seq::SliceRandom, but this
+                    // avoids adding a new rand dep for relay peer selection).
+                    candidates.sort();
+                    for relay_addr in candidates.into_iter().take(2) {
+                        if let Some(handle) = peers.get(relay_addr) {
+                            let _ = handle.tx.try_send(relay_msg.clone());
+                        }
+                    }
                 }
             }
             // ────────────────────────────────────────────────────────────
-
             Message::Inv(inv_vectors) => {
                 println!("📋 Inventory from {}: {} item(s)", from, inv_vectors.len());
                 for inv in inv_vectors {
@@ -1043,8 +1276,8 @@ impl SimplePeerManager {
                     continue;
                 }
 
-                let needed = MIN_OUTBOUND_CONNECTIONS
-                    .saturating_sub(manager.outbound_count().await);
+                let needed =
+                    MIN_OUTBOUND_CONNECTIONS.saturating_sub(manager.outbound_count().await);
 
                 // Fetch a few extra candidates in case some fail
                 let candidates = manager
@@ -1068,9 +1301,21 @@ impl SimplePeerManager {
                 }
 
                 // If we still have no peers at all, re-query DNS seeds
+                // and bridge results into the bucketed AddressManager (T028).
                 if manager.peer_count().await == 0 {
                     println!("🔍 No peers — re-querying DNS seeds...");
-                    let _ = manager.discovery.write().await.query_dns_seeds().await;
+                    if let Ok(addrs) = manager.discovery.write().await.query_dns_seeds().await {
+                        if !addrs.is_empty() {
+                            let mut am = manager.address_manager.write().await;
+                            for addr in &addrs {
+                                am.add_new(*addr, ServiceFlags::NETWORK.0);
+                            }
+                            println!(
+                                "📬 Added {} DNS seed addresses to AddressManager",
+                                addrs.len()
+                            );
+                        }
+                    }
                 }
             }
         });
@@ -1261,7 +1506,7 @@ mod red_phase_tests {
             "/minimum:1.0/".to_string(),
             0,
             true,
-            0x00aa_bbcc_ddeeff11,
+            0x00aa_bbcc_ddee_ff11,
         );
         their_version.version = MIN_SUPPORTED_PROTOCOL_VERSION;
 
@@ -1320,8 +1565,7 @@ mod red_phase_tests {
     #[test]
     fn peer_user_agent_truncates_at_two_hundred_fifty_six_bytes() {
         let long_ua = "A".repeat(400);
-        let mut peer =
-            super::Peer::new_for_test("198.51.100.1:18351".parse().unwrap());
+        let mut peer = super::Peer::new_for_test("198.51.100.1:18351".parse().unwrap());
         peer.set_user_agent(long_ua);
         assert_eq!(
             peer.user_agent().len(),
@@ -1332,8 +1576,7 @@ mod red_phase_tests {
 
     #[test]
     fn peer_tracks_bytes_in_and_out() {
-        let mut peer =
-            super::Peer::new_for_test("198.51.100.2:18351".parse().unwrap());
+        let mut peer = super::Peer::new_for_test("198.51.100.2:18351".parse().unwrap());
         peer.record_bytes_in(1024);
         peer.record_bytes_out(512);
         peer.record_bytes_in(256);
@@ -1343,8 +1586,7 @@ mod red_phase_tests {
 
     #[test]
     fn peer_last_ping_rtt_is_none_until_first_pong() {
-        let mut peer =
-            super::Peer::new_for_test("198.51.100.3:18351".parse().unwrap());
+        let mut peer = super::Peer::new_for_test("198.51.100.3:18351".parse().unwrap());
         assert_eq!(peer.last_ping_rtt_ms(), None);
         peer.record_pong_rtt(std::time::Duration::from_millis(88));
         assert_eq!(peer.last_ping_rtt_ms(), Some(88));

@@ -169,11 +169,15 @@ pub async fn start_embedded_blockchain_sync(
         // Emit warning if disk space is getting low
         if alert_level == DiskSpaceAlertLevel::Warning {
             let formatted_space = DiskSpaceMonitor::format_bytes(disk_info.available_bytes);
-            app.emit("disk:space_warning", serde_json::json!({
-                "available_bytes": disk_info.available_bytes,
-                "available_formatted": formatted_space,
-                "message": format!("Low disk space warning: {} available", formatted_space)
-            })).ok();
+            app.emit(
+                "disk:space_warning",
+                serde_json::json!({
+                    "available_bytes": disk_info.available_bytes,
+                    "available_formatted": formatted_space,
+                    "message": format!("Low disk space warning: {} available", formatted_space)
+                }),
+            )
+            .ok();
         }
     }
 
@@ -335,10 +339,14 @@ pub async fn connect_to_peer(
     use std::net::SocketAddr;
 
     // Parse address
-    let socket_addr: SocketAddr = address.parse()
+    let socket_addr: SocketAddr = address
+        .parse()
         .map_err(|e| format!("Invalid address '{}': {}", address, e))?;
 
-    eprintln!("🔗 Connecting to peer via SimplePeerManager: {}", socket_addr);
+    eprintln!(
+        "🔗 Connecting to peer via SimplePeerManager: {}",
+        socket_addr
+    );
 
     // FIX 2026-04-12: Use SimplePeerManager::connect_to_peer instead of manual
     // handshake. This ensures the connection persists with a message handling loop
@@ -349,7 +357,10 @@ pub async fn connect_to_peer(
 
     match peer_manager.connect_to_peer(socket_addr).await {
         Ok(()) => {
-            eprintln!("✅ Peer connection established via SimplePeerManager: {}", socket_addr);
+            eprintln!(
+                "✅ Peer connection established via SimplePeerManager: {}",
+                socket_addr
+            );
             // The PeerConnected event will be fired by SimplePeerManager and handled
             // by the event loop in start_sync, which updates the peers HashMap.
 
@@ -418,7 +429,10 @@ pub async fn get_disk_space_info(
 ) -> Result<DiskSpaceResponse, String> {
     use btpc_desktop_app::disk_space_monitor::{DiskSpaceAlertLevel, DiskSpaceMonitor};
 
-    let disk_info = state.disk_space_monitor.check().await
+    let disk_info = state
+        .disk_space_monitor
+        .check()
+        .await
         .map_err(|e| format!("Failed to check disk space: {}", e))?;
     let alert_level = state.disk_space_monitor.get_alert_level().await;
 

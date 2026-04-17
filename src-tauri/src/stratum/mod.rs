@@ -13,10 +13,10 @@
 //! - `pool_client`: High-level pool client with reconnection
 //! - `vardiff`: Variable share difficulty controller
 
-pub mod messages;
-pub mod transport;
 pub mod codec;
+pub mod messages;
 pub mod pool_client;
+pub mod transport;
 pub mod vardiff;
 
 pub use messages::*;

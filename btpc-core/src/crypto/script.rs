@@ -301,7 +301,9 @@ impl Script {
                     if i + 4 > bytes.len() {
                         return Err(ScriptError::InvalidScript);
                     }
-                    let data_len = u32::from_le_bytes([bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]]) as usize;
+                    let data_len =
+                        u32::from_le_bytes([bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]])
+                            as usize;
                     i += 4;
                     if i + data_len > bytes.len() {
                         return Err(ScriptError::InvalidScript);

@@ -320,7 +320,8 @@ impl Mempool {
             return 0.0;
         }
 
-        let index = ((percentile as f64 / 100.0) * (sorted_rates.len() - 1) as f64).round() as usize;
+        let index =
+            ((percentile as f64 / 100.0) * (sorted_rates.len() - 1) as f64).round() as usize;
         sorted_rates[index.min(sorted_rates.len() - 1)]
     }
 
@@ -479,10 +480,7 @@ pub enum MempoolError {
         max: usize,
     },
     #[error("Insufficient fee: {fee_per_kb} crd/KB < {min_required} crd/KB minimum")]
-    InsufficientFee {
-        fee_per_kb: f64,
-        min_required: f64,
-    },
+    InsufficientFee { fee_per_kb: f64, min_required: f64 },
     #[error("Double spend detected: {0:?}")]
     DoubleSpend(OutPoint),
     #[error("Invalid transaction: {0}")]

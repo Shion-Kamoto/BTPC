@@ -809,7 +809,10 @@ impl fmt::Display for TransactionError {
             TransactionError::TransactionLocked { tx_id, reason } => {
                 write!(f, "Transaction {} is locked: {}", tx_id, reason)
             }
-            TransactionError::TransactionConfirmed { tx_id, block_height } => {
+            TransactionError::TransactionConfirmed {
+                tx_id,
+                block_height,
+            } => {
                 write!(
                     f,
                     "Transaction {} is already confirmed at block {}",

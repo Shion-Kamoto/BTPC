@@ -275,10 +275,8 @@ impl DiskSpaceMonitor {
         }
 
         // Update last check timestamp
-        self.last_check.store(
-            chrono::Utc::now().timestamp() as u64,
-            Ordering::SeqCst,
-        );
+        self.last_check
+            .store(chrono::Utc::now().timestamp() as u64, Ordering::SeqCst);
 
         // Update alert level and flags
         let new_level = DiskSpaceAlertLevel::from_available_bytes(info.available_bytes);

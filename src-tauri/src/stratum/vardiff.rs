@@ -99,7 +99,8 @@ impl VardiffController {
 
         // Only adjust if ratio is meaningfully different from 1.0
         if (clamped_ratio - 1.0).abs() > 0.1 {
-            self.current_difficulty = (self.current_difficulty * clamped_ratio).max(self.min_difficulty);
+            self.current_difficulty =
+                (self.current_difficulty * clamped_ratio).max(self.min_difficulty);
             eprintln!(
                 "📊 Vardiff: {} shares in {:.1}s ({:.2}/min target {:.1}/min) → diff {:.2} (×{:.2})",
                 self.shares_this_window,
@@ -164,7 +165,7 @@ mod tests {
     #[test]
     fn test_vardiff_increases_difficulty_on_fast_shares() {
         let mut vd = VardiffController::with_params(1.0, 2.0, 1, 0.1); // 1-second window
-        // Simulate window elapsed by faking the start time
+                                                                       // Simulate window elapsed by faking the start time
         vd.window_start = Instant::now() - Duration::from_secs(2);
         // Submit 10 shares (way over 2/min target)
         for _ in 0..10 {
@@ -180,7 +181,7 @@ mod tests {
     fn test_vardiff_decreases_difficulty_on_slow_shares() {
         let mut vd = VardiffController::with_params(10.0, 2.0, 1, 0.1); // 1-second window
         vd.window_start = Instant::now() - Duration::from_secs(120); // 2 minutes elapsed
-        // Only 1 share in 2 minutes (target is 2/min = 4 shares expected)
+                                                                     // Only 1 share in 2 minutes (target is 2/min = 4 shares expected)
         let result = vd.record_share();
         assert!(result.is_some());
         // Difficulty should have decreased
@@ -225,6 +226,10 @@ mod tests {
         let result = vd.record_share();
         assert!(result.is_some());
         let new_diff = result.unwrap();
-        assert!(new_diff <= 4.0 + 0.01, "Should be clamped to 4×: {}", new_diff);
+        assert!(
+            new_diff <= 4.0 + 0.01,
+            "Should be clamped to 4×: {}",
+            new_diff
+        );
     }
 }

@@ -439,11 +439,7 @@ impl IntegratedSyncManager {
             return Ok(());
         }
 
-        println!(
-            "Processing {} headers from peer: {}",
-            headers.len(),
-            peer
-        );
+        println!("Processing {} headers from peer: {}", headers.len(), peer);
 
         // Step 1: Validate header chain (prev_hash links)
         let mut prev_hash = headers[0].prev_hash;
@@ -482,29 +478,30 @@ impl IntegratedSyncManager {
         // Use spawn_blocking to avoid holding std::sync::RwLock across await
         let blockchain_db_clone = Arc::clone(&self.blockchain_db);
         let sync_manager_clone = Arc::clone(&self.sync_manager);
-        let blocks_to_download = tokio::task::spawn_blocking(move || -> Result<Vec<Hash>, IntegratedSyncError> {
-            let blockchain_db = blockchain_db_clone.read().map_err(|e| {
+        let blocks_to_download =
+            tokio::task::spawn_blocking(move || -> Result<Vec<Hash>, IntegratedSyncError> {
+                let blockchain_db = blockchain_db_clone.read().map_err(|e| {
+                    IntegratedSyncError::Network(NetworkError::Connection(format!(
+                        "Lock error: {}",
+                        e
+                    )))
+                })?;
+
+                // Use try_write since we're in blocking context
+                let runtime = tokio::runtime::Handle::current();
+                let result = runtime.block_on(async {
+                    let mut sync = sync_manager_clone.write().await;
+                    sync.process_headers(headers, &*blockchain_db)
+                })?;
+                Ok(result)
+            })
+            .await
+            .map_err(|e| {
                 IntegratedSyncError::Network(NetworkError::Connection(format!(
-                    "Lock error: {}",
+                    "Task join error: {}",
                     e
                 )))
-            })?;
-
-            // Use try_write since we're in blocking context
-            let runtime = tokio::runtime::Handle::current();
-            let result = runtime.block_on(async {
-                let mut sync = sync_manager_clone.write().await;
-                sync.process_headers(headers, &*blockchain_db)
-            })?;
-            Ok(result)
-        })
-        .await
-        .map_err(|e| {
-            IntegratedSyncError::Network(NetworkError::Connection(format!(
-                "Task join error: {}",
-                e
-            )))
-        })??;
+            })??;
 
         // Step 4: Request blocks for headers we don't have
         if !blocks_to_download.is_empty() {
@@ -548,7 +545,11 @@ impl IntegratedSyncManager {
         // - Context validation (prev block exists, difficulty correct)
         // - Transaction validation (UTXO existence, signatures)
         // - Coinbase validation (reward + fees)
-        match self.block_validator.validate_block_with_context(&block).await {
+        match self
+            .block_validator
+            .validate_block_with_context(&block)
+            .await
+        {
             Ok(()) => {
                 println!("Block {} passed validation", block_hash.to_hex());
             }
@@ -579,16 +580,13 @@ impl IntegratedSyncManager {
         let block_clone = block.clone();
         tokio::task::spawn_blocking(move || -> Result<(), IntegratedSyncError> {
             let mut blockchain_db = blockchain_db_clone.write().map_err(|e| {
-                IntegratedSyncError::Network(NetworkError::Connection(format!(
-                    "Lock error: {}",
-                    e
-                )))
+                IntegratedSyncError::Network(NetworkError::Connection(format!("Lock error: {}", e)))
             })?;
 
             // Basic block storage (sync manager update happens in blocking context)
-            blockchain_db.store_block(&block_clone).map_err(|e| {
-                IntegratedSyncError::Network(NetworkError::Storage(e.to_string()))
-            })?;
+            blockchain_db
+                .store_block(&block_clone)
+                .map_err(|e| IntegratedSyncError::Network(NetworkError::Storage(e.to_string())))?;
             Ok(())
         })
         .await
@@ -622,7 +620,11 @@ impl IntegratedSyncManager {
             }
         }
 
-        println!("Block {} relayed to {} peers", block_hash.to_hex(), peers.len().saturating_sub(1));
+        println!(
+            "Block {} relayed to {} peers",
+            block_hash.to_hex(),
+            peers.len().saturating_sub(1)
+        );
 
         Ok(())
     }
@@ -651,10 +653,7 @@ impl IntegratedSyncManager {
 
         {
             let blockchain_db = self.blockchain_db.read().map_err(|e| {
-                IntegratedSyncError::Network(NetworkError::Connection(format!(
-                    "Lock error: {}",
-                    e
-                )))
+                IntegratedSyncError::Network(NetworkError::Connection(format!("Lock error: {}", e)))
             })?;
 
             for inv in &inventory {
@@ -773,10 +772,7 @@ impl IntegratedSyncManager {
         // Step 3: Lookup requested items in database
         {
             let blockchain_db = self.blockchain_db.read().map_err(|e| {
-                IntegratedSyncError::Network(NetworkError::Connection(format!(
-                    "Lock error: {}",
-                    e
-                )))
+                IntegratedSyncError::Network(NetworkError::Connection(format!("Lock error: {}", e)))
             })?;
 
             for inv in &inventory {
@@ -1153,6 +1149,17 @@ impl IntegratedSyncManager {
     }
 
     /// Get sync statistics
+    /// T062: Best known header height from any connected peer.
+    /// Used by `build_node_status_snapshot` for the `headers_height` field.
+    pub async fn headers_height(&self) -> u64 {
+        let peers = self.active_peers.read().await;
+        peers
+            .values()
+            .map(|p| p.best_height as u64)
+            .max()
+            .unwrap_or(0)
+    }
+
     pub async fn get_sync_stats(&self) -> SyncStats {
         let sync = self.sync_manager.read().await;
         let peers = self.active_peers.read().await;
@@ -1278,53 +1285,112 @@ mod tests {
 // 003-testnet-p2p-hardening — Phase 5 US3 stub types
 // ============================================================================
 //
-// These types exist **only** so the Phase 2.5 RED tests below this line
-// type-check under `cargo check --tests`. Every constructor / method
-// calls [`todo!`] at runtime so the tests panic — that panic is the
-// captured RED evidence (see `specs/003-testnet-p2p-hardening/evidence/`).
-// GREEN implementation lands in Phase 5 (T067–T083) where the types
-// gain real scheduling, stall-reaping, and validation behaviour.
+// ── Phase 5 (US3) GREEN types: in-flight tracking, stall reaping, block handling ──
+//
+// Replaces the Phase 2.5 RED `todo!()` stubs with real implementations.
+// T057: SyncJob + JobState
+// T058: InFlightTracker (per-peer cap = 16)
+// T059: BlockRequestScheduler (aggregate cap = 128)
+// T060: StallReaper (30s timeout, ban_score += 10)
+// T061: handle_received_block (invalid = ban 100, valid = complete)
 
-use std::net::SocketAddr as _StubSocketAddr;
-use std::time::Duration as _StubDuration;
+use std::collections::HashMap as StubHashMap;
+use std::net::SocketAddr as PeerAddr;
+use std::time::Duration as StubDuration;
 
-#[derive(Debug, Clone, Default)]
-pub struct BoundedWindowConfig;
+/// Configuration for bounded in-flight windows.
+#[derive(Debug, Clone)]
+pub struct BoundedWindowConfig {
+    pub per_peer_cap: usize,
+    pub aggregate_cap: usize,
+}
 
+impl Default for BoundedWindowConfig {
+    fn default() -> Self {
+        BoundedWindowConfig {
+            per_peer_cap: 16,   // FR-016: max 16 in-flight per peer
+            aggregate_cap: 128, // FR-016: max 128 aggregate
+        }
+    }
+}
+
+/// Per-peer and aggregate in-flight request tracker (T058, FR-016).
 #[derive(Debug)]
-pub struct InFlightTracker;
+pub struct InFlightTracker {
+    per_peer: StubHashMap<PeerAddr, Vec<u64>>,
+    per_peer_cap: usize,
+}
 
 impl InFlightTracker {
-    pub fn new(_cfg: BoundedWindowConfig) -> Self {
-        InFlightTracker
+    pub fn new(cfg: BoundedWindowConfig) -> Self {
+        InFlightTracker {
+            per_peer: StubHashMap::new(),
+            per_peer_cap: cfg.per_peer_cap,
+        }
     }
 
-    pub fn try_reserve(
-        &mut self,
-        _peer: _StubSocketAddr,
-        _height: u64,
-    ) -> Result<(), ()> {
-        todo!("T067: real in-flight window tracking (Phase 5 US3)")
+    /// Reserve a slot for a block request. Returns `Err(())` if the per-peer
+    /// cap (16) is exceeded.
+    #[allow(clippy::result_unit_err)] // Unit error is intentional — callers only need success/failure
+    pub fn try_reserve(&mut self, peer: PeerAddr, height: u64) -> Result<(), ()> {
+        let slots = self.per_peer.entry(peer).or_default();
+        if slots.len() >= self.per_peer_cap {
+            return Err(());
+        }
+        slots.push(height);
+        Ok(())
+    }
+
+    /// Release a slot when a block is received or timed out.
+    pub fn release(&mut self, peer: &PeerAddr, height: u64) {
+        if let Some(slots) = self.per_peer.get_mut(peer) {
+            if let Some(pos) = slots.iter().position(|&h| h == height) {
+                slots.swap_remove(pos);
+            }
+        }
     }
 }
 
+/// Aggregate block request scheduler (T059, FR-016).
+/// Enforces a global cap of 128 in-flight requests across all peers.
 #[derive(Debug)]
-pub struct BlockRequestScheduler;
+pub struct BlockRequestScheduler {
+    requests: Vec<(PeerAddr, u64)>,
+    aggregate_cap: usize,
+}
 
 impl BlockRequestScheduler {
-    pub fn new(_cfg: BoundedWindowConfig) -> Self {
-        BlockRequestScheduler
+    pub fn new(cfg: BoundedWindowConfig) -> Self {
+        BlockRequestScheduler {
+            requests: Vec::new(),
+            aggregate_cap: cfg.aggregate_cap,
+        }
     }
 
-    pub fn try_schedule(
-        &mut self,
-        _peer: _StubSocketAddr,
-        _height: u64,
-    ) -> Result<(), ()> {
-        todo!("T067: real block request scheduling (Phase 5 US3)")
+    /// Schedule a block request. Returns `Err(())` if the aggregate cap (128)
+    /// is exceeded.
+    #[allow(clippy::result_unit_err)] // Unit error is intentional — callers only need success/failure
+    pub fn try_schedule(&mut self, peer: PeerAddr, height: u64) -> Result<(), ()> {
+        if self.requests.len() >= self.aggregate_cap {
+            return Err(());
+        }
+        self.requests.push((peer, height));
+        Ok(())
+    }
+
+    /// Remove a completed or timed-out request.
+    pub fn complete(&mut self, peer: &PeerAddr, height: u64) {
+        if let Some(pos) = self
+            .requests
+            .iter()
+            .position(|(p, h)| p == peer && *h == height)
+        {
+            self.requests.swap_remove(pos);
+        }
     }
 }
 
+/// State of a sync job (T057).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JobState {
     Pending,
@@ -1334,34 +1400,101 @@ pub enum JobState {
     Completed,
 }
 
+/// A tracked sync job for a specific block request (T057).
 #[derive(Debug, Clone)]
 pub struct SyncJob {
     pub job_id: u64,
+    pub peer: PeerAddr,
+    pub height: u64,
     pub state: JobState,
     pub ban_score_penalty: u32,
+    scheduled_at: std::time::Instant,
+    last_progress_at: std::time::Instant,
 }
 
+/// Stall reaper — detects and reaps jobs that haven't progressed (T060, FR-017).
+///
+/// A job is considered stalled if `now - last_progress_at > stall_window` (30s).
+/// Stalled jobs receive a ban_score penalty of 10.
 #[derive(Debug)]
-pub struct StallReaper;
+pub struct StallReaper {
+    stall_window: StubDuration,
+    jobs: Vec<SyncJob>,
+    next_job_id: u64,
+    virtual_clock_offset: StubDuration,
+}
 
 impl StallReaper {
-    pub fn new(_window: _StubDuration) -> Self {
-        StallReaper
+    pub fn new(window: StubDuration) -> Self {
+        StallReaper {
+            stall_window: window,
+            jobs: Vec::new(),
+            next_job_id: 1,
+            virtual_clock_offset: StubDuration::ZERO,
+        }
     }
 
-    pub fn schedule(&mut self, _peer: _StubSocketAddr, _height: u64) -> u64 {
-        todo!("T069: real stall scheduling (Phase 5 US3)")
+    /// Schedule a new job for tracking. Returns the job ID.
+    pub fn schedule(&mut self, peer: PeerAddr, height: u64) -> u64 {
+        let id = self.next_job_id;
+        self.next_job_id += 1;
+        let now = std::time::Instant::now();
+        self.jobs.push(SyncJob {
+            job_id: id,
+            peer,
+            height,
+            state: JobState::Running,
+            ban_score_penalty: 0,
+            scheduled_at: now,
+            last_progress_at: now,
+        });
+        id
     }
 
-    pub fn advance_clock(&mut self, _by: _StubDuration) {
-        todo!("T069: virtual clock advancement (Phase 5 US3)")
+    /// Advance the virtual clock (for deterministic testing).
+    pub fn advance_clock(&mut self, by: StubDuration) {
+        self.virtual_clock_offset += by;
     }
 
+    /// Reap all stalled jobs. Returns the stalled jobs with ban_score_penalty set.
     pub fn reap_stalled(&mut self) -> Vec<SyncJob> {
-        todo!("T069: real reap stalled (Phase 5 US3)")
+        let effective_now = std::time::Instant::now() + self.virtual_clock_offset;
+        let window = self.stall_window;
+        let mut reaped = Vec::new();
+
+        for job in &mut self.jobs {
+            if job.state == JobState::Running
+                && effective_now.duration_since(job.last_progress_at) > window
+            {
+                job.state = JobState::Stalled;
+                job.ban_score_penalty = 10; // FR-017: +10 for stall
+                reaped.push(job.clone());
+            }
+        }
+
+        // Remove reaped jobs from active list
+        self.jobs
+            .retain(|j| j.state == JobState::Running || j.state == JobState::Pending);
+
+        reaped
+    }
+
+    /// Record progress on a job (resets the stall timer to the effective virtual-clock time).
+    pub fn record_progress(&mut self, job_id: u64) {
+        if let Some(job) = self.jobs.iter_mut().find(|j| j.job_id == job_id) {
+            // Use effective time (real + virtual offset) so that subsequent
+            // advance_clock + reap_stalled measures from the virtual "now".
+            job.last_progress_at = std::time::Instant::now() + self.virtual_clock_offset;
+        }
+    }
+
+    /// Mark a job as completed and remove it.
+    pub fn complete(&mut self, job_id: u64) {
+        self.jobs.retain(|j| j.job_id != job_id);
     }
 }
 
+/// Outcome of processing a received block (T061).
 #[derive(Debug)]
 pub struct BlockHandleOutcome {
     pub ban_score_delta: u32,
@@ -1369,14 +1502,25 @@ pub struct BlockHandleOutcome {
     pub peer_banned: bool,
 }
 
-pub fn handle_received_block(
-    _peer: _StubSocketAddr,
-    _valid: bool,
-    _height: u64,
-) -> BlockHandleOutcome {
-    todo!("T071: real received-block handling (Phase 5 US3)")
+/// Handle a received block — valid blocks complete, invalid blocks ban (T061, FR-018).
+///
+/// Invalid block: ban_score += 100 (instant ban threshold), job state = Failed.
+/// Valid block: ban_score += 0, job state = Completed.
+pub fn handle_received_block(_peer: PeerAddr, valid: bool, _height: u64) -> BlockHandleOutcome {
+    if valid {
+        BlockHandleOutcome {
+            ban_score_delta: 0,
+            job_state: JobState::Completed,
+            peer_banned: false,
+        }
+    } else {
+        BlockHandleOutcome {
+            ban_score_delta: 100,
+            job_state: JobState::Failed,
+            peer_banned: true, // 100 >= ban threshold
+        }
+    }
 }
-
 
 #[cfg(test)]
 mod red_phase_bounded_windows_tests {
@@ -1404,12 +1548,16 @@ mod red_phase_bounded_windows_tests {
     fn aggregate_window_caps_at_one_hundred_twenty_eight() {
         let mut scheduler = BlockRequestScheduler::new(BoundedWindowConfig::default());
         for i in 0..128u32 {
-            let peer = format!("198.51.100.{}:18351", (i % 250) + 1).parse().unwrap();
+            let peer = format!("198.51.100.{}:18351", (i % 250) + 1)
+                .parse()
+                .unwrap();
             assert!(scheduler.try_schedule(peer, i.into()).is_ok());
         }
         let overflow_peer = "203.0.113.1:18351".parse().unwrap();
         assert!(
-            scheduler.try_schedule(overflow_peer, 9999u32.into()).is_err(),
+            scheduler
+                .try_schedule(overflow_peer, 9999u32.into())
+                .is_err(),
             "aggregate in-flight must not exceed 128 blocks"
         );
     }

@@ -1,0 +1,69 @@
+/* btpc-node-status.css — Shared node status widget styles (US2, T040) */
+
+/* Status pill (inline badge) */
+.btpc-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+/* Online / Offline states */
+.btpc-status-online {
+  color: #22c55e;
+}
+
+.btpc-status-offline {
+  color: #ef4444;
+}
+
+.btpc-status-pill.btpc-status-online {
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.25);
+}
+
+.btpc-status-pill.btpc-status-offline {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+/* Numeric field styling */
+[data-node-status] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Offline banner (full-width) */
+.btpc-offline-banner {
+  display: none;
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  text-align: center;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border-bottom: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.btpc-offline-banner.visible {
+  display: block;
+}
+
+/* Shared status bar row */
+.btpc-node-status-bar {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary, #a0a0a0);
+}
+
+.btpc-node-status-bar label {
+  font-weight: 500;
+  color: var(--text-tertiary, #808080);
+  margin-right: 4px;
+}

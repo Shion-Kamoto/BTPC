@@ -348,8 +348,10 @@ impl UnifiedDatabase {
 
                             if let Some(block_bytes) = self.db.get_cf(&blocks_cf, &block_key)? {
                                 // Deserialize block from binary format (btpc-core format)
-                                let block: Block = Block::deserialize(&block_bytes)
-                                    .map_err(|e| anyhow::anyhow!("Failed to deserialize block: {}", e))?;
+                                let block: Block =
+                                    Block::deserialize(&block_bytes).map_err(|e| {
+                                        anyhow::anyhow!("Failed to deserialize block: {}", e)
+                                    })?;
                                 return Ok(Some(block));
                             }
                         }
@@ -640,7 +642,11 @@ impl UnifiedDatabase {
         for cf_name in COLUMN_FAMILIES {
             if let Some(cf) = self.cf_handle(cf_name) {
                 // Attempt to iterate first 10 keys to verify readability
-                let _count = self.db.iterator_cf(&cf, rocksdb::IteratorMode::Start).take(10).count();
+                let _count = self
+                    .db
+                    .iterator_cf(&cf, rocksdb::IteratorMode::Start)
+                    .take(10)
+                    .count();
                 // Successfully read keys (checksum validation passed)
             }
         }
@@ -662,9 +668,15 @@ impl UnifiedDatabase {
         let elapsed = start_time.elapsed();
 
         if is_valid {
-            eprintln!("✅ Database integrity check passed ({:.2}s)", elapsed.as_secs_f64());
+            eprintln!(
+                "✅ Database integrity check passed ({:.2}s)",
+                elapsed.as_secs_f64()
+            );
         } else {
-            eprintln!("❌ Database integrity check FAILED ({:.2}s)", elapsed.as_secs_f64());
+            eprintln!(
+                "❌ Database integrity check FAILED ({:.2}s)",
+                elapsed.as_secs_f64()
+            );
             for error in &errors {
                 eprintln!("   - {}", error);
             }
@@ -702,8 +714,9 @@ impl UnifiedDatabase {
 
         // Create parent directory if it doesn't exist
         if let Some(parent) = backup_path.parent() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("Failed to create backup parent directory: {:?}", parent))?;
+            std::fs::create_dir_all(parent).with_context(|| {
+                format!("Failed to create backup parent directory: {:?}", parent)
+            })?;
         }
 
         // Flush memtable and WAL to ensure all data is persisted before checkpoint
@@ -715,8 +728,8 @@ impl UnifiedDatabase {
             .with_context(|| "Failed to flush WAL before backup")?;
 
         // Create checkpoint (atomic snapshot)
-        let checkpoint = Checkpoint::new(&self.db)
-            .with_context(|| "Failed to create Checkpoint")?;
+        let checkpoint =
+            Checkpoint::new(&self.db).with_context(|| "Failed to create Checkpoint")?;
 
         checkpoint
             .create_checkpoint(backup_path)
@@ -754,13 +767,17 @@ impl UnifiedDatabase {
 
         // Verify backup exists
         if !backup_dir.exists() {
-            return Err(anyhow::anyhow!("Backup directory does not exist: {:?}", backup_dir));
+            return Err(anyhow::anyhow!(
+                "Backup directory does not exist: {:?}",
+                backup_dir
+            ));
         }
 
         // Remove existing database if it exists
         if target_dir.exists() {
-            std::fs::remove_dir_all(target_dir)
-                .with_context(|| format!("Failed to remove existing database at {:?}", target_dir))?;
+            std::fs::remove_dir_all(target_dir).with_context(|| {
+                format!("Failed to remove existing database at {:?}", target_dir)
+            })?;
         }
 
         // Copy backup to target using recursive copy
@@ -856,7 +873,9 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
     for entry in std::fs::read_dir(src)? {
         let entry = entry?;
         let path = entry.path();
-        let file_name = path.file_name().ok_or_else(|| anyhow::anyhow!("Invalid file name"))?;
+        let file_name = path
+            .file_name()
+            .ok_or_else(|| anyhow::anyhow!("Invalid file name"))?;
         let dst_path = dst.join(file_name);
 
         if path.is_dir() {
@@ -902,7 +921,8 @@ mod tests {
         let temp_dir = tempdir().expect("Failed to create temp dir");
 
         // Act - FIX 2025-12-01: Pass network for network isolation
-        let db = UnifiedDatabase::open(temp_dir.path(), "regtest").expect("Failed to open database");
+        let db =
+            UnifiedDatabase::open(temp_dir.path(), "regtest").expect("Failed to open database");
 
         // Assert
         assert!(db.cf_handle(CF_BLOCKS).is_some(), "CF_BLOCKS should exist");
@@ -925,7 +945,8 @@ mod tests {
     fn test_database_stats() {
         // Arrange
         let temp_dir = tempdir().expect("Failed to create temp dir");
-        let db = UnifiedDatabase::open(temp_dir.path(), "regtest").expect("Failed to open database");
+        let db =
+            UnifiedDatabase::open(temp_dir.path(), "regtest").expect("Failed to open database");
 
         // Act
         let stats = db.get_stats().expect("Failed to get stats");
@@ -943,7 +964,8 @@ mod tests {
     fn test_flush_wal() {
         // Arrange
         let temp_dir = tempdir().expect("Failed to create temp dir");
-        let db = UnifiedDatabase::open(temp_dir.path(), "regtest").expect("Failed to open database");
+        let db =
+            UnifiedDatabase::open(temp_dir.path(), "regtest").expect("Failed to open database");
 
         // Act
         let result = db.flush_wal();
@@ -956,7 +978,8 @@ mod tests {
     fn test_compact() {
         // Arrange
         let temp_dir = tempdir().expect("Failed to create temp dir");
-        let db = UnifiedDatabase::open(temp_dir.path(), "regtest").expect("Failed to open database");
+        let db =
+            UnifiedDatabase::open(temp_dir.path(), "regtest").expect("Failed to open database");
 
         // Act
         let result = db.compact();
@@ -971,9 +994,12 @@ mod tests {
         let temp_dir = tempdir().expect("Failed to create temp dir");
 
         // Act - Open databases for different networks
-        let db_mainnet = UnifiedDatabase::open(temp_dir.path(), "mainnet").expect("Failed to open mainnet db");
-        let db_testnet = UnifiedDatabase::open(temp_dir.path(), "testnet").expect("Failed to open testnet db");
-        let db_regtest = UnifiedDatabase::open(temp_dir.path(), "regtest").expect("Failed to open regtest db");
+        let db_mainnet =
+            UnifiedDatabase::open(temp_dir.path(), "mainnet").expect("Failed to open mainnet db");
+        let db_testnet =
+            UnifiedDatabase::open(temp_dir.path(), "testnet").expect("Failed to open testnet db");
+        let db_regtest =
+            UnifiedDatabase::open(temp_dir.path(), "regtest").expect("Failed to open regtest db");
 
         // Assert - Each network has its own directory
         assert!(db_mainnet.path().to_string_lossy().contains("mainnet"));

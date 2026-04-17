@@ -83,7 +83,10 @@ async fn calculate_effective_difficulty(
 ) -> Result<f64, String> {
     // Need at least 10 blocks to calculate meaningful difficulty
     if current_height < 10 {
-        eprintln!("[BTPC::Chain] Height {} < 10, returning 1.0", current_height);
+        eprintln!(
+            "[BTPC::Chain] Height {} < 10, returning 1.0",
+            current_height
+        );
         return Ok(1.0);
     }
 
@@ -104,7 +107,11 @@ async fn calculate_effective_difficulty(
         if let Ok(Some(block)) = db.get_block(h as u32) {
             end_block = Some(block);
             end_height = h;
-            tracing::debug!("Found end block at height {} (searched from {})", end_height, current_height);
+            tracing::debug!(
+                "Found end block at height {} (searched from {})",
+                end_height,
+                current_height
+            );
             break;
         }
     }
@@ -152,20 +159,26 @@ async fn calculate_effective_difficulty(
         }
     }
 
-    let start_block = start_block.ok_or_else(|| {
-        "No start block found for difficulty calculation".to_string()
-    })?;
+    let start_block =
+        start_block.ok_or_else(|| "No start block found for difficulty calculation".to_string())?;
 
-    tracing::debug!("Calculating difficulty for height {}, using {} block sample",
-              current_height, actual_sample_size);
+    tracing::debug!(
+        "Calculating difficulty for height {}, using {} block sample",
+        current_height,
+        actual_sample_size
+    );
 
     // Calculate actual time for these blocks
     let start_ts = start_block.header.timestamp;
     let end_ts = end_block.header.timestamp;
     let actual_time_seconds = end_ts.saturating_sub(start_ts);
 
-    tracing::debug!("Start timestamp: {}, End timestamp: {}, Time diff: {} seconds",
-              start_ts, end_ts, actual_time_seconds);
+    tracing::debug!(
+        "Start timestamp: {}, End timestamp: {}, Time diff: {} seconds",
+        start_ts,
+        end_ts,
+        actual_time_seconds
+    );
 
     // Target time: 10 minutes per block = 600 seconds
     const TARGET_BLOCK_TIME_SECONDS: u64 = 600;
@@ -183,8 +196,12 @@ async fn calculate_effective_difficulty(
     // If blocks take 1 second instead of 600, difficulty should be 600x higher
     let effective_difficulty = expected_time_seconds as f64 / actual_time_seconds as f64;
 
-    tracing::debug!("Expected time: {}s, Actual time: {}s, Effective difficulty: {:.2}",
-              expected_time_seconds, actual_time_seconds, effective_difficulty);
+    tracing::debug!(
+        "Expected time: {}s, Actual time: {}s, Effective difficulty: {:.2}",
+        expected_time_seconds,
+        actual_time_seconds,
+        effective_difficulty
+    );
 
     // Ensure minimum of 1.0
     Ok(effective_difficulty.max(1.0))
@@ -219,8 +236,12 @@ pub async fn get_blockchain_info(state: State<'_, AppState>) -> Result<serde_jso
     // Using the same formula as integrated_handlers.rs
     let difficulty = bits_to_difficulty(difficulty_bits);
 
-    tracing::debug!("Network difficulty at height {}: {:.2} (bits: 0x{:08x})",
-              current_height, difficulty, difficulty_bits);
+    tracing::debug!(
+        "Network difficulty at height {}: {:.2} (bits: 0x{:08x})",
+        current_height,
+        difficulty,
+        difficulty_bits
+    );
 
     // Get network type from embedded node
     let network = embedded_node.get_network();
@@ -234,7 +255,7 @@ pub async fn get_blockchain_info(state: State<'_, AppState>) -> Result<serde_jso
         let sync_result = embedded_node.get_sync_progress();
         match sync_result {
             Ok(progress) if progress.is_syncing => {
-                (progress.sync_percentage as f64, false, progress.target_height)
+                (progress.sync_percentage, false, progress.target_height)
             }
             Ok(progress) => {
                 // Not syncing — check if we're behind any peer
@@ -244,7 +265,7 @@ pub async fn get_blockchain_info(state: State<'_, AppState>) -> Result<serde_jso
                     (0.0, false, progress.target_height)
                 } else {
                     (
-                        progress.sync_percentage as f64,
+                        progress.sync_percentage,
                         progress.sync_percentage >= 99.9,
                         progress.target_height,
                     )
@@ -254,8 +275,12 @@ pub async fn get_blockchain_info(state: State<'_, AppState>) -> Result<serde_jso
         }
     };
 
-    eprintln!("DEBUG: Sync progress: {:.1}% (height: {}, peers: {})",
-              sync_progress, current_height, embedded_node.get_peer_count());
+    eprintln!(
+        "DEBUG: Sync progress: {:.1}% (height: {}, peers: {})",
+        sync_progress,
+        current_height,
+        embedded_node.get_peer_count()
+    );
 
     // FIX 2025-12-27: Get actual peer count from embedded node instead of hardcoded 1
     // Also check if node is running - show 0 connections when stopped
@@ -263,7 +288,7 @@ pub async fn get_blockchain_info(state: State<'_, AppState>) -> Result<serde_jso
     // is not a "connection" — only actual remote P2P peers should be counted.
     let node_running = state.node_status.read().map(|s| s.running).unwrap_or(false);
     let connections = if node_running {
-        embedded_node.get_peer_count()  // Only actual remote peers
+        embedded_node.get_peer_count() // Only actual remote peers
     } else {
         0
     };

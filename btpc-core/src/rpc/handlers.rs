@@ -596,7 +596,10 @@ impl BlockchainRpcHandlers {
 
         // Get transaction hex from params
         let tx_hex = if let Value::Array(ref arr) = params {
-            eprintln!("[SENDRAWTRANSACTION] Params is array with {} elements", arr.len());
+            eprintln!(
+                "[SENDRAWTRANSACTION] Params is array with {} elements",
+                arr.len()
+            );
             if arr.is_empty() {
                 return Err(RpcServerError::InvalidParams(
                     "Empty array - transaction hex required".to_string(),
@@ -604,11 +607,9 @@ impl BlockchainRpcHandlers {
             }
             let first = arr.first().unwrap();
             eprintln!("[SENDRAWTRANSACTION] First element type: {:?}", first);
-            first
-                .as_str()
-                .ok_or(RpcServerError::InvalidParams(
-                    "Transaction hex must be a string".to_string(),
-                ))?
+            first.as_str().ok_or(RpcServerError::InvalidParams(
+                "Transaction hex must be a string".to_string(),
+            ))?
         } else if let Value::String(ref hex) = params {
             eprintln!("[SENDRAWTRANSACTION] Params is string");
             hex.as_str()
@@ -619,7 +620,10 @@ impl BlockchainRpcHandlers {
             ));
         };
 
-        eprintln!("[SENDRAWTRANSACTION] Transaction hex length: {}", tx_hex.len());
+        eprintln!(
+            "[SENDRAWTRANSACTION] Transaction hex length: {}",
+            tx_hex.len()
+        );
 
         // Decode hex to bytes
         let tx_bytes = hex::decode(tx_hex).map_err(|e| {
@@ -635,7 +639,9 @@ impl BlockchainRpcHandlers {
         let tx_validator = TransactionValidator::new();
         tx_validator
             .validate_transaction(&transaction)
-            .map_err(|e| RpcServerError::InvalidParams(format!("Transaction validation failed: {}", e)))?;
+            .map_err(|e| {
+                RpcServerError::InvalidParams(format!("Transaction validation failed: {}", e))
+            })?;
 
         // Get transaction hash
         let txid = transaction.hash();
@@ -661,10 +667,9 @@ impl BlockchainRpcHandlers {
 
         // Extract txid from params (can be [txid, verbose] or just txid)
         let txid_str = match &params {
-            Value::Array(arr) => arr
-                .first()
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| RpcServerError::InvalidParams("Invalid txid in array".to_string()))?,
+            Value::Array(arr) => arr.first().and_then(|v| v.as_str()).ok_or_else(|| {
+                RpcServerError::InvalidParams("Invalid txid in array".to_string())
+            })?,
             Value::String(s) => s.as_str(),
             _ => {
                 return Err(RpcServerError::InvalidParams(
@@ -840,7 +845,10 @@ impl BlockchainRpcHandlers {
 
                     eprintln!("⚡ DIFFICULTY ADJUSTMENT at height {}:", height);
                     eprintln!("   Previous difficulty bits: 0x{:08x}", tip.header.bits);
-                    eprintln!("   Simulated timespan: {} seconds (blocks came too fast!)", simulated_actual_timespan);
+                    eprintln!(
+                        "   Simulated timespan: {} seconds (blocks came too fast!)",
+                        simulated_actual_timespan
+                    );
                     eprintln!("   Target timespan: {} seconds", target_timespan);
                     eprintln!("   New difficulty bits: 0x{:08x}", new_target.bits);
                     eprintln!("   Difficulty should be HARDER now (smaller target)");

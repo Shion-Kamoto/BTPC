@@ -351,11 +351,11 @@ mod tests {
     fn test_year_boundary_rewards() {
         // Test rewards at exact year boundaries (52,596 blocks per year)
         let year_boundaries = [
-            (0, INITIAL_REWARD),           // Genesis
-            (BLOCKS_PER_YEAR, 3_104_713_100),     // Year 1 boundary
-            (BLOCKS_PER_YEAR * 2, 2_971_926_200), // Year 2 boundary
+            (0, INITIAL_REWARD),                   // Genesis
+            (BLOCKS_PER_YEAR, 3_104_713_100),      // Year 1 boundary
+            (BLOCKS_PER_YEAR * 2, 2_971_926_200),  // Year 2 boundary
             (BLOCKS_PER_YEAR * 12, 1_643_841_200), // Year 12 (midpoint)
-            (BLOCKS_PER_YEAR * 23, 182_966_300),  // Year 23 (near end)
+            (BLOCKS_PER_YEAR * 23, 182_966_300),   // Year 23 (near end)
         ];
 
         for (height, expected_approx) in year_boundaries {
@@ -369,7 +369,10 @@ mod tests {
             assert!(
                 diff <= tolerance,
                 "Year boundary at height {}: expected ~{}, got {}, diff {}",
-                height, expected_approx, reward, diff
+                height,
+                expected_approx,
+                reward,
+                diff
             );
         }
     }
@@ -388,7 +391,9 @@ mod tests {
             assert!(
                 reward_after <= reward_before,
                 "Reward should not increase at year {} boundary: {} -> {}",
-                year, reward_before, reward_after
+                year,
+                reward_before,
+                reward_after
             );
 
             // Difference should be exactly DECREASE_PER_BLOCK
@@ -419,7 +424,9 @@ mod tests {
         assert!(
             reward_before > TAIL_EMISSION,
             "Reward at height {} should be > TAIL_EMISSION ({}), got {}",
-            before_end, TAIL_EMISSION, reward_before
+            before_end,
+            TAIL_EMISSION,
+            reward_before
         );
 
         // At end should be exactly tail emission
@@ -448,7 +455,10 @@ mod tests {
             assert!(
                 supply > prev_supply,
                 "Total supply at year {} ({} blocks) should increase: prev={}, current={}",
-                year, height, prev_supply, supply
+                year,
+                height,
+                prev_supply,
+                supply
             );
 
             prev_supply = supply;

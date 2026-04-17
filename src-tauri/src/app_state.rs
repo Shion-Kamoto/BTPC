@@ -110,9 +110,13 @@ impl AppState {
         // Directory structure: ~/.btpc/data/{network}/...
         let network_str = config.network.to_string();
         let network_data_dir = config.data_dir.join(&network_str);
-        std::fs::create_dir_all(&network_data_dir)
-            .map_err(|e| BtpcError::Application(format!("Failed to create network directory: {}", e)))?;
-        eprintln!("[BTPC::App] Network data directory: {:?} (network: '{}')", network_data_dir, network_str);
+        std::fs::create_dir_all(&network_data_dir).map_err(|e| {
+            BtpcError::Application(format!("Failed to create network directory: {}", e))
+        })?;
+        eprintln!(
+            "[BTPC::App] Network data directory: {:?} (network: '{}')",
+            network_data_dir, network_str
+        );
 
         // Initialize UTXO manager (network-isolated)
         // FIX 2025-12-01: Use network-specific path: ~/.btpc/data/{network}/wallet
@@ -132,7 +136,10 @@ impl AppState {
             backups_dir: network_data_dir.join("wallet-backups"),
             ..WalletManagerConfig::default()
         };
-        eprintln!("[BTPC::App] Wallets directory: {:?}", wallet_config.wallets_dir);
+        eprintln!(
+            "[BTPC::App] Wallets directory: {:?}",
+            wallet_config.wallets_dir
+        );
         let wallet_manager = WalletManager::new(wallet_config, security.clone()).map_err(|e| {
             BtpcError::Application(format!("Failed to initialize wallet manager: {}", e))
         })?;
@@ -141,8 +148,8 @@ impl AppState {
         // FIX 2025-12-01: Use network-specific path: ~/.btpc/data/{network}/address_book
         let address_book_manager = AddressBookManager::new(network_data_dir.join("address_book"))
             .map_err(|e| {
-                BtpcError::Application(format!("Failed to initialize address book manager: {}", e))
-            })?;
+            BtpcError::Application(format!("Failed to initialize address book manager: {}", e))
+        })?;
 
         // Initialize SQLite transaction history (Constitution Article V) (network-isolated)
         // FIX 2025-12-12: Replaced RocksDB with SQLite for UPSERT support (eliminates race conditions)
@@ -151,16 +158,17 @@ impl AppState {
         let tx_storage = btpc_desktop_app::tx_history::TransactionHistory::open(
             network_data_dir.join("tx_history"),
             btpc_network,
-        ).map_err(|e| {
+        )
+        .map_err(|e| {
             BtpcError::Application(format!("Failed to initialize transaction history: {}", e))
         })?;
 
         // Initialize RocksDB settings storage (GLOBAL - not network-isolated)
         // Settings like theme, language, etc. should be the same across all networks
-        let settings_storage = settings_storage::SettingsStorage::open(config.data_dir.join("settings"))
-            .map_err(|e| {
-            BtpcError::Application(format!("Failed to initialize settings storage: {}", e))
-        })?;
+        let settings_storage =
+            settings_storage::SettingsStorage::open(config.data_dir.join("settings")).map_err(
+                |e| BtpcError::Application(format!("Failed to initialize settings storage: {}", e)),
+            )?;
 
         // Feature 007: Initialize transaction state manager (moved to lib.rs in TD-001)
         let tx_state_manager = btpc_desktop_app::transaction_state::TransactionStateManager::new();
@@ -224,9 +232,11 @@ impl AppState {
             embedded_node,
 
             // FR-058: Disk space monitoring for sync/mining protection
-            disk_space_monitor: Arc::new(btpc_desktop_app::disk_space_monitor::DiskSpaceMonitor::new(
-                config.data_dir.to_string_lossy().to_string(),
-            )),
+            disk_space_monitor: Arc::new(
+                btpc_desktop_app::disk_space_monitor::DiskSpaceMonitor::new(
+                    config.data_dir.to_string_lossy().to_string(),
+                ),
+            ),
 
             // Node active flag - background polling loops check this
             node_active: Arc::new(std::sync::atomic::AtomicBool::new(true)),
@@ -277,7 +287,10 @@ impl AppState {
             .map_err(|e| BtpcError::Application(format!("Failed to check RocksDB state: {}", e)))?;
 
         if tx_count > 0 {
-            eprintln!("[BTPC::DB] Transaction store already populated: {} transactions", tx_count);
+            eprintln!(
+                "[BTPC::DB] Transaction store already populated: {} transactions",
+                tx_count
+            );
             return Ok(());
         }
 
@@ -332,7 +345,10 @@ impl AppState {
             {
                 Ok(_) => success_count += 1,
                 Err(e) => {
-                    eprintln!("[BTPC::DB] WARN: Failed to migrate UTXO {}: {}", utxo.txid, e);
+                    eprintln!(
+                        "[BTPC::DB] WARN: Failed to migrate UTXO {}: {}",
+                        utxo.txid, e
+                    );
                 }
             }
         }
@@ -369,10 +385,14 @@ impl AppState {
         let network_data_dir = self.config.data_dir.join(&network_str);
 
         // Create network directory if it doesn't exist
-        std::fs::create_dir_all(&network_data_dir)
-            .map_err(|e| BtpcError::Application(format!("Failed to create network directory: {}", e)))?;
+        std::fs::create_dir_all(&network_data_dir).map_err(|e| {
+            BtpcError::Application(format!("Failed to create network directory: {}", e))
+        })?;
 
-        eprintln!("[BTPC::App] Reinitializing data stores for network '{}'...", network_str);
+        eprintln!(
+            "[BTPC::App] Reinitializing data stores for network '{}'...",
+            network_str
+        );
         eprintln!("[BTPC::App] Network data directory: {:?}", network_data_dir);
 
         // 1. Reinitialize tx_storage (SQLite)
@@ -381,19 +401,23 @@ impl AppState {
         let new_tx_storage = btpc_desktop_app::tx_history::TransactionHistory::open(
             network_data_dir.join("tx_history"),
             btpc_network,
-        ).map_err(|e| {
-            BtpcError::Application(format!("Failed to reinitialize tx_history: {}", e))
-        })?;
+        )
+        .map_err(|e| BtpcError::Application(format!("Failed to reinitialize tx_history: {}", e)))?;
 
         {
             let mut tx_storage_guard = self.tx_storage.write().await;
             *tx_storage_guard = new_tx_storage;
-            eprintln!("[BTPC::App] tx_history reinitialized for network '{}'", network_str);
+            eprintln!(
+                "[BTPC::App] tx_history reinitialized for network '{}'",
+                network_str
+            );
         }
 
         // 2. Reinitialize utxo_manager (JSON)
-        let mut new_utxo_manager = UTXOManager::new(network_data_dir.join("wallet"))
-            .map_err(|e| BtpcError::Application(format!("Failed to reinitialize utxo_manager: {}", e)))?;
+        let mut new_utxo_manager =
+            UTXOManager::new(network_data_dir.join("wallet")).map_err(|e| {
+                BtpcError::Application(format!("Failed to reinitialize utxo_manager: {}", e))
+            })?;
 
         // FIX 2025-12-12: Sync UTXOManager from tx_history (SQLite is authoritative)
         // This ensures both stores are in sync after network switch or crash recovery
@@ -404,7 +428,10 @@ impl AppState {
                     if !utxos.is_empty() {
                         match new_utxo_manager.sync_from_tx_storage_utxos(utxos) {
                             Ok(count) => {
-                                eprintln!("[BTPC::App] Synced {} UTXOs from tx_history to UTXO manager", count);
+                                eprintln!(
+                                    "[BTPC::App] Synced {} UTXOs from tx_history to UTXO manager",
+                                    count
+                                );
                             }
                             Err(e) => {
                                 eprintln!("[BTPC::App] WARN: Failed to sync UTXOs: {} (continuing with JSON data)", e);
@@ -421,10 +448,14 @@ impl AppState {
         }
 
         {
-            let mut utxo_manager_guard = self.utxo_manager.lock()
-                .map_err(|e| BtpcError::Application(format!("Failed to lock utxo_manager: {}", e)))?;
+            let mut utxo_manager_guard = self.utxo_manager.lock().map_err(|e| {
+                BtpcError::Application(format!("Failed to lock utxo_manager: {}", e))
+            })?;
             *utxo_manager_guard = new_utxo_manager;
-            eprintln!("[BTPC::App] UTXO manager reinitialized for network '{}'", network_str);
+            eprintln!(
+                "[BTPC::App] UTXO manager reinitialized for network '{}'",
+                network_str
+            );
         }
 
         // 3. Reinitialize wallet_manager
@@ -434,7 +465,9 @@ impl AppState {
             ..WalletManagerConfig::default()
         };
         let mut new_wallet_manager = WalletManager::new(wallet_config, self.security.clone())
-            .map_err(|e| BtpcError::Application(format!("Failed to reinitialize wallet_manager: {}", e)))?;
+            .map_err(|e| {
+                BtpcError::Application(format!("Failed to reinitialize wallet_manager: {}", e))
+            })?;
 
         // FIX 2025-12-09: Load encrypted wallets if password is available
         // Without this, switching networks would lose all wallet data because:
@@ -445,34 +478,59 @@ impl AppState {
         {
             let password_guard = self.wallet_password.read().await;
             if let Some(ref password) = *password_guard {
-                eprintln!("[BTPC::App] Loading encrypted wallets for network '{}'...", network_str);
+                eprintln!(
+                    "[BTPC::App] Loading encrypted wallets for network '{}'...",
+                    network_str
+                );
                 if let Err(e) = new_wallet_manager.load_wallets_encrypted(password) {
                     // Log warning but don't fail - might be a fresh network with no wallets yet
-                    eprintln!("[BTPC::App] WARN: Could not load encrypted wallets for '{}':{}", network_str, e);
+                    eprintln!(
+                        "[BTPC::App] WARN: Could not load encrypted wallets for '{}':{}",
+                        network_str, e
+                    );
                 } else {
-                    eprintln!("[BTPC::App] Encrypted wallets loaded for network '{}'", network_str);
+                    eprintln!(
+                        "[BTPC::App] Encrypted wallets loaded for network '{}'",
+                        network_str
+                    );
                 }
             } else {
-                eprintln!("[BTPC::App] WARN: No wallet password - encrypted wallets not loaded for '{}'", network_str);
+                eprintln!(
+                    "[BTPC::App] WARN: No wallet password - encrypted wallets not loaded for '{}'",
+                    network_str
+                );
             }
         }
 
         {
-            let mut wallet_manager_guard = self.wallet_manager.lock()
-                .map_err(|e| BtpcError::Application(format!("Failed to lock wallet_manager: {}", e)))?;
+            let mut wallet_manager_guard = self.wallet_manager.lock().map_err(|e| {
+                BtpcError::Application(format!("Failed to lock wallet_manager: {}", e))
+            })?;
             *wallet_manager_guard = new_wallet_manager;
-            eprintln!("[BTPC::App] Wallet manager reinitialized for network '{}'", network_str);
+            eprintln!(
+                "[BTPC::App] Wallet manager reinitialized for network '{}'",
+                network_str
+            );
         }
 
         // 4. Reinitialize address_book_manager
         let new_address_book = AddressBookManager::new(network_data_dir.join("address_book"))
-            .map_err(|e| BtpcError::Application(format!("Failed to reinitialize address_book_manager: {}", e)))?;
+            .map_err(|e| {
+                BtpcError::Application(format!(
+                    "Failed to reinitialize address_book_manager: {}",
+                    e
+                ))
+            })?;
 
         {
-            let mut address_book_guard = self.address_book_manager.lock()
-                .map_err(|e| BtpcError::Application(format!("Failed to lock address_book_manager: {}", e)))?;
+            let mut address_book_guard = self.address_book_manager.lock().map_err(|e| {
+                BtpcError::Application(format!("Failed to lock address_book_manager: {}", e))
+            })?;
             *address_book_guard = new_address_book;
-            eprintln!("[BTPC::App] Address book reinitialized for network '{}'", network_str);
+            eprintln!(
+                "[BTPC::App] Address book reinitialized for network '{}'",
+                network_str
+            );
         }
 
         // 5. Reinitialize mining_stats (network-isolated)
@@ -481,11 +539,14 @@ impl AppState {
         let new_mining_stats = MiningStats::new(&network_data_dir);
 
         {
-            let mut mining_stats_guard = self.mining_stats.lock()
-                .map_err(|e| BtpcError::Application(format!("Failed to lock mining_stats: {}", e)))?;
+            let mut mining_stats_guard = self.mining_stats.lock().map_err(|e| {
+                BtpcError::Application(format!("Failed to lock mining_stats: {}", e))
+            })?;
             *mining_stats_guard = new_mining_stats;
-            eprintln!("[BTPC::App] Mining stats reinitialized for network '{}' (blocks_found: {})",
-                network_str, mining_stats_guard.blocks_found);
+            eprintln!(
+                "[BTPC::App] Mining stats reinitialized for network '{}' (blocks_found: {})",
+                network_str, mining_stats_guard.blocks_found
+            );
         }
 
         // 6. Reset mining_pool to force re-initialization with new network's block count
@@ -509,10 +570,16 @@ impl AppState {
             // Pass the same Arc<RwLock<TransactionStorage>> that AppState uses
             // This ensures both AppState commands and EmbeddedNode mining use the same DB handle
             embedded_node_guard.set_tx_storage(self.tx_storage.clone());
-            eprintln!("[BTPC::App] Embedded node tx_storage updated for network '{}' (shared instance)", network_str);
+            eprintln!(
+                "[BTPC::App] Embedded node tx_storage updated for network '{}' (shared instance)",
+                network_str
+            );
         }
 
-        eprintln!("[BTPC::App] All data stores reinitialized for network '{}' - no restart required", network_str);
+        eprintln!(
+            "[BTPC::App] All data stores reinitialized for network '{}' - no restart required",
+            network_str
+        );
 
         Ok(())
     }

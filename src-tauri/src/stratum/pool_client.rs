@@ -13,9 +13,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{Mutex, RwLock};
 
-use crate::rpc_client::{BlockTemplate, RpcClientInterface};
 use super::messages::*;
 use super::vardiff::VardiffController;
+use crate::rpc_client::{BlockTemplate, RpcClientInterface};
 
 /// Pool connection configuration
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -131,14 +131,8 @@ impl StratumPoolClient {
 
                         // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s (capped)
                         let attempts = reconnect_attempts.fetch_add(1, Ordering::SeqCst);
-                        let delay = Duration::from_secs(
-                            (1u64 << attempts.min(4)).min(30),
-                        );
-                        eprintln!(
-                            "⛏️ Reconnecting in {:?} (attempt {})",
-                            delay,
-                            attempts + 1
-                        );
+                        let delay = Duration::from_secs((1u64 << attempts.min(4)).min(30));
+                        eprintln!("⛏️ Reconnecting in {:?} (attempt {})", delay, attempts + 1);
                         tokio::time::sleep(delay).await;
                     }
                 }
@@ -220,7 +214,10 @@ impl StratumPoolClient {
                     );
                 }
                 StratumMessage::SetupConnectionError(err) => {
-                    return Err(anyhow::anyhow!("Pool rejected connection: {}", err.error_code));
+                    return Err(anyhow::anyhow!(
+                        "Pool rejected connection: {}",
+                        err.error_code
+                    ));
                 }
                 other => {
                     return Err(anyhow::anyhow!(
@@ -240,13 +237,8 @@ impl StratumPoolClient {
                     let mut buf = bytes::BytesMut::from(&msg_data[..]);
                     match super::codec::decode(&mut buf) {
                         Ok(Some(msg)) => {
-                            Self::handle_pool_message(
-                                msg,
-                                current_job,
-                                share_target,
-                                vardiff,
-                            )
-                            .await;
+                            Self::handle_pool_message(msg, current_job, share_target, vardiff)
+                                .await;
                         }
                         Ok(None) => {} // Incomplete message
                         Err(e) => eprintln!("⚠️ Pool message decode error: {}", e),
@@ -367,12 +359,18 @@ impl RpcClientInterface for Arc<RwLock<StratumPoolClient>> {
                 n.submit_block(block_hex).await
             } {
                 Ok(hash) => {
-                    eprintln!("🎉 Block-quality share also submitted to local node: {}", hash);
+                    eprintln!(
+                        "🎉 Block-quality share also submitted to local node: {}",
+                        hash
+                    );
                     let mut stats = client.stats.write().await;
                     stats.blocks_found += 1;
                 }
                 Err(e) => {
-                    eprintln!("⚠️ Local block submission failed (share still sent to pool): {}", e);
+                    eprintln!(
+                        "⚠️ Local block submission failed (share still sent to pool): {}",
+                        e
+                    );
                 }
             }
         }

@@ -477,4 +477,3 @@ fn get_rust_version() -> Option<String> {
 fn get_platform_info() -> String {
     format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH)
 }
-

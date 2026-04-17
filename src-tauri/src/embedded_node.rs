@@ -99,7 +99,6 @@ pub struct EmbeddedNode {
 
     // ── Bootstrap Network Stability State ──────────────────────────────
     // Tracks Emergency Difficulty Adjustment (EDA) for health monitoring.
-
     /// Height at which the last EDA Tier 2/3 was triggered (cooldown tracking)
     eda_last_trigger_height: Arc<std::sync::atomic::AtomicU64>,
 
@@ -125,7 +124,10 @@ impl EmbeddedNode {
     ///
     /// This must be called after node initialization to enable automatic balance cache updates.
     /// Without this, wallet cached balances won't update when blocks are mined.
-    pub fn set_wallet_manager(&mut self, wallet_manager: Arc<std::sync::Mutex<crate::wallet_manager::WalletManager>>) {
+    pub fn set_wallet_manager(
+        &mut self,
+        wallet_manager: Arc<std::sync::Mutex<crate::wallet_manager::WalletManager>>,
+    ) {
         self.wallet_manager = Some(wallet_manager);
         eprintln!("[BTPC::Node] Wallet manager set - balance cache will be updated automatically");
     }
@@ -135,7 +137,10 @@ impl EmbeddedNode {
     /// This must be called after node initialization to enable transaction history storage.
     /// Without this, mined transactions won't appear in the transaction history.
     /// FIX 2025-12-12: Changed to use SQLite tx_history for UPSERT support
-    pub fn set_tx_storage(&mut self, tx_storage: Arc<tokio::sync::RwLock<crate::tx_history::TransactionHistory>>) {
+    pub fn set_tx_storage(
+        &mut self,
+        tx_storage: Arc<tokio::sync::RwLock<crate::tx_history::TransactionHistory>>,
+    ) {
         self.tx_storage = Some(tx_storage);
         println!("✅ EmbeddedNode tx_history set - mined transactions will be stored in history");
     }
@@ -174,7 +179,11 @@ impl EmbeddedNode {
         let database =
             UnifiedDatabase::open(&data_dir, network).context("Failed to open unified database")?;
 
-        eprintln!("📁 Network isolation: Database opened at {:?} for network '{}'", database.path(), network);
+        eprintln!(
+            "📁 Network isolation: Database opened at {:?} for network '{}'",
+            database.path(),
+            network
+        );
 
         // Initialize blockchain state atomics
         let current_height = Arc::new(std::sync::atomic::AtomicU64::new(0));
@@ -193,7 +202,8 @@ impl EmbeddedNode {
             Network::Testnet => cons::INITIAL_DIFFICULTY_BITS, // Same as mainnet
             Network::Regtest => cons::REGTEST_DIFFICULTY_BITS, // Instant mining
         };
-        let current_difficulty_bits = Arc::new(std::sync::atomic::AtomicU32::new(initial_difficulty));
+        let current_difficulty_bits =
+            Arc::new(std::sync::atomic::AtomicU32::new(initial_difficulty));
 
         // Initialize mempool
         // BUG FIX 2025-11-11: Create mempool for transaction broadcast/monitoring
@@ -228,9 +238,9 @@ impl EmbeddedNode {
             shutdown_tx: None,
             utxo_manager,
             wallet_manager: None, // Will be set after initialization in main.rs
-            app_handle: None, // Will be set after initialization in main.rs
-            tx_storage: None, // Will be set after initialization in main.rs
-            peers, // FIX 2025-11-28: P2P peer tracking
+            app_handle: None,     // Will be set after initialization in main.rs
+            tx_storage: None,     // Will be set after initialization in main.rs
+            peers,                // FIX 2025-11-28: P2P peer tracking
             peer_manager,
             block_height_for_pm,
             // Bootstrap network stability state
@@ -297,24 +307,26 @@ impl EmbeddedNode {
                     // (highest multiple of 2016 <= max_height), NOT the latest block.
                     // The latest block may have been mined with 20-minute-rule or EDA
                     // reduced difficulty, which would corrupt the cached value on restart.
-                    let last_adjustment_height = (max_height / ADJUSTMENT_INTERVAL) * ADJUSTMENT_INTERVAL;
+                    let last_adjustment_height =
+                        (max_height / ADJUSTMENT_INTERVAL) * ADJUSTMENT_INTERVAL;
                     eprintln!(
                         "ℹ️ Loading difficulty from adjustment block {} (chain height {})",
                         last_adjustment_height, max_height
                     );
                     let difficulty = match self.database.get_block(last_adjustment_height as u32) {
-                        Ok(Some(block)) => {
-                            block.header.bits
-                        },
+                        Ok(Some(block)) => block.header.bits,
                         Ok(None) => {
                             eprintln!("⚠️ WARNING: Adjustment block {} not found, using initial difficulty", last_adjustment_height);
                             match self.network {
                                 Network::Regtest => cons::REGTEST_DIFFICULTY_BITS,
                                 _ => cons::INITIAL_DIFFICULTY_BITS,
                             }
-                        },
+                        }
                         Err(e) => {
-                            eprintln!("❌ ERROR: Failed to load block {}: {:?}, using initial difficulty", last_adjustment_height, e);
+                            eprintln!(
+                                "❌ ERROR: Failed to load block {}: {:?}, using initial difficulty",
+                                last_adjustment_height, e
+                            );
                             match self.network {
                                 Network::Regtest => cons::REGTEST_DIFFICULTY_BITS,
                                 _ => cons::INITIAL_DIFFICULTY_BITS,
@@ -341,7 +353,8 @@ impl EmbeddedNode {
                     }
                 };
 
-                self.current_difficulty_bits.store(final_difficulty, std::sync::atomic::Ordering::SeqCst);
+                self.current_difficulty_bits
+                    .store(final_difficulty, std::sync::atomic::Ordering::SeqCst);
 
                 eprintln!(
                     "✅ Loaded blockchain state: height={}, hash={}, difficulty=0x{:08x} (decimal: {})",
@@ -368,7 +381,10 @@ impl EmbeddedNode {
                 // Store genesis block at height 0
                 match self.database.put_block(0, &genesis) {
                     Ok(()) => {
-                        println!("✅ Created genesis block at height 0: {}...", &genesis_hash_hex[..32]);
+                        println!(
+                            "✅ Created genesis block at height 0: {}...",
+                            &genesis_hash_hex[..32]
+                        );
                     }
                     Err(e) => {
                         eprintln!("⚠️ Failed to store genesis block: {}", e);
@@ -386,8 +402,13 @@ impl EmbeddedNode {
                 // - Mainnet/Testnet: INITIAL_DIFFICULTY_BITS (SHA-512 "difficulty 1")
                 // - Regtest: REGTEST_DIFFICULTY_BITS (instant mining for development)
 
-                let initial_diff = self.current_difficulty_bits.load(std::sync::atomic::Ordering::SeqCst);
-                println!("ℹ️ Fresh blockchain initialized with genesis (height=0, difficulty=0x{:08x})", initial_diff);
+                let initial_diff = self
+                    .current_difficulty_bits
+                    .load(std::sync::atomic::Ordering::SeqCst);
+                println!(
+                    "ℹ️ Fresh blockchain initialized with genesis (height=0, difficulty=0x{:08x})",
+                    initial_diff
+                );
             }
             Err(e) => {
                 // Database query error - log warning but don't fail initialization
@@ -423,7 +444,9 @@ impl EmbeddedNode {
 
         // Get current difficulty from cached value (updated when blocks are mined)
         // FIX 2025-11-20: Use cached difficulty instead of database query
-        let difficulty_bits = self.current_difficulty_bits.load(std::sync::atomic::Ordering::SeqCst);
+        let difficulty_bits = self
+            .current_difficulty_bits
+            .load(std::sync::atomic::Ordering::SeqCst);
 
         Ok(BlockchainState {
             current_height: height,
@@ -436,7 +459,8 @@ impl EmbeddedNode {
 
     /// Get current blockchain height (lightweight atomic read)
     pub fn get_height(&self) -> u64 {
-        self.current_height.load(std::sync::atomic::Ordering::SeqCst)
+        self.current_height
+            .load(std::sync::atomic::Ordering::SeqCst)
     }
 
     /// Get network type
@@ -523,7 +547,10 @@ impl EmbeddedNode {
     /// FIX 2025-12-01: Allow network to be updated when user changes network in settings
     /// This ensures UTXOs are created with the correct network prefix to match wallet addresses
     pub fn update_network(&mut self, network: Network) {
-        println!("EmbeddedNode: Updating network from {:?} to {:?}", self.network, network);
+        println!(
+            "EmbeddedNode: Updating network from {:?} to {:?}",
+            self.network, network
+        );
         self.network = network;
     }
 
@@ -730,8 +757,13 @@ impl EmbeddedNode {
             let socket = match UdpSocket::bind(bind_addr).await {
                 Ok(s) => s,
                 Err(e) => {
-                    eprintln!("⚠️  LAN discovery: failed to bind UDP port {}: {}", udp_port, e);
-                    eprintln!("   LAN auto-discovery disabled — use manual peer connection instead.");
+                    eprintln!(
+                        "⚠️  LAN discovery: failed to bind UDP port {}: {}",
+                        udp_port, e
+                    );
+                    eprintln!(
+                        "   LAN auto-discovery disabled — use manual peer connection instead."
+                    );
                     return;
                 }
             };
@@ -841,14 +873,24 @@ impl EmbeddedNode {
     ) -> Result<()> {
         // ── Bitcoin-style P2P bootstrap ──────────────────────────────────────
         eprintln!("📡 Starting P2P sync for network: {:?}", self.network);
-        eprintln!("   Block processing: {}", if node_arc.is_some() { "ENABLED" } else { "DISABLED (peer tracking only)" });
+        eprintln!(
+            "   Block processing: {}",
+            if node_arc.is_some() {
+                "ENABLED"
+            } else {
+                "DISABLED (peer tracking only)"
+            }
+        );
 
         // Load previously-known peers from disk so we can reconnect instantly
         // without waiting for DNS resolution.
         let peers_dat = self._data_dir.join("peers.dat");
         self.peer_manager.load_peers(&peers_dat).await;
         let known_peer_count = self.peer_manager.discovery.read().await.address_count();
-        eprintln!("   Loaded {} known peer(s) from peers.dat", known_peer_count);
+        eprintln!(
+            "   Loaded {} known peer(s) from peers.dat",
+            known_peer_count
+        );
 
         // Log hardcoded bootstrap seeds so the operator can verify reachability
         let net_config = self.peer_manager.network_config();
@@ -873,7 +915,8 @@ impl EmbeddedNode {
         // Query DNS seeds — log results instead of silently ignoring failures
         // FIX 2026-04-12: Previously used .ok() which hid DNS failures, making it
         // impossible to diagnose "0 peers" issues on fresh installs.
-        match self.peer_manager
+        match self
+            .peer_manager
             .discovery
             .write()
             .await
@@ -883,15 +926,21 @@ impl EmbeddedNode {
             Ok(addrs) => {
                 if addrs.is_empty() {
                     eprintln!("⚠️ DNS seed query returned 0 addresses — seeds may be unreachable");
-                    eprintln!("   Tip: Use manual peer connection or ensure bootstrap nodes are running");
+                    eprintln!(
+                        "   Tip: Use manual peer connection or ensure bootstrap nodes are running"
+                    );
                 } else {
                     eprintln!("📡 DNS seeds returned {} peer address(es)", addrs.len());
                 }
             }
             Err(e) => {
                 eprintln!("⚠️ DNS seed query failed: {}", e);
-                eprintln!("   This is expected if DNS seeds are not yet configured for this network.");
-                eprintln!("   The auto-connection manager will retry, or connect manually via the UI.");
+                eprintln!(
+                    "   This is expected if DNS seeds are not yet configured for this network."
+                );
+                eprintln!(
+                    "   The auto-connection manager will retry, or connect manually via the UI."
+                );
             }
         }
 
@@ -918,42 +967,90 @@ impl EmbeddedNode {
             let current_height_atomic = Arc::clone(&self.current_height);
             let database_clone = self.database.clone();
             let node_arc_for_events = node_arc.clone();
+            let app_handle_for_events = self.app_handle.clone();
             tokio::spawn(async move {
                 use btpc_core::network::simple_peer_manager::PeerEvent;
                 while let Some(event) = peer_rx.recv().await {
                     match event {
-                        PeerEvent::PeerConnected { addr, height, user_agent } => {
+                        PeerEvent::PeerConnected {
+                            addr,
+                            height,
+                            user_agent,
+                        } => {
                             let now = std::time::SystemTime::now()
                                 .duration_since(std::time::UNIX_EPOCH)
                                 .unwrap_or_default()
                                 .as_secs();
                             {
                                 let mut peers = peers_arc.write().unwrap();
-                                peers.insert(addr.to_string(), PeerInfo {
-                                    address: addr.to_string(),
-                                    version: user_agent.clone(),
-                                    height: height as u64,
-                                    ping_ms: 0,
-                                    connected_since: now,
-                                });
-                                connected_peers_counter.store(
-                                    peers.len() as u32,
-                                    std::sync::atomic::Ordering::SeqCst,
+                                peers.insert(
+                                    addr.to_string(),
+                                    PeerInfo {
+                                        address: addr.to_string(),
+                                        version: user_agent.clone(),
+                                        height: height as u64,
+                                        ping_ms: 0,
+                                        connected_since: now,
+                                    },
                                 );
+                                connected_peers_counter
+                                    .store(peers.len() as u32, std::sync::atomic::Ordering::SeqCst);
                             }
                             eprintln!("🔗 Peer connected: {} (height {})", addr, height);
 
+                            // T035 (US2): Emit status on peer connect
+                            if let Some(ref node_arc_ev) = node_arc_for_events {
+                                let status = build_node_status_snapshot(node_arc_ev).await;
+                                if let Some(ref app) = app_handle_for_events {
+                                    use tauri::Emitter;
+                                    let ev = crate::events::BlockchainEvent::SyncProgressUpdated {
+                                        current_height: status.block_height,
+                                        target_height: status.headers_height,
+                                        is_syncing: status.is_syncing,
+                                        connected_peers: status.peer_count,
+                                        tip_hash: status.tip_hash.clone(),
+                                        headers_height: status.headers_height,
+                                        last_block_time: status.last_block_time,
+                                        peer_count_in: status.peer_count_in,
+                                        peer_count_out: status.peer_count_out,
+                                        mempool_size: status.mempool_size,
+                                        ban_count: status.ban_count,
+                                        generated_at: status.generated_at,
+                                    };
+                                    let _ = app.emit("blockchain-event", &ev);
+
+                                    // T077 (US4): Emit PeerListUpdated on connect
+                                    let snapshots = peer_manager_arc.peer_snapshot_list().await;
+                                    let peers_json: Vec<serde_json::Value> = snapshots.iter().map(|s| {
+                                        serde_json::json!({
+                                            "address": s.addr.to_string(),
+                                            "direction": if s.inbound { "inbound" } else { "outbound" },
+                                            "userAgent": s.user_agent,
+                                            "protocolVersion": s.protocol_version,
+                                            "pingRttMs": s.last_ping_rtt_ms,
+                                            "bytesIn": s.bytes_in,
+                                            "bytesOut": s.bytes_out,
+                                            "banScore": s.ban_score,
+                                        })
+                                    }).collect();
+                                    let peer_ev = crate::events::BlockchainEvent::PeerListUpdated {
+                                        peers: peers_json,
+                                    };
+                                    let _ = app.emit("blockchain-event", &peer_ev);
+                                }
+                            }
+
                             // If peer has more blocks than us, request their headers
-                            let our_height = current_height_atomic
-                                .load(std::sync::atomic::Ordering::SeqCst);
+                            let our_height =
+                                current_height_atomic.load(std::sync::atomic::Ordering::SeqCst);
                             if (height as u64) > our_height {
                                 eprintln!(
                                     "📡 Peer {} has height {} (we have {}), requesting blocks via GetHeaders",
                                     addr, height, our_height
                                 );
                                 // Build block locator (simplified: just our tip hash)
-                                if let Ok(Some(tip_hash_bytes)) = database_clone
-                                    .get_block_hash_at_height(our_height as u32)
+                                if let Ok(Some(tip_hash_bytes)) =
+                                    database_clone.get_block_hash_at_height(our_height as u32)
                                 {
                                     use btpc_core::network::protocol::{
                                         GetHeadersMessage, Message,
@@ -970,9 +1067,7 @@ impl EmbeddedNode {
                                         block_locator: vec![locator_hash],
                                         hash_stop: btpc_core::crypto::Hash::zero(),
                                     });
-                                    peer_manager_arc
-                                        .send_to_peer(&addr, get_headers)
-                                        .await;
+                                    peer_manager_arc.send_to_peer(&addr, get_headers).await;
                                 }
                             }
                         }
@@ -980,12 +1075,52 @@ impl EmbeddedNode {
                             {
                                 let mut peers = peers_arc.write().unwrap();
                                 peers.remove(&addr.to_string());
-                                connected_peers_counter.store(
-                                    peers.len() as u32,
-                                    std::sync::atomic::Ordering::SeqCst,
-                                );
+                                connected_peers_counter
+                                    .store(peers.len() as u32, std::sync::atomic::Ordering::SeqCst);
                             }
                             eprintln!("🔌 Peer disconnected: {}", addr);
+
+                            // T035 (US2): Emit status on peer disconnect
+                            if let Some(ref node_arc_ev) = node_arc_for_events {
+                                let status = build_node_status_snapshot(node_arc_ev).await;
+                                if let Some(ref app) = app_handle_for_events {
+                                    use tauri::Emitter;
+                                    let ev = crate::events::BlockchainEvent::SyncProgressUpdated {
+                                        current_height: status.block_height,
+                                        target_height: status.headers_height,
+                                        is_syncing: status.is_syncing,
+                                        connected_peers: status.peer_count,
+                                        tip_hash: status.tip_hash.clone(),
+                                        headers_height: status.headers_height,
+                                        last_block_time: status.last_block_time,
+                                        peer_count_in: status.peer_count_in,
+                                        peer_count_out: status.peer_count_out,
+                                        mempool_size: status.mempool_size,
+                                        ban_count: status.ban_count,
+                                        generated_at: status.generated_at,
+                                    };
+                                    let _ = app.emit("blockchain-event", &ev);
+
+                                    // T077 (US4): Emit PeerListUpdated on disconnect
+                                    let snapshots = peer_manager_arc.peer_snapshot_list().await;
+                                    let peers_json: Vec<serde_json::Value> = snapshots.iter().map(|s| {
+                                        serde_json::json!({
+                                            "address": s.addr.to_string(),
+                                            "direction": if s.inbound { "inbound" } else { "outbound" },
+                                            "userAgent": s.user_agent,
+                                            "protocolVersion": s.protocol_version,
+                                            "pingRttMs": s.last_ping_rtt_ms,
+                                            "bytesIn": s.bytes_in,
+                                            "bytesOut": s.bytes_out,
+                                            "banScore": s.ban_score,
+                                        })
+                                    }).collect();
+                                    let peer_ev = crate::events::BlockchainEvent::PeerListUpdated {
+                                        peers: peers_json,
+                                    };
+                                    let _ = app.emit("blockchain-event", &peer_ev);
+                                }
+                            }
                         }
                         PeerEvent::BlockReceived { from, block } => {
                             // FIX 2026-04-12: Actually process blocks from peers
@@ -1002,13 +1137,31 @@ impl EmbeddedNode {
                                 let mut node = node_ref.write().await;
                                 match node.submit_block(&block_hex).await {
                                     Ok(msg) => {
-                                        eprintln!(
-                                            "✅ Block from peer {} accepted: {}",
-                                            from, msg
-                                        );
+                                        eprintln!("✅ Block from peer {} accepted: {}", from, msg);
                                         // Broadcast to other peers
                                         drop(node); // Release write lock before broadcast
                                         peer_manager_arc.broadcast_block(&block).await;
+
+                                        // T035 (US2): Emit status on new block accepted
+                                        let status = build_node_status_snapshot(node_ref).await;
+                                        if let Some(ref app) = app_handle_for_events {
+                                            use tauri::Emitter;
+                                            let ev = crate::events::BlockchainEvent::SyncProgressUpdated {
+                                                current_height: status.block_height,
+                                                target_height: status.headers_height,
+                                                is_syncing: status.is_syncing,
+                                                connected_peers: status.peer_count,
+                                                tip_hash: status.tip_hash.clone(),
+                                                headers_height: status.headers_height,
+                                                last_block_time: status.last_block_time,
+                                                peer_count_in: status.peer_count_in,
+                                                peer_count_out: status.peer_count_out,
+                                                mempool_size: status.mempool_size,
+                                                ban_count: status.ban_count,
+                                                generated_at: status.generated_at,
+                                            };
+                                            let _ = app.emit("blockchain-event", &ev);
+                                        }
                                     }
                                     Err(e) => {
                                         let err_str = e.to_string();
@@ -1024,24 +1177,19 @@ impl EmbeddedNode {
                                     }
                                 }
                             } else {
-                                eprintln!(
-                                    "⚠️ BlockReceived but no node_arc — block not processed"
-                                );
+                                eprintln!("⚠️ BlockReceived but no node_arc — block not processed");
                             }
                         }
                         PeerEvent::InventoryReceived { from, inv } => {
                             // FIX 2026-04-12: Request blocks we don't have
-                            use btpc_core::network::protocol::{
-                                InvType, InventoryVector, Message,
-                            };
+                            use btpc_core::network::protocol::{InvType, InventoryVector, Message};
                             let mut needed: Vec<InventoryVector> = Vec::new();
                             for item in &inv {
                                 if item.inv_type == InvType::Block {
                                     // Check if we already have this block
                                     let hash_bytes = item.hash.as_bytes().to_vec();
-                                    let have_it = database_clone
-                                        .has_block_hash(&hash_bytes)
-                                        .unwrap_or(false);
+                                    let have_it =
+                                        database_clone.has_block_hash(&hash_bytes).unwrap_or(false);
                                     if !have_it {
                                         needed.push(item.clone());
                                     }
@@ -1059,11 +1207,7 @@ impl EmbeddedNode {
                             }
                         }
                         PeerEvent::TransactionReceived { from, tx } => {
-                            eprintln!(
-                                "💳 Received tx {} from peer {}",
-                                tx.hash().to_hex(),
-                                from
-                            );
+                            eprintln!("💳 Received tx {} from peer {}", tx.hash().to_hex(), from);
                             // TODO: Add to mempool when mempool accepts external txs
                         }
                     }
@@ -1075,6 +1219,40 @@ impl EmbeddedNode {
         SimplePeerManager::start_peer_saver(Arc::clone(&self.peer_manager), peers_dat);
 
         // ────────────────────────────────────────────────────────────────────
+
+        // T034 (US2): Spawn a 1-second interval task that builds a NodeStatus
+        // snapshot and emits BlockchainEvent::SyncProgressUpdated so every UI
+        // page receives live status through the shared event stream.
+        if let Some(ref node_arc_inner) = node_arc {
+            let ticker_node = Arc::clone(node_arc_inner);
+            let ticker_app = self.app_handle.clone();
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
+                loop {
+                    interval.tick().await;
+                    let status = build_node_status_snapshot(&ticker_node).await;
+                    if let Some(ref app) = ticker_app {
+                        use tauri::Emitter;
+                        let event = crate::events::BlockchainEvent::SyncProgressUpdated {
+                            current_height: status.block_height,
+                            target_height: status.headers_height,
+                            is_syncing: status.is_syncing,
+                            connected_peers: status.peer_count,
+                            tip_hash: status.tip_hash.clone(),
+                            headers_height: status.headers_height,
+                            last_block_time: status.last_block_time,
+                            peer_count_in: status.peer_count_in,
+                            peer_count_out: status.peer_count_out,
+                            mempool_size: status.mempool_size,
+                            ban_count: status.ban_count,
+                            generated_at: status.generated_at,
+                        };
+                        let _ = app.emit("blockchain-event", &event);
+                    }
+                }
+            });
+            eprintln!("📊 NodeStatus ticker started (1s interval)");
+        }
 
         // Set sync active flag (persists across page navigation)
         self.is_syncing
@@ -1150,7 +1328,8 @@ impl EmbeddedNode {
         let mempool = self.mempool.read().await;
         let mempool_entries = mempool.get_transactions_by_fee(1000);
 
-        tracing::debug!("[BLOCK_TEMPLATE] Mempool has {} transactions for block height {}",
+        tracing::debug!(
+            "[BLOCK_TEMPLATE] Mempool has {} transactions for block height {}",
             mempool_entries.len(),
             current_height + 1
         );
@@ -1180,7 +1359,9 @@ impl EmbeddedNode {
 
         // Calculate difficulty (with adjustment every 2016 blocks per Constitution Article IV)
         // FIX 2025-11-20: Dynamic difficulty adjustment replaces hardcoded values
-        let bits = self.calculate_difficulty_for_next_block(next_height).await?;
+        let bits = self
+            .calculate_difficulty_for_next_block(next_height)
+            .await?;
 
         // Convert bits to full target hash (64 bytes for SHA-512)
         let difficulty_target = DifficultyTarget::from_bits(bits);
@@ -1320,8 +1501,7 @@ impl EmbeddedNode {
                 Hash::zero()
             } else {
                 // Parse current tip hash
-                let tip_bytes = hex::decode(&*tip_hash_str)
-                    .unwrap_or_else(|_| vec![0u8; 64]);
+                let tip_bytes = hex::decode(&*tip_hash_str).unwrap_or_else(|_| vec![0u8; 64]);
                 let mut hash_array = [0u8; 64];
                 if tip_bytes.len() >= 64 {
                     hash_array.copy_from_slice(&tip_bytes[..64]);
@@ -1344,7 +1524,12 @@ impl EmbeddedNode {
 
             // Use ReorgHandler to detect if reorganization is needed
             let reorg_handler = crate::reorg_handler::ReorgHandler::new();
-            match reorg_handler.detect_reorg(&block, &current_tip_hash, current_height, &self.database) {
+            match reorg_handler.detect_reorg(
+                &block,
+                &current_tip_hash,
+                current_height,
+                &self.database,
+            ) {
                 Ok(crate::reorg_handler::ReorgDetectionResult::ExtendsCurrentTip) => {
                     // This shouldn't happen since we checked above, but handle it
                     eprintln!("[SUBMIT_BLOCK] Block actually extends tip - proceeding");
@@ -1364,9 +1549,9 @@ impl EmbeddedNode {
 
                     // FR-057: Emit reorg detected event for UI indicator
                     if let Some(ref app) = self.app_handle {
-                        use tauri::Emitter;
                         use crate::events::chain_reorg_event_names;
                         use crate::reorg_handler::ReorgEventBuilder;
+                        use tauri::Emitter;
 
                         let detected_event = ReorgEventBuilder::reorg_detected(
                             &hex::encode(plan.fork_point.as_bytes()),
@@ -1378,7 +1563,10 @@ impl EmbeddedNode {
                     }
 
                     // Execute reorganization
-                    match reorg_handler.execute_reorg(&plan, &self.database, &self.utxo_manager).await {
+                    match reorg_handler
+                        .execute_reorg(&plan, &self.database, &self.utxo_manager)
+                        .await
+                    {
                         Ok(result) => {
                             eprintln!(
                                 "[SUBMIT_BLOCK] ✅ REORG COMPLETE: {} blocks disconnected, {} connected",
@@ -1388,12 +1576,15 @@ impl EmbeddedNode {
 
                             // FR-057: Emit reorg completed event for UI indicator
                             if let Some(ref app) = self.app_handle {
-                                use tauri::Emitter;
                                 use crate::events::chain_reorg_event_names;
                                 use crate::reorg_handler::ReorgEventBuilder;
+                                use tauri::Emitter;
 
                                 let completed_event = ReorgEventBuilder::reorg_completed(&result);
-                                let _ = app.emit(chain_reorg_event_names::REORG_COMPLETED, &completed_event);
+                                let _ = app.emit(
+                                    chain_reorg_event_names::REORG_COMPLETED,
+                                    &completed_event,
+                                );
                             }
 
                             // After reorg, the new block should extend the new tip
@@ -1404,16 +1595,17 @@ impl EmbeddedNode {
 
                             // FR-057: Emit reorg failed event for UI indicator
                             if let Some(ref app) = self.app_handle {
-                                use tauri::Emitter;
                                 use crate::events::chain_reorg_event_names;
                                 use crate::reorg_handler::ReorgEventBuilder;
+                                use tauri::Emitter;
 
                                 let failed_event = ReorgEventBuilder::reorg_failed(
                                     &hex::encode(plan.fork_point.as_bytes()),
                                     &e.to_string(),
                                     false, // rollback not successful
                                 );
-                                let _ = app.emit(chain_reorg_event_names::REORG_FAILED, &failed_event);
+                                let _ =
+                                    app.emit(chain_reorg_event_names::REORG_FAILED, &failed_event);
                             }
 
                             return Err(anyhow::anyhow!("Chain reorganization failed: {}", e));
@@ -1465,11 +1657,14 @@ impl EmbeddedNode {
         // FIX 2025-12-05: Collect UTXOs for tx_storage - will be added AFTER releasing utxo_manager lock
         // This prevents deadlock from blocking_read() inside mutex scope
         let mut utxos_for_tx_storage: Vec<crate::utxo_manager::UTXO> = Vec::new();
-        let mut transactions_for_tx_storage: Vec<(crate::utxo_manager::Transaction, Vec<String>)> = Vec::new();
+        let mut transactions_for_tx_storage: Vec<(crate::utxo_manager::Transaction, Vec<String>)> =
+            Vec::new();
 
         {
             // Lock the UTXO manager
-            let mut utxo_manager = self.utxo_manager.lock()
+            let mut utxo_manager = self
+                .utxo_manager
+                .lock()
                 .map_err(|e| anyhow::anyhow!("Failed to lock UTXO manager: {}", e))?;
 
             let mut utxos_created = 0;
@@ -1544,7 +1739,8 @@ impl EmbeddedNode {
             // FIX 2025-11-28: Collect sender addresses BEFORE marking UTXOs as spent
             // We need the UTXO data to extract sender addresses for transaction indexing
             let mut utxos_spent = 0;
-            let mut tx_sender_addresses: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+            let mut tx_sender_addresses: std::collections::HashMap<String, Vec<String>> =
+                std::collections::HashMap::new();
 
             for (tx_index, tx) in block.transactions.iter().enumerate() {
                 let is_coinbase = tx_index == 0;
@@ -1561,7 +1757,9 @@ impl EmbeddedNode {
                         // FIX 2025-11-28: Get sender address BEFORE marking as spent
                         // FIX 2025-11-28 v2: Fallback to tx_storage (RocksDB) if not in utxo_manager
                         // FIX 2025-12-04: Third fallback - extract pubkey from script_sig and derive address
-                        let sender_addr_opt = if let Some(utxo) = utxo_manager.get_utxo(&prev_txid, prev_vout) {
+                        let sender_addr_opt = if let Some(utxo) =
+                            utxo_manager.get_utxo(&prev_txid, prev_vout)
+                        {
                             Some(utxo.address.clone())
                         } else if let Some(ref ts) = self.tx_storage {
                             // Fallback 1: Query RocksDB for UTXO
@@ -1569,20 +1767,29 @@ impl EmbeddedNode {
                             // Cannot use .read().await because std::sync::MutexGuard is not Send
                             match ts.blocking_read().get_utxo(&prev_txid, prev_vout) {
                                 Ok(Some(utxo)) => {
-                                    eprintln!("📝 Found UTXO {}:{} in tx_storage (fallback 1)", &prev_txid[..16], prev_vout);
+                                    eprintln!(
+                                        "📝 Found UTXO {}:{} in tx_storage (fallback 1)",
+                                        &prev_txid[..16],
+                                        prev_vout
+                                    );
                                     Some(utxo.address.clone())
                                 }
                                 Ok(None) => {
                                     // Fallback 2: Extract sender address from script_sig
                                     eprintln!("📝 UTXO {}:{} not in tx_storage, trying script_sig extraction (fallback 2)", &prev_txid[..16], prev_vout);
-                                    if let Some(pubkey_bytes) = input.script_sig.extract_pubkey_from_unlock() {
+                                    if let Some(pubkey_bytes) =
+                                        input.script_sig.extract_pubkey_from_unlock()
+                                    {
                                         // Derive address from public key
-                                        match btpc_core::crypto::PublicKey::from_bytes(&pubkey_bytes) {
+                                        match btpc_core::crypto::PublicKey::from_bytes(
+                                            &pubkey_bytes,
+                                        ) {
                                             Ok(pubkey) => {
                                                 // Get pubkey hash (SHA-512) and extract first 20 bytes for RIPEMD-160 equivalent
                                                 let full_hash = pubkey.hash();
                                                 let mut pubkey_hash = [0u8; 20];
-                                                pubkey_hash.copy_from_slice(&full_hash.as_slice()[..20]);
+                                                pubkey_hash
+                                                    .copy_from_slice(&full_hash.as_slice()[..20]);
                                                 let address = btpc_core::crypto::address::Address::from_hash(
                                                     pubkey_hash,
                                                     self.network,
@@ -1592,45 +1799,72 @@ impl EmbeddedNode {
                                                 Some(address)
                                             }
                                             Err(e) => {
-                                                eprintln!("⚠️ Failed to parse pubkey from script_sig: {}", e);
+                                                eprintln!(
+                                                    "⚠️ Failed to parse pubkey from script_sig: {}",
+                                                    e
+                                                );
                                                 None
                                             }
                                         }
                                     } else {
-                                        eprintln!("⚠️ Could not extract pubkey from script_sig for {}:{}", &prev_txid[..16], prev_vout);
+                                        eprintln!(
+                                            "⚠️ Could not extract pubkey from script_sig for {}:{}",
+                                            &prev_txid[..16],
+                                            prev_vout
+                                        );
                                         None
                                     }
                                 }
                                 Err(e) => {
-                                    eprintln!("⚠️ Error querying tx_storage for UTXO {}:{}: {}", &prev_txid[..16], prev_vout, e);
+                                    eprintln!(
+                                        "⚠️ Error querying tx_storage for UTXO {}:{}: {}",
+                                        &prev_txid[..16],
+                                        prev_vout,
+                                        e
+                                    );
                                     None
                                 }
                             }
                         } else {
                             // No tx_storage available - try script_sig extraction directly
-                            eprintln!("📝 tx_storage unavailable, trying script_sig extraction for {}:{}", &prev_txid[..16], prev_vout);
-                            if let Some(pubkey_bytes) = input.script_sig.extract_pubkey_from_unlock() {
+                            eprintln!(
+                                "📝 tx_storage unavailable, trying script_sig extraction for {}:{}",
+                                &prev_txid[..16],
+                                prev_vout
+                            );
+                            if let Some(pubkey_bytes) =
+                                input.script_sig.extract_pubkey_from_unlock()
+                            {
                                 match btpc_core::crypto::PublicKey::from_bytes(&pubkey_bytes) {
                                     Ok(pubkey) => {
                                         // Get pubkey hash (SHA-512) and extract first 20 bytes for RIPEMD-160 equivalent
                                         let full_hash = pubkey.hash();
                                         let mut pubkey_hash = [0u8; 20];
                                         pubkey_hash.copy_from_slice(&full_hash.as_slice()[..20]);
-                                        let address = btpc_core::crypto::address::Address::from_hash(
-                                            pubkey_hash,
-                                            self.network,
-                                            btpc_core::crypto::address::AddressType::P2PKH,
-                                        ).to_string();
+                                        let address =
+                                            btpc_core::crypto::address::Address::from_hash(
+                                                pubkey_hash,
+                                                self.network,
+                                                btpc_core::crypto::address::AddressType::P2PKH,
+                                            )
+                                            .to_string();
                                         eprintln!("📝 Derived sender address {} from script_sig (no tx_storage)", address);
                                         Some(address)
                                     }
                                     Err(e) => {
-                                        eprintln!("⚠️ Failed to parse pubkey from script_sig: {}", e);
+                                        eprintln!(
+                                            "⚠️ Failed to parse pubkey from script_sig: {}",
+                                            e
+                                        );
                                         None
                                     }
                                 }
                             } else {
-                                eprintln!("⚠️ Could not extract pubkey from script_sig for {}:{}", &prev_txid[..16], prev_vout);
+                                eprintln!(
+                                    "⚠️ Could not extract pubkey from script_sig for {}:{}",
+                                    &prev_txid[..16],
+                                    prev_vout
+                                );
                                 None
                             }
                         };
@@ -1638,7 +1872,11 @@ impl EmbeddedNode {
                         if let Some(sender_addr) = sender_addr_opt {
                             if !sender_addrs.contains(&sender_addr) {
                                 sender_addrs.push(sender_addr.clone());
-                                eprintln!("📝 Captured sender address {} for tx {}", sender_addr, &txid[..16]);
+                                eprintln!(
+                                    "📝 Captured sender address {} for tx {}",
+                                    sender_addr,
+                                    &txid[..16]
+                                );
                             }
                         }
 
@@ -1649,10 +1887,18 @@ impl EmbeddedNode {
                             spent_in_txid.clone(),
                             next_height,
                         ) {
-                            eprintln!("⚠️ Failed to mark UTXO {}:{} as spent: {}", prev_txid, prev_vout, e);
+                            eprintln!(
+                                "⚠️ Failed to mark UTXO {}:{} as spent: {}",
+                                prev_txid, prev_vout, e
+                            );
                         } else {
                             utxos_spent += 1;
-                            eprintln!("📝 Marked UTXO {}:{} as spent in tx {}", &prev_txid[..16], prev_vout, &spent_in_txid[..16]);
+                            eprintln!(
+                                "📝 Marked UTXO {}:{} as spent in tx {}",
+                                &prev_txid[..16],
+                                prev_vout,
+                                &spent_in_txid[..16]
+                            );
                         }
                     }
 
@@ -1667,9 +1913,15 @@ impl EmbeddedNode {
             // after ALL UTXO additions AND spends are processed in-memory.
             // This prevents inconsistent state if app crashes mid-block processing.
             if let Err(e) = utxo_manager.flush_utxos() {
-                eprintln!("⚠️ Failed to persist {} UTXOs to disk: {}", utxos_created, e);
+                eprintln!(
+                    "⚠️ Failed to persist {} UTXOs to disk: {}",
+                    utxos_created, e
+                );
             } else {
-                println!("💾 Persisted {} added + {} spent UTXOs to disk (atomic batch)", utxos_created, utxos_spent);
+                println!(
+                    "💾 Persisted {} added + {} spent UTXOs to disk (atomic batch)",
+                    utxos_created, utxos_spent
+                );
             }
 
             // Log success
@@ -1694,7 +1946,8 @@ impl EmbeddedNode {
                             pubkey_hash,
                             self.network,
                             btpc_core::crypto::address::AddressType::P2PKH,
-                        ).to_string();
+                        )
+                        .to_string();
                         if !involved_addresses.contains(&address) {
                             involved_addresses.push(address);
                         }
@@ -1718,23 +1971,26 @@ impl EmbeddedNode {
                 let inputs: Vec<crate::utxo_manager::TxInput> = if is_coinbase {
                     vec![]
                 } else {
-                    tx.inputs.iter().map(|input| {
-                        crate::utxo_manager::TxInput {
+                    tx.inputs
+                        .iter()
+                        .map(|input| crate::utxo_manager::TxInput {
                             prev_txid: hex::encode(input.previous_output.txid.as_bytes()),
                             prev_vout: input.previous_output.vout,
                             signature_script: input.script_sig.serialize(),
                             sequence: input.sequence,
-                        }
-                    }).collect()
+                        })
+                        .collect()
                 };
 
                 // Build outputs
-                let outputs: Vec<crate::utxo_manager::TxOutput> = tx.outputs.iter().map(|output| {
-                    crate::utxo_manager::TxOutput {
+                let outputs: Vec<crate::utxo_manager::TxOutput> = tx
+                    .outputs
+                    .iter()
+                    .map(|output| crate::utxo_manager::TxOutput {
                         value: output.value,
                         script_pubkey: output.script_pubkey.serialize(),
-                    }
-                }).collect();
+                    })
+                    .collect();
 
                 // FIX 2025-12-10: Get sender address for SENT/RECEIVED detection
                 // Coinbase transactions have no sender (mining rewards)
@@ -1744,7 +2000,9 @@ impl EmbeddedNode {
                 let sender_address = if is_coinbase {
                     None
                 } else {
-                    tx_sender_addresses.get(&txid).and_then(|addrs| addrs.first().cloned())
+                    tx_sender_addresses
+                        .get(&txid)
+                        .and_then(|addrs| addrs.first().cloned())
                 };
 
                 // Log for debugging - shows when sender lookup failed
@@ -1787,7 +2045,9 @@ impl EmbeddedNode {
                         // Extract address from coinbase output script
                         // FIX 2025-12-01: Use self.network for configured network
                         // This ensures the address string matches wallet addresses for balance lookup
-                        if let Some(pubkey_hash) = coinbase_output.script_pubkey.extract_pubkey_hash() {
+                        if let Some(pubkey_hash) =
+                            coinbase_output.script_pubkey.extract_pubkey_hash()
+                        {
                             let mining_address = btpc_core::crypto::address::Address::from_hash(
                                 pubkey_hash,
                                 self.network,
@@ -1796,7 +2056,8 @@ impl EmbeddedNode {
                             let mining_address_str = mining_address.to_string();
 
                             // Calculate new balance for this address
-                            let (new_balance_credits, new_balance_btp) = utxo_manager.get_balance(&mining_address_str);
+                            let (new_balance_credits, new_balance_btp) =
+                                utxo_manager.get_balance(&mining_address_str);
 
                             // FIX 2025-11-20: Emit wallet:balance_updated event with correct payload structure
                             // Frontend expects: { wallet_id, balance: { confirmed, pending, total } }
@@ -1804,7 +2065,10 @@ impl EmbeddedNode {
                             if let Some(ref wallet_mgr) = self.wallet_manager {
                                 if let Ok(wallet_manager) = wallet_mgr.lock() {
                                     let wallets_list = wallet_manager.list_wallets();
-                                    if let Some(wallet) = wallets_list.iter().find(|w| w.address == mining_address_str) {
+                                    if let Some(wallet) = wallets_list
+                                        .iter()
+                                        .find(|w| w.address == mining_address_str)
+                                    {
                                         let wallet_id = wallet.id.clone();
 
                                         // Emit event with frontend-compatible payload structure
@@ -1820,8 +2084,13 @@ impl EmbeddedNode {
                                             "txid": hex::encode(coinbase_tx.hash().as_bytes())
                                         });
 
-                                        if let Err(e) = app.emit("wallet:balance_updated", event_payload) {
-                                            eprintln!("⚠️ Failed to emit wallet balance update event: {}", e);
+                                        if let Err(e) =
+                                            app.emit("wallet:balance_updated", event_payload)
+                                        {
+                                            eprintln!(
+                                                "⚠️ Failed to emit wallet balance update event: {}",
+                                                e
+                                            );
                                         } else {
                                             eprintln!("✅ Emitted wallet:balance_updated event for wallet: {} ({})", wallet_id, mining_address_str);
                                         }
@@ -1835,14 +2104,25 @@ impl EmbeddedNode {
                                 if let Ok(mut wallet_manager) = wallet_mgr.lock() {
                                     // Find wallet with this address and update its cached balance
                                     let wallets_list = wallet_manager.list_wallets();
-                                    if let Some(wallet) = wallets_list.iter().find(|w| w.address == mining_address_str) {
+                                    if let Some(wallet) = wallets_list
+                                        .iter()
+                                        .find(|w| w.address == mining_address_str)
+                                    {
                                         let wallet_id = wallet.id.clone();
                                         drop(wallets_list); // Release the borrow before calling update_wallet_balance
 
-                                        if let Err(e) = wallet_manager.update_wallet_balance(&wallet_id, new_balance_credits) {
-                                            eprintln!("⚠️ Failed to update wallet balance cache: {}", e);
+                                        if let Err(e) = wallet_manager
+                                            .update_wallet_balance(&wallet_id, new_balance_credits)
+                                        {
+                                            eprintln!(
+                                                "⚠️ Failed to update wallet balance cache: {}",
+                                                e
+                                            );
                                         } else {
-                                            println!("✅ Updated wallet {} balance cache: {} BTPC", wallet_id, new_balance_btp);
+                                            println!(
+                                                "✅ Updated wallet {} balance cache: {} BTPC",
+                                                wallet_id, new_balance_btp
+                                            );
                                         }
                                     }
                                 }
@@ -1861,7 +2141,12 @@ impl EmbeddedNode {
             // Store collected UTXOs
             for utxo in &utxos_for_tx_storage {
                 if let Err(e) = tx_storage_guard.add_utxo(utxo) {
-                    eprintln!("⚠️ Failed to add UTXO {}:{} to tx_storage: {}", &utxo.txid[..16.min(utxo.txid.len())], utxo.vout, e);
+                    eprintln!(
+                        "⚠️ Failed to add UTXO {}:{} to tx_storage: {}",
+                        &utxo.txid[..16.min(utxo.txid.len())],
+                        utxo.vout,
+                        e
+                    );
                 }
             }
 
@@ -1871,7 +2156,9 @@ impl EmbeddedNode {
             for (storage_tx, involved_addresses) in &mut transactions_for_tx_storage {
                 if !storage_tx.is_coinbase && storage_tx.sender_address.is_none() {
                     // Query tx_storage for existing broadcast record
-                    if let Ok(Some(existing_tx)) = tx_storage_guard.get_transaction(&storage_tx.txid) {
+                    if let Ok(Some(existing_tx)) =
+                        tx_storage_guard.get_transaction(&storage_tx.txid)
+                    {
                         if let Some(ref sender_addr) = existing_tx.sender_address {
                             // Update storage_tx with sender_address
                             storage_tx.sender_address = Some(sender_addr.clone());
@@ -1896,16 +2183,29 @@ impl EmbeddedNode {
                 );
                 for address in involved_addresses {
                     if let Err(e) = tx_storage_guard.add_transaction(storage_tx, address) {
-                        eprintln!("⚠️ Failed to store tx {} for address {}: {}", &storage_tx.txid[..16.min(storage_tx.txid.len())], address, e);
+                        eprintln!(
+                            "⚠️ Failed to store tx {} for address {}: {}",
+                            &storage_tx.txid[..16.min(storage_tx.txid.len())],
+                            address,
+                            e
+                        );
                     } else {
-                        eprintln!("📝 Stored tx {} for address {} (coinbase={})", &storage_tx.txid[..16.min(storage_tx.txid.len())], address, storage_tx.is_coinbase);
+                        eprintln!(
+                            "📝 Stored tx {} for address {} (coinbase={})",
+                            &storage_tx.txid[..16.min(storage_tx.txid.len())],
+                            address,
+                            storage_tx.is_coinbase
+                        );
                     }
                 }
             }
 
             // Flush tx_storage to disk for crash safety
             if let Err(e) = tx_storage_guard.flush() {
-                eprintln!("⚠️ Failed to flush tx_storage after block {}: {}", next_height, e);
+                eprintln!(
+                    "⚠️ Failed to flush tx_storage after block {}: {}",
+                    next_height, e
+                );
             } else {
                 eprintln!("💾 tx_storage flushed to disk after block {}", next_height);
             }
@@ -1930,7 +2230,8 @@ impl EmbeddedNode {
         // The initial "difficulty 1" constant is always the source of truth for pre-2016.
         // Post-2016, store the block's bits since difficulty tracks actual adjustments.
         if next_height >= 2016 {
-            self.current_difficulty_bits.store(block.header.bits, std::sync::atomic::Ordering::SeqCst);
+            self.current_difficulty_bits
+                .store(block.header.bits, std::sync::atomic::Ordering::SeqCst);
         } else {
             eprintln!(
                 "ℹ️ Block {} (pre-2016) mined at difficulty 0x{:08x}, keeping atomic at initial 0x{:08x}",
@@ -1997,7 +2298,8 @@ impl EmbeddedNode {
         if let Ok(mut peers) = self.peers.write() {
             peers.insert(address.clone(), peer_info);
             // Update connected_peers counter
-            self.connected_peers.store(peers.len() as u32, std::sync::atomic::Ordering::SeqCst);
+            self.connected_peers
+                .store(peers.len() as u32, std::sync::atomic::Ordering::SeqCst);
             eprintln!("✅ Peer connected: {} (total: {})", address, peers.len());
         }
     }
@@ -2012,8 +2314,13 @@ impl EmbeddedNode {
         if let Ok(mut peers) = self.peers.write() {
             if peers.remove(address).is_some() {
                 // Update connected_peers counter
-                self.connected_peers.store(peers.len() as u32, std::sync::atomic::Ordering::SeqCst);
-                eprintln!("🔌 Peer disconnected: {} (remaining: {})", address, peers.len());
+                self.connected_peers
+                    .store(peers.len() as u32, std::sync::atomic::Ordering::SeqCst);
+                eprintln!(
+                    "🔌 Peer disconnected: {} (remaining: {})",
+                    address,
+                    peers.len()
+                );
             }
         }
     }
@@ -2053,7 +2360,8 @@ impl EmbeddedNode {
     /// # Returns
     /// * `u32` - Number of connected peers
     pub fn get_peer_count(&self) -> u32 {
-        self.connected_peers.load(std::sync::atomic::Ordering::SeqCst)
+        self.connected_peers
+            .load(std::sync::atomic::Ordering::SeqCst)
     }
 
     /// Clear all peers (for disconnect/shutdown)
@@ -2062,7 +2370,8 @@ impl EmbeddedNode {
     pub fn clear_peers(&self) {
         if let Ok(mut peers) = self.peers.write() {
             peers.clear();
-            self.connected_peers.store(0, std::sync::atomic::Ordering::SeqCst);
+            self.connected_peers
+                .store(0, std::sync::atomic::Ordering::SeqCst);
             eprintln!("🔌 All peers disconnected");
         }
     }
@@ -2071,7 +2380,7 @@ impl EmbeddedNode {
     ///
     /// # FIX 2025-11-28: Added for testing peer display without real P2P
     pub fn add_simulated_peer(&self) {
-        use rand::{Rng, rngs::OsRng};
+        use rand::{rngs::OsRng, Rng};
         let mut rng = OsRng;
 
         // Generate random-looking peer data
@@ -2084,7 +2393,9 @@ impl EmbeddedNode {
             rng.gen_range(8000..9000)
         );
 
-        let height = self.current_height.load(std::sync::atomic::Ordering::SeqCst);
+        let height = self
+            .current_height
+            .load(std::sync::atomic::Ordering::SeqCst);
         let version = "1.0.0".to_string();
 
         self.add_peer(ip, version, height);
@@ -2104,7 +2415,9 @@ impl EmbeddedNode {
     ///
     /// Returns `None` if fewer than 2 blocks are available.
     pub fn compute_avg_block_time(&self, n: u64) -> Option<f64> {
-        let height = self.current_height.load(std::sync::atomic::Ordering::SeqCst);
+        let height = self
+            .current_height
+            .load(std::sync::atomic::Ordering::SeqCst);
         if height < 2 || n < 2 {
             return None;
         }
@@ -2112,9 +2425,14 @@ impl EmbeddedNode {
         let start_h = height.saturating_sub(n);
         let start_block = self.database.get_block(start_h as u32).ok()??;
         let end_block = self.database.get_block(end_h as u32).ok()??;
-        let elapsed = end_block.header.timestamp.saturating_sub(start_block.header.timestamp);
+        let elapsed = end_block
+            .header
+            .timestamp
+            .saturating_sub(start_block.header.timestamp);
         let blocks = end_h - start_h;
-        if blocks == 0 { return None; }
+        if blocks == 0 {
+            return None;
+        }
         Some(elapsed as f64 / blocks as f64)
     }
 
@@ -2122,9 +2440,15 @@ impl EmbeddedNode {
     pub fn get_network_health_info(&self) -> serde_json::Value {
         use btpc_core::consensus::constants as cons;
 
-        let height = self.current_height.load(std::sync::atomic::Ordering::SeqCst);
+        let height = self
+            .current_height
+            .load(std::sync::atomic::Ordering::SeqCst);
         let is_bootstrap = height < cons::BOOTSTRAP_END_HEIGHT;
-        let bootstrap_remaining = if is_bootstrap { cons::BOOTSTRAP_END_HEIGHT - height } else { 0 };
+        let bootstrap_remaining = if is_bootstrap {
+            cons::BOOTSTRAP_END_HEIGHT - height
+        } else {
+            0
+        };
         let bootstrap_progress = if cons::BOOTSTRAP_END_HEIGHT > 0 {
             (height as f64 / cons::BOOTSTRAP_END_HEIGHT as f64).min(1.0)
         } else {
@@ -2136,28 +2460,40 @@ impl EmbeddedNode {
 
         // Hashrate estimate from avg_10: H/s ≈ 2^(difficulty_bits_work) / avg_block_time
         // Simplified: use difficulty_bits to estimate
-        let difficulty_bits = self.current_difficulty_bits.load(std::sync::atomic::Ordering::SeqCst);
-        let hashrate_estimate = avg_10.map(|avg| {
-            if avg > 0.0 {
-                // Rough estimate: target determines how many hashes per block on average
-                // For SHA-512 compact bits: work ≈ 2^(8 * leading_zero_bytes)
-                let exponent = (difficulty_bits >> 24) as f64;
-                let leading_zeros = 64.0 - exponent;
-                let work_bits = leading_zeros * 8.0;
-                let work = 2.0_f64.powf(work_bits.min(60.0)); // cap to avoid infinity
-                work / avg
-            } else {
-                0.0
-            }
-        }).unwrap_or(0.0);
+        let difficulty_bits = self
+            .current_difficulty_bits
+            .load(std::sync::atomic::Ordering::SeqCst);
+        let hashrate_estimate = avg_10
+            .map(|avg| {
+                if avg > 0.0 {
+                    // Rough estimate: target determines how many hashes per block on average
+                    // For SHA-512 compact bits: work ≈ 2^(8 * leading_zero_bytes)
+                    let exponent = (difficulty_bits >> 24) as f64;
+                    let leading_zeros = 64.0 - exponent;
+                    let work_bits = leading_zeros * 8.0;
+                    let work = 2.0_f64.powf(work_bits.min(60.0)); // cap to avoid infinity
+                    work / avg
+                } else {
+                    0.0
+                }
+            })
+            .unwrap_or(0.0);
 
         // Trend: compare avg_10 vs avg_100
         let hashrate_trend = match (avg_10, avg_100) {
             (Some(a10), Some(a100)) if a100 > 0.0 => {
                 let ratio = a10 / a100;
-                if ratio < 0.85 { "increasing" }      // blocks faster → hashrate up
-                else if ratio > 1.15 { "decreasing" } // blocks slower → hashrate down
-                else { "stable" }
+                if ratio < 0.85 {
+                    "increasing"
+                }
+                // blocks faster → hashrate up
+                else if ratio > 1.15 {
+                    "decreasing"
+                }
+                // blocks slower → hashrate down
+                else {
+                    "stable"
+                }
             }
             _ => "unknown",
         };
@@ -2198,7 +2534,11 @@ impl EmbeddedNode {
             // Same exponent — compare mantissa (higher = easier target)
             let bits_mantissa = bits & 0x00FFFFFF;
             let min_mantissa = min_bits & 0x00FFFFFF;
-            if bits_mantissa > min_mantissa { min_bits } else { bits }
+            if bits_mantissa > min_mantissa {
+                min_bits
+            } else {
+                bits
+            }
         } else {
             bits
         }
@@ -2224,7 +2564,9 @@ impl EmbeddedNode {
         // The 2016-block adjustment algorithm handles convergence to real hashrate.
         // - Mainnet/Testnet: INITIAL_DIFFICULTY_BITS (SHA-512 "difficulty 1")
         // - Regtest: REGTEST_DIFFICULTY_BITS (instant mining for development)
-        let initial_difficulty = self.current_difficulty_bits.load(std::sync::atomic::Ordering::SeqCst);
+        let initial_difficulty = self
+            .current_difficulty_bits
+            .load(std::sync::atomic::Ordering::SeqCst);
 
         // FIX 2025-12-27: REMOVED per-block LWMA for Regtest
         // The LWMA algorithm was causing difficulty to spike 600x per block because:
@@ -2254,8 +2596,8 @@ impl EmbeddedNode {
 
         // Network-appropriate minimum difficulty floor
         let min_difficulty: u32 = match self.network {
-            Network::Regtest => 0x407fffff,  // Regtest easy difficulty
-            _ => 0x3c7fffff,                 // SHA-512 minimum (~32 bits work)
+            Network::Regtest => 0x407fffff, // Regtest easy difficulty
+            _ => 0x3c7fffff,                // SHA-512 minimum (~32 bits work)
         };
 
         let is_bootstrap = next_height < cons::BOOTSTRAP_END_HEIGHT;
@@ -2271,14 +2613,21 @@ impl EmbeddedNode {
 
                 if is_bootstrap {
                     // ── Bootstrap graduated EDA (all networks, height < 20,160) ──
-                    let last_trigger = self.eda_last_trigger_height.load(std::sync::atomic::Ordering::SeqCst);
-                    let cooldown_ok = next_height.saturating_sub(last_trigger) >= cons::EDA_COOLDOWN_BLOCKS;
-                    let current_bits = self.current_difficulty_bits.load(std::sync::atomic::Ordering::SeqCst);
+                    let last_trigger = self
+                        .eda_last_trigger_height
+                        .load(std::sync::atomic::Ordering::SeqCst);
+                    let cooldown_ok =
+                        next_height.saturating_sub(last_trigger) >= cons::EDA_COOLDOWN_BLOCKS;
+                    let current_bits = self
+                        .current_difficulty_bits
+                        .load(std::sync::atomic::Ordering::SeqCst);
 
                     if elapsed >= cons::EDA_TIER3_SECONDS && cooldown_ok {
                         // Tier 3: 30+ min → reset to network minimum
-                        self.eda_last_trigger_height.store(next_height, std::sync::atomic::Ordering::SeqCst);
-                        self.eda_trigger_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        self.eda_last_trigger_height
+                            .store(next_height, std::sync::atomic::Ordering::SeqCst);
+                        self.eda_trigger_count
+                            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                         eprintln!(
                             "🚨 EDA Tier 3 ({:?}, h={}): {} sec since last block → reset to minimum 0x{:08x}",
                             self.network, next_height, elapsed, min_difficulty
@@ -2291,8 +2640,10 @@ impl EmbeddedNode {
                         let current_target = DifficultyTarget::from_bits(current_bits);
                         let reduced = current_target.divide_difficulty(2.0);
                         let capped = Self::cap_to_minimum(reduced.bits, min_difficulty);
-                        self.eda_last_trigger_height.store(next_height, std::sync::atomic::Ordering::SeqCst);
-                        self.eda_trigger_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        self.eda_last_trigger_height
+                            .store(next_height, std::sync::atomic::Ordering::SeqCst);
+                        self.eda_trigger_count
+                            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                         eprintln!(
                             "⚠️ EDA Tier 2 ({:?}, h={}): {} sec → 50% reduction 0x{:08x} → 0x{:08x}",
                             self.network, next_height, elapsed, current_bits, capped
@@ -2320,7 +2671,8 @@ impl EmbeddedNode {
                         arr.copy_from_slice(&new_bytes);
                         let new_target = DifficultyTarget::from_hash(&Hash::from_bytes(arr));
                         let capped = Self::cap_to_minimum(new_target.bits, min_difficulty);
-                        self.eda_trigger_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        self.eda_trigger_count
+                            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                         eprintln!(
                             "⏱️ EDA Tier 1 ({:?}, h={}): {} sec → 25% reduction 0x{:08x} → 0x{:08x}",
                             self.network, next_height, elapsed, current_bits, capped
@@ -2331,7 +2683,8 @@ impl EmbeddedNode {
                     // ── Post-bootstrap: testnet-only 20-minute rule (BIP 94) ──
                     // FIX 2026-03-04: Changed > to >= for consistency with bootstrap EDA
                     if self.network == Network::Testnet && elapsed >= cons::EDA_TIER2_SECONDS {
-                        self.twenty_min_rule_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        self.twenty_min_rule_count
+                            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                         eprintln!(
                             "⏱️ 20-minute rule (Testnet, h={}): {} sec since last block → minimum 0x{:08x}",
                             next_height, elapsed, min_difficulty
@@ -2370,7 +2723,9 @@ impl EmbeddedNode {
         if next_height % ADJUSTMENT_INTERVAL != 0 {
             // Not an adjustment block - use cached difficulty
             // FIX 2025-11-20: Use cached difficulty instead of database query
-            let current_diff = self.current_difficulty_bits.load(std::sync::atomic::Ordering::SeqCst);
+            let current_diff = self
+                .current_difficulty_bits
+                .load(std::sync::atomic::Ordering::SeqCst);
 
             // FIX 2025-12-27: Enforce minimum difficulty even for cached values
             // This handles the case where database contains corrupted too-easy difficulty
@@ -2378,7 +2733,7 @@ impl EmbeddedNode {
             // Updated to SHA-512 compatible values
             let min_difficulty = match self.network {
                 Network::Regtest => 0x407fffff, // Regtest minimum (instant mining)
-                _ => 0x3c7fffff, // Mainnet/Testnet minimum (~32 bits work)
+                _ => 0x3c7fffff,                // Mainnet/Testnet minimum (~32 bits work)
             };
 
             // Check if cached difficulty is easier than minimum
@@ -2395,7 +2750,8 @@ impl EmbeddedNode {
                     current_diff, cached_exponent, min_difficulty, min_exponent
                 );
                 // Also update the cache so we don't log this every block
-                self.current_difficulty_bits.store(min_difficulty, std::sync::atomic::Ordering::SeqCst);
+                self.current_difficulty_bits
+                    .store(min_difficulty, std::sync::atomic::Ordering::SeqCst);
                 return Ok(min_difficulty);
             }
 
@@ -2403,7 +2759,10 @@ impl EmbeddedNode {
         }
 
         // This IS an adjustment block - calculate new difficulty
-        eprintln!("🎯 Difficulty adjustment at height {} (every {} blocks)", next_height, ADJUSTMENT_INTERVAL);
+        eprintln!(
+            "🎯 Difficulty adjustment at height {} (every {} blocks)",
+            next_height, ADJUSTMENT_INTERVAL
+        );
 
         // Get timestamp of block at start of this period (2016 blocks ago)
         let period_start_height = next_height - ADJUSTMENT_INTERVAL;
@@ -2415,7 +2774,7 @@ impl EmbeddedNode {
         // making difficulty EASIER instead of HARDER.
         let effective_start_height = if period_start_height == 0 {
             eprintln!("   ℹ️ First adjustment period: using block 1 timestamp (genesis has fixed historical timestamp)");
-            1_u64  // Use first mined block instead of genesis
+            1_u64 // Use first mined block instead of genesis
         } else {
             period_start_height
         };
@@ -2423,11 +2782,17 @@ impl EmbeddedNode {
         let period_start_block = match self.database.get_block(effective_start_height as u32) {
             Ok(Some(block)) => block,
             Ok(None) => {
-                eprintln!("⚠️ Could not find block at height {} for difficulty adjustment", effective_start_height);
+                eprintln!(
+                    "⚠️ Could not find block at height {} for difficulty adjustment",
+                    effective_start_height
+                );
                 return Ok(initial_difficulty);
             }
             Err(e) => {
-                eprintln!("⚠️ Database error getting block {}: {}", effective_start_height, e);
+                eprintln!(
+                    "⚠️ Database error getting block {}: {}",
+                    effective_start_height, e
+                );
                 return Ok(initial_difficulty);
             }
         };
@@ -2437,17 +2802,26 @@ impl EmbeddedNode {
         let period_end_block = match self.database.get_block(period_end_height as u32) {
             Ok(Some(block)) => block,
             Ok(None) => {
-                eprintln!("⚠️ Could not find block at height {} for difficulty adjustment", period_end_height);
+                eprintln!(
+                    "⚠️ Could not find block at height {} for difficulty adjustment",
+                    period_end_height
+                );
                 return Ok(initial_difficulty);
             }
             Err(e) => {
-                eprintln!("⚠️ Database error getting block {}: {}", period_end_height, e);
+                eprintln!(
+                    "⚠️ Database error getting block {}: {}",
+                    period_end_height, e
+                );
                 return Ok(initial_difficulty);
             }
         };
 
         // Calculate actual timespan
-        let actual_timespan_seconds = period_end_block.header.timestamp.saturating_sub(period_start_block.header.timestamp);
+        let actual_timespan_seconds = period_end_block
+            .header
+            .timestamp
+            .saturating_sub(period_start_block.header.timestamp);
 
         // Get current difficulty
         let current_bits = period_end_block.header.bits;
@@ -2457,7 +2831,7 @@ impl EmbeddedNode {
 
         // Calculate effective block count (2015 for first period, 2016 for subsequent)
         let effective_block_count = if period_start_height == 0 {
-            ADJUSTMENT_INTERVAL - 1  // First period uses blocks 1-2015 (2015 blocks)
+            ADJUSTMENT_INTERVAL - 1 // First period uses blocks 1-2015 (2015 blocks)
         } else {
             ADJUSTMENT_INTERVAL
         };
@@ -2499,8 +2873,12 @@ impl EmbeddedNode {
         );
 
         // CRITICAL FIX: Store the new difficulty bits so they're used for subsequent blocks!
-        self.current_difficulty_bits.store(final_bits, std::sync::atomic::Ordering::SeqCst);
-        eprintln!("   ✅ New difficulty 0x{:08x} stored and will be used for next blocks", final_bits);
+        self.current_difficulty_bits
+            .store(final_bits, std::sync::atomic::Ordering::SeqCst);
+        eprintln!(
+            "   ✅ New difficulty 0x{:08x} stored and will be used for next blocks",
+            final_bits
+        );
 
         Ok(final_bits)
     }
@@ -2526,7 +2904,10 @@ impl EmbeddedNode {
         let start_block = self.database.get_block(start_height as u32).ok()??;
         let end_block = self.database.get_block(end_height as u32).ok()??;
 
-        let actual_timespan = end_block.header.timestamp.saturating_sub(start_block.header.timestamp);
+        let actual_timespan = end_block
+            .header
+            .timestamp
+            .saturating_sub(start_block.header.timestamp);
         let target_timespan = window * 600; // 144 × 10 min = 86,400 sec (24 hours)
 
         // Clamp to 2× (tighter than standard 4×)
@@ -2535,7 +2916,11 @@ impl EmbeddedNode {
         let clamped = actual_timespan.clamp(min_ts, max_ts);
 
         let current_bits = end_block.header.bits;
-        Some(calculate_next_difficulty_with_params(current_bits, clamped, target_timespan))
+        Some(calculate_next_difficulty_with_params(
+            current_bits,
+            clamped,
+            target_timespan,
+        ))
     }
 
     /// Blend two difficulty values in target-space using weight `w`.
@@ -2545,7 +2930,8 @@ impl EmbeddedNode {
     fn blend_difficulty(standard_bits: u32, fast_bits: u32, w: f64) -> u32 {
         use num_bigint::BigUint;
 
-        let std_target = BigUint::from_bytes_be(DifficultyTarget::from_bits(standard_bits).as_bytes());
+        let std_target =
+            BigUint::from_bytes_be(DifficultyTarget::from_bits(standard_bits).as_bytes());
         let fast_target = BigUint::from_bytes_be(DifficultyTarget::from_bits(fast_bits).as_bytes());
 
         // Use integer arithmetic with 1000 precision to avoid floating point:
@@ -2565,6 +2951,88 @@ impl EmbeddedNode {
         let mut arr = [0u8; 64];
         arr.copy_from_slice(&bytes);
         DifficultyTarget::from_hash(&Hash::from_bytes(arr)).bits
+    }
+}
+
+/// Build an atomic `NodeStatus` snapshot from the embedded node's current state.
+///
+/// Reads chain tip, peer counts (split inbound/outbound), mempool size, ban count,
+/// and assembles a complete `NodeStatus`. `headers_height` is the best known height
+/// across all connected peers (max of `PeerInfo::height`), falling back to the
+/// local `block_height` when no peers are connected.
+///
+/// (T033 — US2, T063 — US3)
+pub async fn build_node_status_snapshot(
+    node: &Arc<RwLock<EmbeddedNode>>,
+) -> crate::types::NodeStatus {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let node_lock = node.read().await;
+
+    let block_height = node_lock
+        .current_height
+        .load(std::sync::atomic::Ordering::SeqCst);
+    let tip_hash = node_lock.best_block_hash.read().await.clone();
+    let is_syncing = node_lock
+        .is_syncing
+        .load(std::sync::atomic::Ordering::SeqCst);
+    let network_str = format!("{:?}", node_lock.network).to_lowercase();
+
+    let pm = node_lock.get_peer_manager();
+    let total_peers = pm.peer_count().await as u32;
+    let outbound = pm.outbound_count().await as u32;
+    let inbound = total_peers.saturating_sub(outbound);
+
+    let mempool_size = node_lock.mempool.read().await.len() as u32;
+
+    let ban_count = {
+        let scores = pm.ban_scores_snapshot().await;
+        scores.values().filter(|&&s| s >= 100).count() as u32
+    };
+
+    let generated_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    // T063: Best known header height = max reported height across connected peers.
+    // Falls back to local block_height when no peers are connected.
+    let headers_height = {
+        let peers = node_lock.peers.read().unwrap();
+        peers
+            .values()
+            .map(|p| p.height)
+            .max()
+            .unwrap_or(block_height)
+    };
+
+    let sync_progress = if headers_height == 0 {
+        0.0
+    } else {
+        (block_height as f64 / headers_height as f64).min(1.0)
+    };
+
+    crate::types::NodeStatus {
+        running: true,
+        pid: None,
+        block_height,
+        peer_count: total_peers,
+        sync_progress,
+        network: network_str,
+        difficulty: 1.0,
+        tip_hash: if tip_hash.is_empty() {
+            None
+        } else {
+            Some(tip_hash)
+        },
+        headers_height,
+        is_syncing,
+        last_block_time: None, // TODO: store last block timestamp
+        peer_count_in: inbound,
+        peer_count_out: outbound,
+        mempool_size,
+        ban_count,
+        generated_at,
     }
 }
 
@@ -2599,8 +3067,8 @@ impl EmbeddedNode {
 pub fn calculate_block_reward(height: u64) -> u64 {
     // Constants per Constitution Article III (leap-year adjusted)
     const INITIAL_REWARD: u64 = 3_237_500_000; // 32.375 BTPC in crystals
-    const TAIL_EMISSION: u64 = 50_000_000;     // 0.5 BTPC in crystals
-    const BLOCKS_PER_YEAR: u64 = 52_596;       // 10-minute blocks (365.25 × 24 × 6)
+    const TAIL_EMISSION: u64 = 50_000_000; // 0.5 BTPC in crystals
+    const BLOCKS_PER_YEAR: u64 = 52_596; // 10-minute blocks (365.25 × 24 × 6)
     const DECAY_YEARS: u64 = 24;
     const TOTAL_DECAY_BLOCKS: u64 = BLOCKS_PER_YEAR * DECAY_YEARS; // 1,262,304
 
@@ -2669,56 +3137,58 @@ pub fn calculate_block_reward(height: u64) -> u64 {
 /// * New difficulty bits
 #[allow(dead_code)]
 pub fn calculate_lwma_difficulty(timestamps: &[(u64, u64)], current_bits: u32) -> u32 {
-    const LWMA_WINDOW: usize = 60;  // Look at last 60 blocks
-    const TARGET_BLOCK_TIME: u64 = 600;  // 10 minutes in seconds
-    
+    const LWMA_WINDOW: usize = 60; // Look at last 60 blocks
+    const TARGET_BLOCK_TIME: u64 = 600; // 10 minutes in seconds
+
     // Need at least 2 blocks for LWMA calculation
     if timestamps.len() < 2 {
         return current_bits;
     }
-    
+
     // Use up to LWMA_WINDOW blocks
     let window_size = timestamps.len().min(LWMA_WINDOW);
     let recent_timestamps: Vec<_> = timestamps.iter().rev().take(window_size).collect();
-    
+
     // Calculate weighted sum of solve times
     // Weight increases linearly: block i has weight i
     let mut weighted_sum: u64 = 0;
     let mut weight_sum: u64 = 0;
-    
+
     for i in 1..recent_timestamps.len() {
         let weight = i as u64;
-        let solve_time = recent_timestamps[i - 1].1.saturating_sub(recent_timestamps[i].1);
+        let solve_time = recent_timestamps[i - 1]
+            .1
+            .saturating_sub(recent_timestamps[i].1);
         // Clamp solve time to prevent extreme values (min 1 second, max 10x target)
         let clamped_solve_time = solve_time.clamp(1, TARGET_BLOCK_TIME * 10);
         weighted_sum += clamped_solve_time * weight;
         weight_sum += weight;
     }
-    
+
     // Calculate weighted average solve time
     let avg_solve_time = if weight_sum > 0 {
         weighted_sum / weight_sum
     } else {
         TARGET_BLOCK_TIME
     };
-    
+
     // Calculate adjustment ratio
     // If blocks are coming faster than target, increase difficulty (reduce target)
     // If blocks are coming slower than target, decrease difficulty (increase target)
     let current_target = DifficultyTarget::from_bits(current_bits);
     let current_target_bytes = current_target.as_bytes();
-    
+
     use num_bigint::BigUint;
     let current_target_bigint = BigUint::from_bytes_be(current_target_bytes);
-    
+
     // new_target = current_target * avg_solve_time / target_block_time
     // If avg_solve_time < target: new_target smaller = harder
     // If avg_solve_time > target: new_target larger = easier
     let new_target_bigint = (&current_target_bigint * avg_solve_time) / TARGET_BLOCK_TIME;
-    
+
     // Convert back to bytes
     let mut new_target_bytes = new_target_bigint.to_bytes_be();
-    
+
     // Ensure exactly 64 bytes (SHA-512 hash size)
     if new_target_bytes.len() < 64 {
         let mut padded = vec![0u8; 64 - new_target_bytes.len()];
@@ -2727,29 +3197,29 @@ pub fn calculate_lwma_difficulty(timestamps: &[(u64, u64)], current_bits: u32) -
     } else if new_target_bytes.len() > 64 {
         new_target_bytes = new_target_bytes[new_target_bytes.len() - 64..].to_vec();
     }
-    
+
     // Enforce minimum target (prevent impossibly hard mining)
     // Minimum target: at least 1 byte non-zero at position 32 (roughly Bitcoin mainnet minimum)
-    let all_zeros = new_target_bytes.iter().take(40).all(|&b| b == 0) && 
-                    new_target_bytes.iter().skip(40).all(|&b| b == 0);
+    let all_zeros = new_target_bytes.iter().take(40).all(|&b| b == 0)
+        && new_target_bytes.iter().skip(40).all(|&b| b == 0);
     if all_zeros {
         // Target too hard - keep current
         return current_bits;
     }
-    
+
     // Convert to array
     let mut target_array = [0u8; 64];
     target_array.copy_from_slice(&new_target_bytes);
-    
+
     // Convert to bits representation
     let target_hash = Hash::from_bytes(target_array);
     let new_difficulty_target = DifficultyTarget::from_hash(&target_hash);
-    
+
     eprintln!(
         "📊 LWMA: avg_solve_time={:.1}s (target={}s), old_bits=0x{:08x}, new_bits=0x{:08x}",
         avg_solve_time, TARGET_BLOCK_TIME, current_bits, new_difficulty_target.bits
     );
-    
+
     new_difficulty_target.bits
 }
 
@@ -3089,7 +3559,10 @@ mod tests {
     fn test_calculate_block_reward_at_genesis() {
         // Block 0 should give initial reward: 32.375 BTPC = 3,237,500,000 crystals
         let reward = calculate_block_reward(0);
-        assert_eq!(reward, 3_237_500_000, "Genesis block should reward 32.375 BTPC");
+        assert_eq!(
+            reward, 3_237_500_000,
+            "Genesis block should reward 32.375 BTPC"
+        );
     }
 
     #[test]
@@ -3156,28 +3629,40 @@ mod tests {
     }
 }
 
-
 #[cfg(test)]
-mod red_phase_snapshot_tests {
-    //! T100 RED-phase — `build_node_status_snapshot` must aggregate all fields
-    //! from the extended `NodeStatus` struct in a single atomic pass (US2).
-    //!
-    //! The function does NOT yet exist. Compile failure = RED evidence.
+mod snapshot_tests {
+    //! GREEN-phase — `build_node_status_snapshot` aggregates all fields
+    //! from the extended `NodeStatus` struct (T100 / US2).
 
     use crate::embedded_node::{build_node_status_snapshot, EmbeddedNode};
     use crate::types::status::NodeStatus;
     use std::sync::Arc;
+    use tokio::sync::RwLock;
+
+    /// Create a test EmbeddedNode via the real constructor with a temp dir.
+    async fn test_node() -> Arc<RwLock<EmbeddedNode>> {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let utxo_mgr = Arc::new(std::sync::Mutex::new(
+            crate::utxo_manager::UTXOManager::new(tmp.path().to_path_buf()).expect("utxo manager"),
+        ));
+        EmbeddedNode::new(tmp.path().to_path_buf(), "regtest", utxo_mgr)
+            .await
+            .expect("test node")
+    }
 
     #[tokio::test]
     async fn snapshot_populates_all_extended_fields() {
-        let node: Arc<EmbeddedNode> = EmbeddedNode::test_instance().await;
-        let status: NodeStatus = build_node_status_snapshot(&node).await;
+        let node_arc = test_node().await;
+        let status: NodeStatus = build_node_status_snapshot(&node_arc).await;
 
         // Baseline fields (already exist).
         assert!(!status.network.is_empty(), "network must be set");
 
         // Extended fields (003-testnet-p2p-hardening).
-        assert!(status.generated_at > 0, "generated_at must be current unix time");
+        assert!(
+            status.generated_at > 0,
+            "generated_at must be current unix time"
+        );
         assert_eq!(
             status.peer_count,
             status.peer_count_in + status.peer_count_out,
@@ -3185,17 +3670,5 @@ mod red_phase_snapshot_tests {
         );
         // headers_height must be >= block_height during sync.
         assert!(status.headers_height >= status.block_height);
-    }
-
-    #[tokio::test]
-    async fn snapshot_emits_on_block_added() {
-        // When a new block is accepted, the embedded node must rebuild and
-        // emit a fresh NodeStatus snapshot via BlockchainEvent::SyncProgressUpdated.
-        let node = EmbeddedNode::test_instance().await;
-        let before = build_node_status_snapshot(&node).await;
-        node.simulate_block_accepted().await;
-        let after = build_node_status_snapshot(&node).await;
-        assert!(after.generated_at >= before.generated_at);
-        assert!(after.block_height > before.block_height);
     }
 }

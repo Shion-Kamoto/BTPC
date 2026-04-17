@@ -6,9 +6,9 @@
 use std::sync::{Arc, Mutex};
 use tauri::State;
 
-use btpc_desktop_app::utxo_manager::{UTXOManager, UTXOStats, UTXO};
 use crate::error::BtpcError;
 use crate::AppState;
+use btpc_desktop_app::utxo_manager::{UTXOManager, UTXOStats, UTXO};
 
 // Helper function to add mining rewards to UTXO set
 pub fn add_mining_reward_utxo(
@@ -132,7 +132,14 @@ pub async fn add_mining_utxo(
     block_height: u64,
 ) -> Result<String, String> {
     let fork_id = state.active_network.read().await.fork_id();
-    add_mining_reward_utxo(&state.utxo_manager, &address, amount_credits, block_height, fork_id).map(|_| {
+    add_mining_reward_utxo(
+        &state.utxo_manager,
+        &address,
+        amount_credits,
+        block_height,
+        fork_id,
+    )
+    .map(|_| {
         format!(
             "Added mining UTXO: {} credits at block {}",
             amount_credits, block_height

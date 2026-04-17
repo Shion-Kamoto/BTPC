@@ -19,15 +19,15 @@ pub use btpc_desktop_app::utxo_manager;
 pub use btpc_desktop_app::wallet_manager;
 
 // Core modules
-pub mod error;
 mod address_book;
 mod address_utils;
+pub mod error;
 mod gpu_detection;
 mod orphaned_utxo_cleaner;
 mod process_manager;
+mod settings_storage;
 pub mod state_management;
 mod sync_service;
-mod settings_storage;
 mod wallet_commands;
 
 // GPU Mining Dashboard modules (Feature 012)
@@ -56,7 +56,7 @@ mod commands;
 // Refactored modules
 mod app_state;
 mod config;
-mod types;
+use btpc_desktop_app::types;
 
 // Tauri application builder
 mod tauri_app;

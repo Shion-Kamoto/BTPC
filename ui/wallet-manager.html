@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BTPC Wallet - Wallets</title>
     <link rel="stylesheet" href="btpc-styles.css">
+    <link rel="stylesheet" href="btpc-node-status.css">
     <script src="qrcode.min.js"></script>
     <style>
         .tab-nav {
@@ -336,6 +337,15 @@
                         <span>Logout</span>
                     </button>
                 </div>
+            </div>
+
+            <!-- T044: Shared Node Status Bar -->
+            <div class="btpc-node-status-bar">
+                <span class="btpc-status-pill" data-node-status="online">--</span>
+                <span><label>Height:</label><span data-node-status="height">--</span></span>
+                <span><label>Peers:</label><span data-node-status="peerCount">--</span></span>
+                <span><label>Sync:</label><span data-node-status="syncPct">--</span></span>
+                <span><label>Network:</label><span data-node-status="network">--</span></span>
             </div>
 
             <!-- Wallet Summary -->
@@ -795,6 +805,7 @@
     <script src="btpc-update-manager.js"></script>
     <script src="password-modal.js"></script>
     <script src="btpc-logout.js"></script>
+    <script src="btpc-node-status.js"></script>
     <script>
         let currentWalletId = null;
         let allWallets = [];

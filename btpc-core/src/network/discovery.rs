@@ -532,8 +532,7 @@ impl PeerDiscovery {
             fs::create_dir_all(parent)?;
         }
 
-        let json = serde_json::to_string_pretty(&saved)
-            .map_err(std::io::Error::other)?;
+        let json = serde_json::to_string_pretty(&saved).map_err(std::io::Error::other)?;
         fs::write(path, json)
     }
 
@@ -1020,10 +1019,7 @@ pub fn handle_getaddr(disc: &PeerDiscovery) -> Vec<NetworkAddress> {
 /// Decide how to process an inbound `addr` message. Small messages
 /// (≤[`ADDR_RELAY_THRESHOLD`] entries) are relayed to exactly two other
 /// peers; larger ones are ingested silently.
-pub fn handle_inbound_addr(
-    _disc: &PeerDiscovery,
-    addrs: &[NetworkAddress],
-) -> AddrRelayDecision {
+pub fn handle_inbound_addr(_disc: &PeerDiscovery, addrs: &[NetworkAddress]) -> AddrRelayDecision {
     if addrs.len() <= ADDR_RELAY_THRESHOLD {
         AddrRelayDecision::Forward { peers: 2 }
     } else {
@@ -1056,7 +1052,12 @@ mod red_phase_addr_gossip_tests {
         let mut disc = mk_discovery();
         for i in 0..2500 {
             let a = std::net::SocketAddr::new(
-                std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, (i >> 8) as u8, (i & 0xff) as u8, 1)),
+                std::net::IpAddr::V4(std::net::Ipv4Addr::new(
+                    10,
+                    (i >> 8) as u8,
+                    (i & 0xff) as u8,
+                    1,
+                )),
                 18351,
             );
             disc.add_address(a, ServiceFlags::NETWORK);
@@ -1067,7 +1068,10 @@ mod red_phase_addr_gossip_tests {
             "getaddr must cap response at 1000, got {}",
             response.len()
         );
-        assert!(!response.is_empty(), "getaddr must return at least some entries");
+        assert!(
+            !response.is_empty(),
+            "getaddr must return at least some entries"
+        );
     }
 
     #[test]
@@ -1080,13 +1084,12 @@ mod red_phase_addr_gossip_tests {
             ServiceFlags::NETWORK,
             eleven_days_ago,
         );
-        disc.add_address(
-            "10.0.0.2:18351".parse().unwrap(),
-            ServiceFlags::NETWORK,
-        );
+        disc.add_address("10.0.0.2:18351".parse().unwrap(), ServiceFlags::NETWORK);
         let response = handle_getaddr(&disc);
         assert!(
-            response.iter().all(|na| !format!("{:?}", na).contains("10.0.0.1")),
+            response
+                .iter()
+                .all(|na| !format!("{:?}", na).contains("10.0.0.1")),
             "stale entry must be filtered out"
         );
     }
@@ -1097,17 +1100,22 @@ mod red_phase_addr_gossip_tests {
         // two randomly-selected peers (relay on gossip).
         let disc = mk_discovery();
         let addrs: Vec<NetworkAddress> = (0..8)
-            .map(|i| NetworkAddress::from_socket_addr(
-                &format!("10.1.0.{}:18351", i + 1).parse().unwrap(),
-                ServiceFlags::NETWORK,
-            ))
+            .map(|i| {
+                NetworkAddress::from_socket_addr(
+                    &format!("10.1.0.{}:18351", i + 1).parse().unwrap(),
+                    ServiceFlags::NETWORK,
+                )
+            })
             .collect();
         let decision = handle_inbound_addr(&disc, &addrs);
         match decision {
             AddrRelayDecision::Forward { peers } => {
                 assert_eq!(peers, 2, "small addr must relay to exactly 2 peers");
             }
-            _ => panic!("small addr must trigger Forward decision, got {:?}", decision),
+            _ => panic!(
+                "small addr must trigger Forward decision, got {:?}",
+                decision
+            ),
         }
     }
 
@@ -1117,10 +1125,14 @@ mod red_phase_addr_gossip_tests {
         // stored but not relayed onward.
         let disc = mk_discovery();
         let addrs: Vec<NetworkAddress> = (0..500)
-            .map(|i| NetworkAddress::from_socket_addr(
-                &format!("10.2.{}.{}:18351", (i >> 8) & 0xff, i & 0xff).parse().unwrap(),
-                ServiceFlags::NETWORK,
-            ))
+            .map(|i| {
+                NetworkAddress::from_socket_addr(
+                    &format!("10.2.{}.{}:18351", (i >> 8) & 0xff, i & 0xff)
+                        .parse()
+                        .unwrap(),
+                    ServiceFlags::NETWORK,
+                )
+            })
             .collect();
         let decision = handle_inbound_addr(&disc, &addrs);
         assert!(

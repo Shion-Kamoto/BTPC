@@ -194,10 +194,13 @@ mod tests {
         let utxo_manager =
             UTXOManager::new(temp_dir.path().to_path_buf()).expect("Failed to create UTXO manager");
         let utxo_manager_arc = Arc::new(Mutex::new(utxo_manager));
-        let node =
-            EmbeddedNode::new(temp_dir.path().to_path_buf(), "regtest", utxo_manager_arc.clone())
-                .await
-                .expect("Failed to create embedded node");
+        let node = EmbeddedNode::new(
+            temp_dir.path().to_path_buf(),
+            "regtest",
+            utxo_manager_arc.clone(),
+        )
+        .await
+        .expect("Failed to create embedded node");
 
         let estimator = FeeEstimator::new(node);
 
@@ -222,10 +225,13 @@ mod tests {
         let utxo_manager =
             UTXOManager::new(temp_dir.path().to_path_buf()).expect("Failed to create UTXO manager");
         let utxo_manager_arc = Arc::new(Mutex::new(utxo_manager));
-        let node =
-            EmbeddedNode::new(temp_dir.path().to_path_buf(), "regtest", utxo_manager_arc.clone())
-                .await
-                .expect("Failed to create embedded node");
+        let node = EmbeddedNode::new(
+            temp_dir.path().to_path_buf(),
+            "regtest",
+            utxo_manager_arc.clone(),
+        )
+        .await
+        .expect("Failed to create embedded node");
 
         let estimator = FeeEstimator::new(node);
 
