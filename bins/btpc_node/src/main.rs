@@ -472,6 +472,20 @@ impl Node {
                     PeerEvent::InventoryReceived { from: _, inv: _ } => {
                         // Inventory is already logged by SimplePeerManager
                     }
+                    PeerEvent::HeadersReceived { from, headers } => {
+                        println!(
+                            "📜 Received {} header(s) from {} (headless node — no catch-up impl)",
+                            headers.len(),
+                            from
+                        );
+                    }
+                    PeerEvent::GetHeadersRequested { from, locator, .. } => {
+                        println!(
+                            "📖 Peer {} requested headers (locator len={}) — headless node has no BlockSource, ignoring",
+                            from,
+                            locator.len()
+                        );
+                    }
                 }
             }
         });
