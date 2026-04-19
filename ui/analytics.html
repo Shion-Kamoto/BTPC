@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BTPC Wallet - Analytics</title>
     <link rel="stylesheet" href="btpc-styles.css">
+    <link rel="stylesheet" href="btpc-node-status.css">
     <style>
         .stats-grid {
             display: grid;
@@ -104,6 +105,15 @@
                 <p>Real-time blockchain synchronization and statistics</p>
             </div>
 
+            <!-- T048: Shared Node Status Bar -->
+            <div class="btpc-node-status-bar">
+                <span class="btpc-status-pill" data-node-status="online">--</span>
+                <span><label>Height:</label><span data-node-status="height">--</span></span>
+                <span><label>Peers:</label><span data-node-status="peerCount">--</span></span>
+                <span><label>Sync:</label><span data-node-status="syncPct">--</span></span>
+                <span><label>Network:</label><span data-node-status="network">--</span></span>
+            </div>
+
             <!-- Sync Status Cards -->
             <div class="stats-grid">
                 <div class="card">
@@ -196,6 +206,7 @@
 
     <script src="btpc-storage.js"></script>
     <script src="btpc-common.js"></script>
+    <script src="btpc-node-status.js"></script>
     <script>
         let syncUpdateInterval = null;
 

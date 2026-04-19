@@ -172,7 +172,11 @@ pub async fn restore_database_backup(
 
     let network = state.active_network.read().await;
     let network_str = network.to_string();
-    let db_path = home_dir.join(".btpc").join("data").join(&network_str).join("blockchain.db");
+    let db_path = home_dir
+        .join(".btpc")
+        .join("data")
+        .join(&network_str)
+        .join("blockchain.db");
     let backup_path_buf = PathBuf::from(backup_path);
 
     // Perform restore
@@ -183,7 +187,9 @@ pub async fn restore_database_backup(
 
             Ok(RestoreBackupResponse {
                 success: true,
-                message: Some("Database restored successfully. Please restart the application.".to_string()),
+                message: Some(
+                    "Database restored successfully. Please restart the application.".to_string(),
+                ),
                 error_message: None,
             })
         }

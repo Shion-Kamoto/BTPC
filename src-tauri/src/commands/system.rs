@@ -318,7 +318,10 @@ pub async fn save_network_config(
     // This eliminates the need for app restart when switching networks
     // Reinitializes: tx_storage, utxo_manager, wallet_manager, address_book_manager
     if let Err(e) = state.reinitialize_for_network(&network_type).await {
-        eprintln!("⚠️ Failed to reinitialize data stores for network '{}': {}", network, e);
+        eprintln!(
+            "⚠️ Failed to reinitialize data stores for network '{}': {}",
+            network, e
+        );
         // Don't fail the command - user can still restart manually
     } else {
         println!("✅ All data stores reinitialized for network '{}'", network);
@@ -328,10 +331,16 @@ pub async fn save_network_config(
     if let Err(e) = state.settings_storage.save_setting("network", &network) {
         eprintln!("Failed to persist network to settings: {}", e);
     }
-    if let Err(e) = state.settings_storage.save_setting("rpc_port", &rpc_port.to_string()) {
+    if let Err(e) = state
+        .settings_storage
+        .save_setting("rpc_port", &rpc_port.to_string())
+    {
         eprintln!("Failed to persist rpc_port to settings: {}", e);
     }
-    if let Err(e) = state.settings_storage.save_setting("p2p_port", &p2p_port.to_string()) {
+    if let Err(e) = state
+        .settings_storage
+        .save_setting("p2p_port", &p2p_port.to_string())
+    {
         eprintln!("Failed to persist p2p_port to settings: {}", e);
     }
 
@@ -375,7 +384,9 @@ pub async fn save_network_config(
 /// }
 /// ```
 #[tauri::command]
-pub async fn get_all_settings(state: State<'_, AppState>) -> Result<GetAllSettingsResponse, String> {
+pub async fn get_all_settings(
+    state: State<'_, AppState>,
+) -> Result<GetAllSettingsResponse, String> {
     // Load settings from RocksDB (Backend-First Architecture per Article XI)
     let settings = state
         .settings_storage
@@ -438,7 +449,10 @@ pub async fn debug_dump_persistence_state(state: State<'_, AppState>) -> Result<
     match state.utxo_manager.lock() {
         Ok(utxo_manager) => {
             let stats = utxo_manager.get_stats();
-            output.push_str(&format!("UTXO file: {:?}\n", utxo_manager.get_utxo_file_path()));
+            output.push_str(&format!(
+                "UTXO file: {:?}\n",
+                utxo_manager.get_utxo_file_path()
+            ));
             output.push_str(&format!("Total UTXOs: {}\n", stats.total_utxos));
             output.push_str(&format!("Unspent UTXOs: {}\n", stats.unspent_utxos));
             output.push_str(&format!("Total value: {:.8} BTP\n", stats.total_value_btp));
@@ -456,7 +470,11 @@ pub async fn debug_dump_persistence_state(state: State<'_, AppState>) -> Result<
             let wallets = wallet_manager.list_wallets();
             output.push_str(&format!("Total wallets: {}\n", wallets.len()));
             for wallet in &wallets {
-                output.push_str(&format!("  - {} ({}...)\n", wallet.nickname, &wallet.address[..20.min(wallet.address.len())]));
+                output.push_str(&format!(
+                    "  - {} ({}...)\n",
+                    wallet.nickname,
+                    &wallet.address[..20.min(wallet.address.len())]
+                ));
             }
         }
         Err(e) => {
@@ -471,8 +489,14 @@ pub async fn debug_dump_persistence_state(state: State<'_, AppState>) -> Result<
     match embedded_node.get_blockchain_state().await {
         Ok(blockchain_state) => {
             output.push_str(&format!("Network: {:?}\n", embedded_node.get_network()));
-            output.push_str(&format!("Current height: {}\n", blockchain_state.current_height));
-            output.push_str(&format!("Difficulty bits: 0x{:08x}\n", blockchain_state.difficulty_bits));
+            output.push_str(&format!(
+                "Current height: {}\n",
+                blockchain_state.current_height
+            ));
+            output.push_str(&format!(
+                "Difficulty bits: 0x{:08x}\n",
+                blockchain_state.difficulty_bits
+            ));
         }
         Err(e) => {
             output.push_str(&format!("ERROR getting blockchain state: {}\n", e));
@@ -484,12 +508,26 @@ pub async fn debug_dump_persistence_state(state: State<'_, AppState>) -> Result<
     // 6. File system check
     output.push_str("=== FILE SYSTEM CHECK ===\n");
     let utxo_file = network_data_dir.join("wallet").join("wallet_utxos.json");
-    let wallet_metadata = network_data_dir.join("wallets").join("wallets_metadata.json");
+    let wallet_metadata = network_data_dir
+        .join("wallets")
+        .join("wallets_metadata.json");
     let settings_db = state.config.data_dir.join("settings");
 
-    output.push_str(&format!("UTXO file exists: {} ({:?})\n", utxo_file.exists(), utxo_file));
-    output.push_str(&format!("Wallet metadata exists: {} ({:?})\n", wallet_metadata.exists(), wallet_metadata));
-    output.push_str(&format!("Settings DB exists: {} ({:?})\n", settings_db.exists(), settings_db));
+    output.push_str(&format!(
+        "UTXO file exists: {} ({:?})\n",
+        utxo_file.exists(),
+        utxo_file
+    ));
+    output.push_str(&format!(
+        "Wallet metadata exists: {} ({:?})\n",
+        wallet_metadata.exists(),
+        wallet_metadata
+    ));
+    output.push_str(&format!(
+        "Settings DB exists: {} ({:?})\n",
+        settings_db.exists(),
+        settings_db
+    ));
 
     output.push_str("\n=== END DEBUG DUMP ===\n");
 
@@ -512,7 +550,9 @@ pub async fn debug_dump_difficulty_timestamps(
     let database = embedded_node.get_database();
 
     // Get current height and difficulty from blockchain state
-    let blockchain_state = embedded_node.get_blockchain_state().await
+    let blockchain_state = embedded_node
+        .get_blockchain_state()
+        .await
         .map_err(|e| BtpcError::Application(format!("Failed to get blockchain state: {}", e)))?;
     let current_height = blockchain_state.current_height;
     output.push_str(&format!("Current blockchain height: {}\n", current_height));
@@ -520,14 +560,14 @@ pub async fn debug_dump_difficulty_timestamps(
 
     // Key heights for difficulty adjustment analysis
     let key_heights: Vec<u32> = vec![
-        0,      // Genesis
-        1,      // First mined block (used instead of genesis for first period)
-        2015,   // End of first period
-        2016,   // First adjustment
-        4031,   // End of second period
-        4032,   // Second adjustment
-        6047,   // End of third period
-        6048,   // Third adjustment
+        0,    // Genesis
+        1,    // First mined block (used instead of genesis for first period)
+        2015, // End of first period
+        2016, // First adjustment
+        4031, // End of second period
+        4032, // Second adjustment
+        6047, // End of third period
+        6048, // Third adjustment
     ];
 
     output.push_str("=== BLOCK TIMESTAMPS ===\n");
@@ -564,7 +604,7 @@ pub async fn debug_dump_difficulty_timestamps(
     output.push_str("4x clamp range: 302,400 - 4,838,400 seconds (3.5 - 56 days)\n\n");
 
     let periods = vec![
-        (1, 2015, "Period 1 (blocks 1-2015)"),      // First period uses block 1, not genesis
+        (1, 2015, "Period 1 (blocks 1-2015)"), // First period uses block 1, not genesis
         (2016, 4031, "Period 2 (blocks 2016-4031)"),
         (4032, 6047, "Period 3 (blocks 4032-6047)"),
     ];
@@ -587,12 +627,26 @@ pub async fn debug_dump_difficulty_timestamps(
                 let days = timespan as f64 / 86400.0;
 
                 output.push_str(&format!("{}\n", period_name));
-                output.push_str(&format!("  Start: block {} @ {}\n", start_height, start.header.timestamp));
-                output.push_str(&format!("  End:   block {} @ {}\n", end_height, end.header.timestamp));
-                output.push_str(&format!("  Timespan: {} seconds ({:.2} days)\n", timespan, days));
-                output.push_str(&format!("  Ratio: {:.4} (clamped: {:.4})\n", ratio, clamped_ratio));
-                output.push_str(&format!("  Expected adjustment: {:.1}%\n\n",
-                    (1.0 - clamped_ratio) * 100.0));
+                output.push_str(&format!(
+                    "  Start: block {} @ {}\n",
+                    start_height, start.header.timestamp
+                ));
+                output.push_str(&format!(
+                    "  End:   block {} @ {}\n",
+                    end_height, end.header.timestamp
+                ));
+                output.push_str(&format!(
+                    "  Timespan: {} seconds ({:.2} days)\n",
+                    timespan, days
+                ));
+                output.push_str(&format!(
+                    "  Ratio: {:.4} (clamped: {:.4})\n",
+                    ratio, clamped_ratio
+                ));
+                output.push_str(&format!(
+                    "  Expected adjustment: {:.1}%\n\n",
+                    (1.0 - clamped_ratio) * 100.0
+                ));
             }
             _ => {
                 output.push_str(&format!("{}: Could not retrieve blocks\n\n", period_name));
@@ -605,7 +659,10 @@ pub async fn debug_dump_difficulty_timestamps(
     let current_bits = blockchain_state.difficulty_bits;
     let exponent = current_bits >> 24;
     let mantissa = current_bits & 0x00ffffff;
-    output.push_str(&format!("Compact bits: 0x{:08x} (decimal: {})\n", current_bits, current_bits));
+    output.push_str(&format!(
+        "Compact bits: 0x{:08x} (decimal: {})\n",
+        current_bits, current_bits
+    ));
     output.push_str(&format!("Exponent: {} (0x{:02x})\n", exponent, exponent));
     output.push_str(&format!("Mantissa: {} (0x{:06x})\n", mantissa, mantissa));
 

@@ -3,7 +3,10 @@
 //! This module implements deterministic seed expansion from 32-byte BIP39 seeds
 //! to 48-byte ML-DSA seeds using SHAKE256 XOF with domain separation.
 
-use sha3::{Shake256, digest::{Update, ExtendableOutput, XofReader}};
+use sha3::{
+    digest::{ExtendableOutput, Update, XofReader},
+    Shake256,
+};
 use zeroize::Zeroizing;
 
 /// Domain separation tag for BTPC ML-DSA key derivation (NFR-002)
@@ -76,8 +79,8 @@ pub fn expand_seed_to_ml_dsa_with_tag(seed: &[u8; 32], tag: &[u8]) -> Result<[u8
     // SHAKE256 is a SHA-3 XOF (extendable output function) that can
     // produce arbitrary-length output from arbitrary-length input
     let mut shake = Shake256::default();
-    shake.update(seed);      // Absorb 32-byte BIP39 seed
-    shake.update(tag);       // Absorb domain tag (NFR-002)
+    shake.update(seed); // Absorb 32-byte BIP39 seed
+    shake.update(tag); // Absorb domain tag (NFR-002)
 
     // Finalize and squeeze 48 bytes
     // Use Zeroizing to securely erase sensitive data when dropped
@@ -119,7 +122,10 @@ mod tests {
         let expanded_a = expand_seed_to_ml_dsa(&seed_a).unwrap();
         let expanded_b = expand_seed_to_ml_dsa(&seed_b).unwrap();
 
-        assert_ne!(expanded_a, expanded_b, "Different seeds must produce different outputs");
+        assert_ne!(
+            expanded_a, expanded_b,
+            "Different seeds must produce different outputs"
+        );
     }
 
     #[test]
@@ -127,7 +133,8 @@ mod tests {
         let seed = [42u8; 32];
 
         let expanded_default = expand_seed_to_ml_dsa(&seed).unwrap();
-        let expanded_different_tag = expand_seed_to_ml_dsa_with_tag(&seed, b"BTPC-TEST-v1").unwrap();
+        let expanded_different_tag =
+            expand_seed_to_ml_dsa_with_tag(&seed, b"BTPC-TEST-v1").unwrap();
 
         assert_ne!(
             expanded_default, expanded_different_tag,
@@ -155,12 +162,7 @@ mod tests {
     #[test]
     fn test_entropy_preservation() {
         // Test various seed patterns
-        let test_seeds = [
-            [1u8; 32],
-            [255u8; 32],
-            [42u8; 32],
-            [0xAAu8; 32],
-        ];
+        let test_seeds = [[1u8; 32], [255u8; 32], [42u8; 32], [0xAAu8; 32]];
 
         for seed in test_seeds.iter() {
             let expanded = expand_seed_to_ml_dsa(seed).unwrap();
@@ -210,6 +212,9 @@ mod tests {
             "Multiple expansions must be independent (no state)"
         );
 
-        assert_ne!(exp1_first, exp2_first, "Different seeds produce different outputs");
+        assert_ne!(
+            exp1_first, exp2_first,
+            "Different seeds produce different outputs"
+        );
     }
 }

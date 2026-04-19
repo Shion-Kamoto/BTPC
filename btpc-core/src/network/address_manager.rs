@@ -270,7 +270,10 @@ impl AddressManager {
         // `New` so good peers win when available.
         let mut by_group: HashMap<NetworkGroup, Vec<&PeerAddressEntry>> = HashMap::new();
         for entry in self.entries.values() {
-            by_group.entry(entry.network_group()).or_default().push(entry);
+            by_group
+                .entry(entry.network_group())
+                .or_default()
+                .push(entry);
         }
         for bucket in by_group.values_mut() {
             bucket.sort_by_key(|e| match e.state {
@@ -364,11 +367,7 @@ fn tried_bucket_index(addr: &SocketAddr) -> usize {
     (hash_group_bytes(addr) as usize) % TRIED_BUCKET_COUNT
 }
 
-fn remove_from_bucket_vec(
-    buckets: &mut [Vec<SocketAddr>],
-    idx: usize,
-    target: &SocketAddr,
-) {
+fn remove_from_bucket_vec(buckets: &mut [Vec<SocketAddr>], idx: usize, target: &SocketAddr) {
     if let Some(bucket) = buckets.get_mut(idx) {
         bucket.retain(|a| a != target);
     }
@@ -439,10 +438,8 @@ mod tests {
         am.add_new(mk_addr(10, 0, 0, 1, 18351), 0);
         am.add_new(mk_addr(172, 16, 0, 1, 18351), 0);
         let picks = am.pick_outbound_candidates(3);
-        let groups: std::collections::HashSet<_> = picks
-            .iter()
-            .map(NetworkGroup::from_socket_addr)
-            .collect();
+        let groups: std::collections::HashSet<_> =
+            picks.iter().map(NetworkGroup::from_socket_addr).collect();
         assert_eq!(
             groups.len(),
             3,

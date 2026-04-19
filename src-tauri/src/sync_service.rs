@@ -110,7 +110,16 @@ impl BlockchainSyncService {
 
             while *running_flag.lock().unwrap() {
                 // Perform sync iteration
-                match Self::sync_iteration(&rpc_client, &utxo_manager, &stats, max_blocks, &app, fork_id).await {
+                match Self::sync_iteration(
+                    &rpc_client,
+                    &utxo_manager,
+                    &stats,
+                    max_blocks,
+                    &app,
+                    fork_id,
+                )
+                .await
+                {
                     Ok(synced_count) => {
                         if synced_count > 0 {
                             println!("✅ Synced {} blocks", synced_count);
@@ -187,10 +196,15 @@ impl BlockchainSyncService {
             // Already synced - REM-C002: Emit sync_complete event
             if let Some(ref app_handle) = app {
                 use tauri::Emitter;
-                app_handle.emit("sync_complete", serde_json::json!({
-                    "final_height": node_height,
-                    "sync_duration_seconds": 0
-                })).ok();
+                app_handle
+                    .emit(
+                        "sync_complete",
+                        serde_json::json!({
+                            "final_height": node_height,
+                            "sync_duration_seconds": 0
+                        }),
+                    )
+                    .ok();
             }
 
             let mut stats_guard = stats.lock().unwrap();
@@ -244,14 +258,23 @@ impl BlockchainSyncService {
         // REM-C002: Emit sync_progress event
         if let Some(ref app_handle) = app {
             use tauri::Emitter;
-            let blocks_per_second = if synced_count > 0 { synced_count as f64 / 10.0 } else { 0.0 };
+            let blocks_per_second = if synced_count > 0 {
+                synced_count as f64 / 10.0
+            } else {
+                0.0
+            };
 
-            app_handle.emit("sync_progress", serde_json::json!({
-                "current_height": current_height,
-                "target_height": node_height,
-                "percentage": percentage,
-                "blocks_per_second": blocks_per_second
-            })).ok();
+            app_handle
+                .emit(
+                    "sync_progress",
+                    serde_json::json!({
+                        "current_height": current_height,
+                        "target_height": node_height,
+                        "percentage": percentage,
+                        "blocks_per_second": blocks_per_second
+                    }),
+                )
+                .ok();
         }
 
         Ok(synced_count)
@@ -271,11 +294,7 @@ impl BlockchainSyncService {
         let tx_count = block_info.tx.len();
         let block_hash = block_info.hash.clone();
 
-        println!(
-            "📦 Processing block {} ({} txs)",
-            height,
-            tx_count
-        );
+        println!("📦 Processing block {} ({} txs)", height, tx_count);
 
         // Process each transaction in the block
         for (tx_index, txid) in block_info.tx.iter().enumerate() {
@@ -375,11 +394,16 @@ impl BlockchainSyncService {
         // REM-C002: Emit block_received event
         if let Some(ref app_handle) = app {
             use tauri::Emitter;
-            app_handle.emit("block_received", serde_json::json!({
-                "block_hash": block_hash,
-                "height": height,
-                "transactions": tx_count
-            })).ok();
+            app_handle
+                .emit(
+                    "block_received",
+                    serde_json::json!({
+                        "block_hash": block_hash,
+                        "height": height,
+                        "transactions": tx_count
+                    }),
+                )
+                .ok();
         }
 
         println!("✅ Block {} processed successfully", height);

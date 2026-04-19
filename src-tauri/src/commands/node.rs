@@ -17,7 +17,10 @@ use crate::AppState;
 // ============================================================================
 
 #[tauri::command]
-pub async fn start_node(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<String, String> {
+pub async fn start_node(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
     // Check if node is already active via the embedded node flag
     if state.node_active.load(Ordering::SeqCst) {
         return Ok("Node is already running".to_string());
@@ -63,7 +66,9 @@ pub async fn start_node(app: tauri::AppHandle, state: State<'_, AppState>) -> Re
         )
         .map_err(|e| format!("Failed to update node status: {}", e))?;
 
-    println!("📡 Embedded node started — StateManager auto-emitted node_status_changed event: running");
+    println!(
+        "📡 Embedded node started — StateManager auto-emitted node_status_changed event: running"
+    );
 
     // Write status to log file
     let log_file = state.config.log_dir.join("node.log");
@@ -83,6 +88,8 @@ pub async fn start_node(app: tauri::AppHandle, state: State<'_, AppState>) -> Re
     //
     // The RPC sync service remains available for future use if an external
     // btpc_node with RPC is running alongside the embedded node.
+    #[allow(clippy::overly_complex_bool_expr)]
+    // RPC sync intentionally disabled; kept for future use
     if false && state.config.node.enable_rpc {
         let fork_id = state.active_network.read().await.fork_id();
 
@@ -99,7 +106,12 @@ pub async fn start_node(app: tauri::AppHandle, state: State<'_, AppState>) -> Re
                 max_blocks_per_sync: 100,
             };
 
-            let service = BlockchainSyncService::new(state.utxo_manager.clone(), sync_config, Some(app.clone()), fork_id);
+            let service = BlockchainSyncService::new(
+                state.utxo_manager.clone(),
+                sync_config,
+                Some(app.clone()),
+                fork_id,
+            );
 
             match service.start() {
                 Ok(_) => {
@@ -117,7 +129,10 @@ pub async fn start_node(app: tauri::AppHandle, state: State<'_, AppState>) -> Re
 }
 
 #[tauri::command]
-pub async fn stop_node(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<String, String> {
+pub async fn stop_node(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
     // Check if node is active
     if !state.node_active.load(Ordering::SeqCst) {
         // Node is not running, but update state to ensure consistency
@@ -183,7 +198,9 @@ pub async fn stop_node(app: tauri::AppHandle, state: State<'_, AppState>) -> Res
         )
         .map_err(|e| format!("Failed to update node status: {}", e))?;
 
-    println!("📡 Embedded node stopped — StateManager auto-emitted node_status_changed event: stopped");
+    println!(
+        "📡 Embedded node stopped — StateManager auto-emitted node_status_changed event: stopped"
+    );
 
     // Append stop message to log file
     let log_file = state.config.log_dir.join("node.log");
@@ -209,7 +226,9 @@ pub async fn get_node_status(state: State<'_, AppState>) -> Result<serde_json::V
     // instead of get_sync_progress().connected_peers which may not update.
     let (block_height, peer_count) = if running {
         let node = state.embedded_node.read().await;
-        let height = node.get_blockchain_state().await
+        let height = node
+            .get_blockchain_state()
+            .await
             .map(|s| s.current_height)
             .unwrap_or(0);
         let peers = node.get_peer_count();
@@ -233,11 +252,9 @@ pub async fn get_node_status(state: State<'_, AppState>) -> Result<serde_json::V
 // ============================================================================
 
 #[tauri::command]
-pub async fn set_auto_connect(
-    state: State<'_, AppState>,
-    enabled: bool,
-) -> Result<String, String> {
-    state.settings_storage
+pub async fn set_auto_connect(state: State<'_, AppState>, enabled: bool) -> Result<String, String> {
+    state
+        .settings_storage
         .save_setting("auto_connect_node", if enabled { "true" } else { "false" })
         .map_err(|e| format!("Failed to save setting: {}", e))?;
     Ok(format!("Auto-connect set to {}", enabled))
@@ -248,7 +265,10 @@ pub async fn set_auto_connect(
 // ============================================================================
 
 #[tauri::command]
-pub async fn start_blockchain_sync(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<String, String> {
+pub async fn start_blockchain_sync(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
     // Get fork_id before acquiring sync_service lock (avoid holding MutexGuard across await)
     let fork_id = state.active_network.read().await.fork_id();
 
@@ -271,7 +291,12 @@ pub async fn start_blockchain_sync(app: tauri::AppHandle, state: State<'_, AppSt
         };
 
         // Create new sync service
-        let service = BlockchainSyncService::new(state.utxo_manager.clone(), sync_config, Some(app.clone()), fork_id);
+        let service = BlockchainSyncService::new(
+            state.utxo_manager.clone(),
+            sync_config,
+            Some(app.clone()),
+            fork_id,
+        );
 
         // Start the service
         service

@@ -13,7 +13,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use aes_gcm::aead::Aead;
 use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
-use argon2::password_hash::{rand_core::{OsRng, RngCore}, SaltString};
+use argon2::password_hash::{
+    rand_core::{OsRng, RngCore},
+    SaltString,
+};
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use bip39::{Language, Mnemonic};
 use sha2::{Digest, Sha256};

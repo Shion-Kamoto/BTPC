@@ -224,7 +224,8 @@ impl Database {
     /// Get database statistics
     pub fn get_statistics(&self) -> DatabaseStatistics {
         // Get total SST files size using RocksDB property API
-        let total_size = self.db
+        let total_size = self
+            .db
             .property_value("rocksdb.total-sst-files-size")
             .ok()
             .flatten()
@@ -232,7 +233,8 @@ impl Database {
             .unwrap_or(0);
 
         // Get estimated number of keys
-        let keys = self.db
+        let keys = self
+            .db
             .property_value("rocksdb.estimate-num-keys")
             .ok()
             .flatten()

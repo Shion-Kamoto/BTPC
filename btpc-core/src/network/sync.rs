@@ -72,18 +72,13 @@ impl SyncManager {
         self.state == SyncState::Synced
     }
 
-    /// Start initial sync
+    /// Start initial sync.
+    ///
+    /// Transitions to `SyncingHeaders` so `IntegratedSyncManager` can drive
+    /// the headers-first download pipeline. The manager will move the state
+    /// to `Synced` once headers and blocks are fully caught up.
     pub fn start_sync(&mut self) -> Result<(), SyncError> {
-        // For a local testnet with only genesis block and no peers,
-        // we can immediately transition to synced state
-        // In a real deployment with peers, this would start header sync
-        if self.download_queue.is_empty() && self.downloading.is_empty() {
-            // No blocks to download, mark as synced
-            self.state = SyncState::Synced;
-        } else {
-            // Start header sync if there are blocks to download
-            self.state = SyncState::SyncingHeaders;
-        }
+        self.state = SyncState::SyncingHeaders;
         Ok(())
     }
 

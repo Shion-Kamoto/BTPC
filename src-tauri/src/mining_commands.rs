@@ -115,13 +115,18 @@ pub async fn start_mining(
 
         // Emit warning if disk space is low but not critical
         if alert_level == DiskSpaceAlertLevel::Warning
-            || alert_level == DiskSpaceAlertLevel::SyncPaused {
+            || alert_level == DiskSpaceAlertLevel::SyncPaused
+        {
             let formatted_space = DiskSpaceMonitor::format_bytes(disk_info.available_bytes);
-            app.emit("disk:space_warning", serde_json::json!({
-                "available_bytes": disk_info.available_bytes,
-                "available_formatted": formatted_space,
-                "message": format!("Low disk space warning: {} available", formatted_space)
-            })).ok();
+            app.emit(
+                "disk:space_warning",
+                serde_json::json!({
+                    "available_bytes": disk_info.available_bytes,
+                    "available_formatted": formatted_space,
+                    "message": format!("Low disk space warning: {} available", formatted_space)
+                }),
+            )
+            .ok();
         }
     }
 
@@ -133,11 +138,15 @@ pub async fn start_mining(
 
     // REM-C002: Emit mining_started event
     let thermal_limit = state.gpu_temperature_threshold.read().await;
-    app.emit("mining_started", serde_json::json!({
-        "devices_started": if enable_gpu { 1 } else { 0 }, // TODO: Get actual device count
-        "mining_address": mining_address,
-        "thermal_limit": *thermal_limit
-    })).ok();
+    app.emit(
+        "mining_started",
+        serde_json::json!({
+            "devices_started": if enable_gpu { 1 } else { 0 }, // TODO: Get actual device count
+            "mining_address": mining_address,
+            "thermal_limit": *thermal_limit
+        }),
+    )
+    .ok();
 
     // Get or create mining pool from AppState
     // AppState stores: Arc<RwLock<Option<MiningThreadPool>>>
@@ -147,7 +156,9 @@ pub async fn start_mining(
         if mining_pool_guard.is_none() {
             // Load persistent blocks_found from mining_stats
             let mut lifetime_blocks_found = {
-                let stats_guard = state.mining_stats.lock()
+                let stats_guard = state
+                    .mining_stats
+                    .lock()
                     .expect("Failed to lock mining_stats");
                 stats_guard.blocks_found
             };
@@ -156,7 +167,8 @@ pub async fn start_mining(
             // mined before persistence was implemented, or counter resets)
             let chain_height = {
                 let node = state.embedded_node.read().await;
-                node.get_blockchain_state().await
+                node.get_blockchain_state()
+                    .await
                     .map(|s| s.current_height)
                     .unwrap_or(0)
             };
@@ -167,7 +179,9 @@ pub async fn start_mining(
                 );
                 lifetime_blocks_found = chain_height;
                 // Persist the corrected value immediately
-                let mut stats_guard = state.mining_stats.lock()
+                let mut stats_guard = state
+                    .mining_stats
+                    .lock()
                     .expect("Failed to lock mining_stats");
                 stats_guard.blocks_found = lifetime_blocks_found;
                 stats_guard.save_to_disk();
@@ -175,10 +189,16 @@ pub async fn start_mining(
 
             // Get network fork_id for replay protection
             let network_fork_id = state.active_network.read().await.fork_id();
-            println!("Initializing mining pool with {} lifetime blocks found (fork_id={})", lifetime_blocks_found, network_fork_id);
+            println!(
+                "Initializing mining pool with {} lifetime blocks found (fork_id={})",
+                lifetime_blocks_found, network_fork_id
+            );
 
             // Initialize mining pool on first use with persistent counter
-            *mining_pool_guard = Some(MiningThreadPool::new(lifetime_blocks_found, network_fork_id));
+            *mining_pool_guard = Some(MiningThreadPool::new(
+                lifetime_blocks_found,
+                network_fork_id,
+            ));
         }
     }
 
@@ -193,7 +213,8 @@ pub async fn start_mining(
         let (log_tx, mut log_rx) = tokio::sync::mpsc::unbounded_channel::<(String, String)>();
 
         // REM-C002: Create channel for mining events (block_mined, gpu_error)
-        let (mining_event_tx, mut mining_event_rx) = tokio::sync::mpsc::unbounded_channel::<crate::mining_thread_pool::MiningEvent>();
+        let (mining_event_tx, mut mining_event_rx) =
+            tokio::sync::mpsc::unbounded_channel::<crate::mining_thread_pool::MiningEvent>();
 
         // REM-C002: Spawn task to forward mining events to frontend
         let app_clone = app.clone();
@@ -270,12 +291,14 @@ pub async fn start_mining(
                     if mining_mode == "pool" {
                         if let Some(ref pc) = pool_config {
                             // Pool mining via Stratum V2
-                            let stratum_config = btpc_desktop_app::stratum::pool_client::PoolConfig {
-                                url: pc.url.clone(),
-                                worker: pc.worker.clone(),
-                                password: pc.password.clone(),
-                            };
-                            let mut stratum_client = btpc_desktop_app::stratum::StratumPoolClient::new(stratum_config);
+                            let stratum_config =
+                                btpc_desktop_app::stratum::pool_client::PoolConfig {
+                                    url: pc.url.clone(),
+                                    worker: pc.worker.clone(),
+                                    password: pc.password.clone(),
+                                };
+                            let mut stratum_client =
+                                btpc_desktop_app::stratum::StratumPoolClient::new(stratum_config);
                             // B5: Set embedded node for dual-mode block submission
                             stratum_client.set_embedded_node(embedded_node.clone());
                             let stratum_arc = Arc::new(tokio::sync::RwLock::new(stratum_client));
@@ -285,7 +308,9 @@ pub async fn start_mining(
                                 eprintln!("Failed to start pool client: {}", e);
                             }
 
-                            let backend = Arc::new(btpc_desktop_app::rpc_client::MiningBackend::Pool(stratum_arc));
+                            let backend = Arc::new(
+                                btpc_desktop_app::rpc_client::MiningBackend::Pool(stratum_arc),
+                            );
                             pool.start_gpu_mining(
                                 gpu_address,
                                 backend,
@@ -380,7 +405,9 @@ pub async fn start_mining(
                     pool_guard.as_ref().is_some_and(|p| p.get_stats().is_mining)
                 };
 
-                if !has_internet && is_mining && !paused_by_monitor
+                if !has_internet
+                    && is_mining
+                    && !paused_by_monitor
                     && !monitor_override.load(Ordering::SeqCst)
                 {
                     eprintln!("[NetMonitor] Internet connection lost - pausing mining");
@@ -394,30 +421,32 @@ pub async fn start_mining(
                     }
 
                     if let Ok(mut logs) = monitor_logs.try_lock() {
-                        logs.add_entry("WARN".to_string(),
-                            "Mining paused - internet connection lost.".to_string());
+                        logs.add_entry(
+                            "WARN".to_string(),
+                            "Mining paused - internet connection lost.".to_string(),
+                        );
                     }
 
                     monitor_app.emit("mining_paused", serde_json::json!({
                         "reason": "no_internet",
                         "message": "Mining paused - internet connection lost. Blocks mined offline will be orphaned when the network produces a longer chain."
                     })).ok();
-
                 } else if has_internet && paused_by_monitor {
                     eprintln!("[NetMonitor] Internet restored - signaling mining resume");
                     paused_by_monitor = false;
                     monitor_override.store(false, Ordering::SeqCst);
 
                     if let Ok(mut logs) = monitor_logs.try_lock() {
-                        logs.add_entry("INFO".to_string(),
-                            "Internet restored - mining will resume automatically.".to_string());
+                        logs.add_entry(
+                            "INFO".to_string(),
+                            "Internet restored - mining will resume automatically.".to_string(),
+                        );
                     }
 
                     monitor_app.emit("mining_resumed", serde_json::json!({
                         "reason": "internet_restored",
                         "message": "Internet connection restored - mining resumed automatically."
                     })).ok();
-
                 } else if !is_mining && !paused_by_monitor {
                     eprintln!("[NetMonitor] Mining stopped externally, exiting monitor");
                     break;
@@ -445,7 +474,10 @@ pub async fn start_mining(
 /// console.log('Mining stopped:', stopped);
 /// ```
 #[tauri::command]
-pub async fn stop_mining(state: State<'_, crate::AppState>, app: tauri::AppHandle) -> Result<bool, String> {
+pub async fn stop_mining(
+    state: State<'_, crate::AppState>,
+    app: tauri::AppHandle,
+) -> Result<bool, String> {
     // Deactivate internet monitor so it exits on next check
     state.network_monitor_active.store(false, Ordering::SeqCst);
 
@@ -483,11 +515,15 @@ pub async fn stop_mining(state: State<'_, crate::AppState>, app: tauri::AppHandl
     }
 
     // REM-C002: Emit mining_stopped event
-    app.emit("mining_stopped", serde_json::json!({
-        "reason": "manual",
-        "total_runtime_seconds": final_stats.uptime_seconds,
-        "blocks_found": final_stats.blocks_found
-    })).ok();
+    app.emit(
+        "mining_stopped",
+        serde_json::json!({
+            "reason": "manual",
+            "total_runtime_seconds": final_stats.uptime_seconds,
+            "blocks_found": final_stats.blocks_found
+        }),
+    )
+    .ok();
 
     Ok(true)
 }
@@ -693,14 +729,18 @@ pub async fn get_mining_history(
             (Some(start), Some(end)) => {
                 // Include if session overlaps with time range
                 let session_start = session.started_at;
-                let session_end = session.stopped_at.unwrap_or(chrono::Utc::now().timestamp() as u64);
+                let session_end = session
+                    .stopped_at
+                    .unwrap_or(chrono::Utc::now().timestamp() as u64);
 
                 // Sessions overlap if: session_start <= end && session_end >= start
                 session_start <= end && session_end >= start
             }
             (Some(start), None) => session.started_at >= start,
             (None, Some(end)) => {
-                let session_end = session.stopped_at.unwrap_or(chrono::Utc::now().timestamp() as u64);
+                let session_end = session
+                    .stopped_at
+                    .unwrap_or(chrono::Utc::now().timestamp() as u64);
                 session_end <= end
             }
             (None, None) => true, // No filter, include all

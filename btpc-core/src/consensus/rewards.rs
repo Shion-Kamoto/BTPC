@@ -255,7 +255,7 @@ mod tests {
         RewardParams {
             initial_reward: econ::INITIAL_REWARD,
             tail_emission: econ::TAIL_EMISSION,
-            blocks_per_year: econ::BLOCKS_PER_YEAR,  // 52,596 (leap-year adjusted)
+            blocks_per_year: econ::BLOCKS_PER_YEAR, // 52,596 (leap-year adjusted)
             decay_years: econ::DECAY_DURATION_YEARS,
         }
     }
@@ -434,7 +434,10 @@ mod tests {
         let stats = RewardCalculator::calculate_emission_stats(&params).unwrap();
 
         assert_eq!(stats.decay_period_years, econ::DECAY_DURATION_YEARS);
-        assert_eq!(stats.decay_period_blocks, econ::DECAY_DURATION_YEARS * econ::BLOCKS_PER_YEAR);
+        assert_eq!(
+            stats.decay_period_blocks,
+            econ::DECAY_DURATION_YEARS * econ::BLOCKS_PER_YEAR
+        );
         assert!(stats.total_decay_supply > 0);
         assert_eq!(
             stats.initial_annual_emission,

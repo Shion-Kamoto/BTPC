@@ -147,10 +147,7 @@ impl TransactionBuilder {
     pub fn calculate_fee(&self) -> Result<u64> {
         let estimated_size = self.estimate_transaction_size();
         // Ceiling division: (size * rate + 1023) / 1024
-        let fee = ((estimated_size as u64)
-            .saturating_mul(self.fee_rate_per_kb)
-            + 1023)
-            / 1024;
+        let fee = ((estimated_size as u64).saturating_mul(self.fee_rate_per_kb) + 1023) / 1024;
 
         let fee = fee.min(MAX_TOTAL_FEE);
 
@@ -371,7 +368,15 @@ impl TransactionBuilder {
 
         println!("✅ Transaction built:");
         println!("  TX ID: {}", transaction.txid);
-        println!("  Fork ID: {} ({})", self.fork_id, match self.fork_id { 0 => "mainnet", 1 => "testnet", _ => "regtest" });
+        println!(
+            "  Fork ID: {} ({})",
+            self.fork_id,
+            match self.fork_id {
+                0 => "mainnet",
+                1 => "testnet",
+                _ => "regtest",
+            }
+        );
         println!("  Inputs: {}", transaction.inputs.len());
         println!("  Outputs: {}", transaction.outputs.len());
 

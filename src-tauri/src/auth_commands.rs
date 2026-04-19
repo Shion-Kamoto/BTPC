@@ -164,7 +164,10 @@ pub fn create_master_password(
         Ok(entropy) => {
             // Password meets entropy requirement
             // Log entropy for debugging (entropy value is not sensitive)
-            println!("Password entropy: {:.2} bits (minimum: {:.2} bits)", entropy, MINIMUM_ENTROPY_BITS);
+            println!(
+                "Password entropy: {:.2} bits (minimum: {:.2} bits)",
+                entropy, MINIMUM_ENTROPY_BITS
+            );
         }
         Err(e) => {
             return CreatePasswordResponse {
@@ -323,9 +326,7 @@ pub fn login(
 
     // FIX 2026-02-21 (H4): Check brute-force lockout before any work
     {
-        let state = session
-            .read()
-            .expect("SessionState RwLock poisoned");
+        let state = session.read().expect("SessionState RwLock poisoned");
         if state.is_locked_out() {
             return LoginResponse {
                 success: false,
@@ -391,20 +392,22 @@ pub fn login(
     if !constant_time_compare(derived_key.as_ref(), stored_hash.as_ref()) {
         // FIX 2026-02-21 (H4): Record failed attempt for brute-force protection
         {
-            let mut state = session
-                .write()
-                .expect("SessionState RwLock poisoned");
+            let mut state = session.write().expect("SessionState RwLock poisoned");
             state.record_failed_attempt();
         }
 
         // REM-C002: Emit login_failed event
-        app.emit("login_failed", serde_json::json!({
-            "timestamp": SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .expect("System time before UNIX epoch - clock misconfiguration")
-                .as_millis(),
-            "reason": "incorrect_password"
-        })).ok();
+        app.emit(
+            "login_failed",
+            serde_json::json!({
+                "timestamp": SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .expect("System time before UNIX epoch - clock misconfiguration")
+                    .as_millis(),
+                "reason": "incorrect_password"
+            }),
+        )
+        .ok();
 
         return LoginResponse {
             success: false,
@@ -415,9 +418,7 @@ pub fn login(
 
     // Password matches! Clear failed attempts counter
     {
-        let mut state = session
-            .write()
-            .expect("SessionState RwLock poisoned");
+        let mut state = session.write().expect("SessionState RwLock poisoned");
         state.clear_failed_attempts();
     }
 
@@ -447,7 +448,9 @@ pub fn login(
     }
 
     // Re-enable background polling loops (stopped during logout)
-    app_state.node_active.store(true, std::sync::atomic::Ordering::SeqCst);
+    app_state
+        .node_active
+        .store(true, std::sync::atomic::Ordering::SeqCst);
 
     LoginResponse {
         success: true,
@@ -500,11 +503,15 @@ pub async fn logout(
     }
 
     // Stop background polling loops so they release locks on embedded_node
-    app_state.node_active.store(false, std::sync::atomic::Ordering::SeqCst);
+    app_state
+        .node_active
+        .store(false, std::sync::atomic::Ordering::SeqCst);
 
     // Stop mining if active
     {
-        app_state.network_monitor_active.store(false, std::sync::atomic::Ordering::SeqCst);
+        app_state
+            .network_monitor_active
+            .store(false, std::sync::atomic::Ordering::SeqCst);
 
         let mut pool_guard = app_state.mining_pool.write().await;
         if let Some(ref mut pool) = *pool_guard {
@@ -527,12 +534,15 @@ pub async fn logout(
     }
 
     // Update node status to stopped (emits node_status_changed event for UI)
-    let _ = app_state.node_status.update(|status| {
-        status.running = false;
-        status.pid = None;
-        status.peer_count = 0;
-        status.sync_progress = 0.0;
-    }, &app);
+    let _ = app_state.node_status.update(
+        |status| {
+            status.running = false;
+            status.pid = None;
+            status.peer_count = 0;
+            status.sync_progress = 0.0;
+        },
+        &app,
+    );
     eprintln!("[BTPC::Auth] Node status set to stopped");
 
     // Also stop the external node process if running

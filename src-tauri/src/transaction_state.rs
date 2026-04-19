@@ -185,7 +185,12 @@ impl TransactionStateManager {
                 tx.txid = new_tx_id.clone();
             }
             txs.insert(new_tx_id, state);
-            println!("📝 Migrated transaction state: {} -> {}", old_tx_id, &txs.keys().last().unwrap_or(&String::new())[..16.min(txs.keys().last().unwrap_or(&String::new()).len())]);
+            println!(
+                "📝 Migrated transaction state: {} -> {}",
+                old_tx_id,
+                &txs.keys().last().unwrap_or(&String::new())
+                    [..16.min(txs.keys().last().unwrap_or(&String::new()).len())]
+            );
         }
     }
 

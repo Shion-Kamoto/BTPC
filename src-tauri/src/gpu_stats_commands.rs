@@ -464,7 +464,9 @@ pub async fn get_gpu_dashboard_data(
                         // Parse vendor string to GpuVendor enum
                         let vendor = if dev.vendor.to_lowercase().contains("nvidia") {
                             gpu_health_monitor::GpuVendor::Nvidia
-                        } else if dev.vendor.to_lowercase().contains("amd") || dev.vendor.to_lowercase().contains("advanced micro devices") {
+                        } else if dev.vendor.to_lowercase().contains("amd")
+                            || dev.vendor.to_lowercase().contains("advanced micro devices")
+                        {
                             gpu_health_monitor::GpuVendor::Amd
                         } else if dev.vendor.to_lowercase().contains("intel") {
                             gpu_health_monitor::GpuVendor::Intel
@@ -477,7 +479,10 @@ pub async fn get_gpu_dashboard_data(
                             model_name: dev.model_name,
                             vendor,
                             opencl_capable: true, // If in mining pool, it's OpenCL capable
-                            compute_capability: Some(format!("{} CUs @ {} MHz", dev.compute_units, dev.max_clock_frequency)),
+                            compute_capability: Some(format!(
+                                "{} CUs @ {} MHz",
+                                dev.compute_units, dev.max_clock_frequency
+                            )),
                         }
                     })
                     .collect()
@@ -492,7 +497,9 @@ pub async fn get_gpu_dashboard_data(
     };
 
     // 2. Get per-GPU mining statistics
-    let mining_stats = get_gpu_mining_stats(state.clone(), None).await.unwrap_or_default(); // Mining may not be active - return empty
+    let mining_stats = get_gpu_mining_stats(state.clone(), None)
+        .await
+        .unwrap_or_default(); // Mining may not be active - return empty
 
     // 3. Get GPU health metrics
     let health_metrics = get_gpu_health_metrics(None).await.unwrap_or_default(); // Sensors may not be available - return empty

@@ -287,8 +287,7 @@ impl StorageBlockValidator {
         for (input_index, input) in transaction.inputs.iter().enumerate() {
             let utxo = utxo_db.get_utxo(&input.previous_output)?;
 
-            let utxo =
-                utxo.ok_or(StorageValidationError::UTXONotFound(input.previous_output))?;
+            let utxo = utxo.ok_or(StorageValidationError::UTXONotFound(input.previous_output))?;
 
             // Check coinbase maturity (Bitcoin consensus rule)
             if utxo.is_coinbase {

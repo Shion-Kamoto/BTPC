@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BTPC Wallet - Node</title>
     <link rel="stylesheet" href="btpc-styles.css">
+    <link rel="stylesheet" href="btpc-node-status.css">
     <style>
         .tab-nav {
             display: flex;
@@ -163,6 +164,15 @@
                 </div>
             </div>
 
+            <!-- T046: Shared Node Status Bar -->
+            <div class="btpc-node-status-bar">
+                <span class="btpc-status-pill" data-node-status="online">--</span>
+                <span><label>Height:</label><span data-node-status="height">--</span></span>
+                <span><label>Peers:</label><span data-node-status="peerCount">--</span></span>
+                <span><label>Sync:</label><span data-node-status="syncPct">--</span></span>
+                <span><label>Network:</label><span data-node-status="network">--</span></span>
+            </div>
+
             <!-- Tab Navigation -->
             <div class="tab-nav">
                 <button class="tab-btn active" onclick="switchTab('status')">Status</button>
@@ -260,6 +270,16 @@
                         </div>
                     </div>
 
+                    <!-- Network Connection Indicator (FIX 2026-04-15) -->
+                    <div id="network-indicator" style="padding: 14px 20px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 12px; background: rgba(239, 68, 68, 0.08);">
+                        <div id="network-indicator-dot" style="width: 12px; height: 12px; border-radius: 50%; background: var(--status-error); box-shadow: 0 0 8px var(--status-error);"></div>
+                        <div style="flex: 1;">
+                            <div id="network-indicator-title" style="font-size: 0.95rem; font-weight: 600; color: var(--text-primary);">Not Connected to BTPC Network</div>
+                            <div id="network-indicator-subtitle" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">No peers — enter an address below to connect</div>
+                        </div>
+                        <div id="network-indicator-count" style="font-size: 1.5rem; font-weight: 700; color: var(--text-muted); font-family: 'SF Mono', monospace;">0</div>
+                    </div>
+
                     <!-- Connect to Peer Form -->
                     <div style="padding: 16px; border-bottom: 1px solid var(--border-color); background: rgba(139, 92, 246, 0.05);">
                         <div style="display: flex; gap: 12px; align-items: center;">
@@ -298,6 +318,7 @@
     <script src="btpc-update-manager.js"></script>
     <script src="password-modal.js"></script>
     <script src="btpc-logout.js"></script>
+    <script src="btpc-node-status.js"></script>
     <script>
         let nodeStatusInterval = null;
         let nodeStartTime = null;
@@ -622,6 +643,59 @@
         }
 
         // Format connection time as human-readable string
+        // FIX 2026-04-15: Network connection indicator on the Peers tab.
+        // Renders a colored status banner showing whether this node is
+        // connected to the BTPC network, how many peers, and whether the
+        // local chain is caught up to the network tip.
+        function updateNetworkIndicator(peerCount, localHeight, networkHeight) {
+            const container = document.getElementById('network-indicator');
+            const dot = document.getElementById('network-indicator-dot');
+            const title = document.getElementById('network-indicator-title');
+            const subtitle = document.getElementById('network-indicator-subtitle');
+            const countEl = document.getElementById('network-indicator-count');
+            if (!container || !dot || !title || !subtitle || !countEl) return;
+
+            const success = 'var(--status-success)';
+            const warning = 'var(--status-warning)';
+            const error = 'var(--status-error)';
+            const muted = 'var(--text-muted)';
+            const primary = 'var(--text-primary)';
+
+            countEl.textContent = peerCount;
+
+            if (peerCount === 0) {
+                // Isolated — red
+                container.style.background = 'rgba(239, 68, 68, 0.08)';
+                dot.style.background = error;
+                dot.style.boxShadow = `0 0 8px ${error}`;
+                title.style.color = primary;
+                title.textContent = 'Not Connected to BTPC Network';
+                subtitle.textContent = 'No peers — enter an address below to connect';
+                countEl.style.color = muted;
+            } else if (localHeight != null && networkHeight != null && localHeight < networkHeight) {
+                // Connected but still catching up — amber
+                container.style.background = 'rgba(234, 179, 8, 0.08)';
+                dot.style.background = warning;
+                dot.style.boxShadow = `0 0 8px ${warning}`;
+                title.style.color = primary;
+                title.textContent = `Connected to BTPC Network — Syncing`;
+                const gap = (networkHeight - localHeight).toLocaleString();
+                subtitle.textContent = `${gap} blocks behind (local ${localHeight.toLocaleString()} / network ${networkHeight.toLocaleString()})`;
+                countEl.style.color = warning;
+            } else {
+                // Connected and synced — green
+                container.style.background = 'rgba(16, 185, 129, 0.08)';
+                dot.style.background = success;
+                dot.style.boxShadow = `0 0 8px ${success}`;
+                title.style.color = primary;
+                title.textContent = `Connected to BTPC Network`;
+                subtitle.textContent = peerCount === 1
+                    ? '1 active peer — chain in sync'
+                    : `${peerCount} active peers — chain in sync`;
+                countEl.style.color = success;
+            }
+        }
+
         function formatConnectionTime(unixTimestamp) {
             if (!unixTimestamp) return 'Unknown';
             const connectedAt = new Date(unixTimestamp * 1000);
@@ -635,106 +709,146 @@
             return `${Math.floor(diffSecs / 86400)}d ago`;
         }
 
+        // Format bytes for display
+        function formatBytes(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / 1048576).toFixed(1) + ' MB';
+        }
+
+        // Ban a peer via Tauri command (T078)
+        async function banPeerAction(address) {
+            if (!window.invoke) return;
+            try {
+                await window.invoke('ban_peer', { address, reason: 'manual', durationSec: 86400 });
+                toast.success('Peer banned: ' + address);
+                refreshPeers();
+            } catch (e) {
+                toast.error('Failed to ban peer: ' + e);
+            }
+        }
+
+        // Disconnect a peer via Tauri command (T078)
+        async function disconnectPeerAction(address) {
+            if (!window.invoke) return;
+            try {
+                await window.invoke('disconnect_peer', { address });
+                toast.success('Peer disconnected: ' + address);
+                refreshPeers();
+            } catch (e) {
+                toast.error('Failed to disconnect peer: ' + e);
+            }
+        }
+
+        // Render peer table from PeerSummary array (T078)
+        function renderPeerTable(peers) {
+            const container = document.getElementById('peers-container');
+            if (!peers || peers.length === 0) {
+                container.innerHTML = `
+                    <div style="padding: 60px 20px; text-align: center;">
+                        <div style="font-size: 3rem; margin-bottom: 16px;"><span class="icon icon-link" style="width: 48px; height: 48px;"></span></div>
+                        <div style="font-size: 1.125rem; color: var(--text-primary); margin-bottom: 8px;">No peers connected</div>
+                        <div style="color: var(--text-muted);">Node is running but no peers connected yet</div>
+                    </div>
+                `;
+                return;
+            }
+
+            const rows = peers.map(p => {
+                const pingColor = !p.pingRttMs ? 'var(--text-muted)' :
+                    p.pingRttMs < 100 ? 'var(--status-success)' :
+                    p.pingRttMs < 500 ? 'var(--status-warning)' : 'var(--status-error)';
+                const banColor = p.banScore > 50 ? 'var(--status-error)' :
+                    p.banScore > 0 ? 'var(--status-warning)' : 'var(--text-muted)';
+                const dirBadge = p.direction === 'inbound'
+                    ? '<span style="background:rgba(59,130,246,0.15);color:#60a5fa;padding:2px 8px;border-radius:4px;font-size:0.75rem;">IN</span>'
+                    : '<span style="background:rgba(16,185,129,0.15);color:#34d399;padding:2px 8px;border-radius:4px;font-size:0.75rem;">OUT</span>';
+
+                return `
+                    <div style="padding: 14px 16px; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border-color);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="width: 8px; height: 8px; background: var(--status-success); border-radius: 50%;"></span>
+                                <span style="font-family: 'SF Mono', monospace; font-size: 0.875rem; color: var(--text-primary);">${p.address}</span>
+                                ${dirBadge}
+                            </div>
+                            <div style="display: flex; gap: 6px;">
+                                <button class="btn btn-secondary" onclick="disconnectPeerAction('${p.address}')" style="padding: 4px 10px; font-size: 0.75rem;">Disconnect</button>
+                                <button class="btn btn-secondary" onclick="banPeerAction('${p.address}')" style="padding: 4px 10px; font-size: 0.75rem; color: var(--status-error);">Ban</button>
+                            </div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px;">
+                            <div>
+                                <div style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: 3px;">User Agent</div>
+                                <div style="font-size: 0.8rem; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${p.userAgent || ''}">${p.userAgent || '-'}</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: 3px;">Ping</div>
+                                <div style="font-size: 0.8rem; color: ${pingColor};">${p.pingRttMs != null ? p.pingRttMs + 'ms' : '-'}</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: 3px;">Recv / Sent</div>
+                                <div style="font-size: 0.8rem; color: var(--text-primary);">${formatBytes(p.bytesIn || 0)} / ${formatBytes(p.bytesOut || 0)}</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: 3px;">Protocol</div>
+                                <div style="font-size: 0.8rem; color: var(--text-primary);">${p.protocolVersion || '-'}</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: 3px;">Ban Score</div>
+                                <div style="font-size: 0.8rem; color: ${banColor};">${p.banScore}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = `
+                <div style="padding: 20px;">
+                    <div style="text-align: center; margin-bottom: 20px;">
+                        <div style="font-size: 2.5rem; font-weight: 600; color: var(--btpc-primary);">${peers.length}</div>
+                        <div style="font-size: 1rem; color: var(--text-secondary); margin-top: 4px;">ACTIVE CONNECTIONS</div>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        ${rows}
+                    </div>
+                </div>
+            `;
+        }
+
         async function refreshPeers() {
-            // Check if Tauri API is ready
             if (!window.invoke) {
                 console.log('Tauri API not ready, skipping peers refresh');
                 return;
             }
 
             try {
-                // Fetch both blockchain info and detailed peer info
-                const [info, peerInfo] = await Promise.all([
-                    window.invoke('get_blockchain_info'),
-                    window.invoke('get_peer_info')
-                ]);
-
-                const peerCount = info.connections || 0;
-                const peers = peerInfo.peers || [];
-                const container = document.getElementById('peers-container');
-
-                if (peerCount === 0 && peers.length === 0) {
-                    container.innerHTML = `
-                        <div style="padding: 60px 20px; text-align: center;">
-                            <div style="font-size: 3rem; margin-bottom: 16px;"><span class="icon icon-link" style="width: 48px; height: 48px;"></span></div>
-                            <div style="font-size: 1.125rem; color: var(--text-primary); margin-bottom: 8px;">No peers connected</div>
-                            <div style="color: var(--text-muted);">Node is running but no peers connected yet</div>
-                        </div>
-                    `;
-                } else {
-                    // Build peer list HTML
-                    let peerListHtml = '';
-                    if (peers.length > 0) {
-                        peerListHtml = `
-                            <div style="margin-top: 24px;">
-                                <div style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 12px; font-weight: 500;">PEER DETAILS</div>
-                                <div style="display: flex; flex-direction: column; gap: 12px;">
-                                    ${peers.map((peer, index) => `
-                                        <div style="padding: 16px; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border-color);">
-                                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                                                <div style="display: flex; align-items: center; gap: 8px;">
-                                                    <span style="width: 8px; height: 8px; background: var(--status-success); border-radius: 50%;"></span>
-                                                    <span style="font-family: 'SF Mono', monospace; font-size: 0.875rem; color: var(--text-primary);">${peer.address || 'Unknown'}</span>
-                                                </div>
-                                                <span style="font-size: 0.75rem; color: var(--text-muted);">Peer #${index + 1}</span>
-                                            </div>
-                                            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;">
-                                                <div>
-                                                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Version</div>
-                                                    <div style="font-size: 0.875rem; color: var(--text-primary);">${peer.version || '-'}</div>
-                                                </div>
-                                                <div>
-                                                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Height</div>
-                                                    <div style="font-size: 0.875rem; color: var(--text-primary);">${peer.height != null ? peer.height.toLocaleString() : '-'}</div>
-                                                </div>
-                                                <div>
-                                                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Ping</div>
-                                                    <div style="font-size: 0.875rem; color: ${peer.ping_ms < 100 ? 'var(--status-success)' : peer.ping_ms < 500 ? 'var(--status-warning)' : 'var(--status-error)'};">${peer.ping_ms != null ? peer.ping_ms + 'ms' : '-'}</div>
-                                                </div>
-                                                <div>
-                                                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Connected</div>
-                                                    <div style="font-size: 0.875rem; color: var(--text-primary);">${formatConnectionTime(peer.connected_since)}</div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    `).join('')}
-                                </div>
-                            </div>
-                        `;
-                    } else {
-                        // No peers connected - show hint
-                        peerListHtml = `
-                            <div style="margin-top: 24px; padding: 16px; background: rgba(139, 92, 246, 0.1); border-left: 3px solid var(--btpc-primary); border-radius: 6px; font-size: 0.875rem; color: var(--text-secondary); text-align: center;">
-                                Enter a peer address above to connect.
-                            </div>
-                        `;
-                    }
-
-                    // Display peer summary with detailed list
-                    container.innerHTML = `
-                        <div style="padding: 40px 20px;">
-                            <div style="text-align: center; margin-bottom: 32px;">
-                                <div style="font-size: 3rem; font-weight: 600; color: var(--btpc-primary);">${Math.max(peerCount, peers.length)}</div>
-                                <div style="font-size: 1.125rem; color: var(--text-secondary); margin-top: 8px;">ACTIVE CONNECTIONS</div>
-                            </div>
-                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
-                                <div style="padding: 16px; background: var(--bg-card); border-radius: 8px; text-align: center;">
-                                    <div style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 8px;">Network</div>
-                                    <div style="font-size: 1rem; color: var(--status-success);">${(info.chain || 'mainnet').toUpperCase()}</div>
-                                </div>
-                                <div style="padding: 16px; background: var(--bg-card); border-radius: 8px; text-align: center;">
-                                    <div style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 8px;">Protocol</div>
-                                    <div style="font-size: 1rem; color: var(--status-success);">BTPC P2P</div>
-                                </div>
-                                <div style="padding: 16px; background: var(--bg-card); border-radius: 8px; text-align: center;">
-                                    <div style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 8px;">Status</div>
-                                    <div style="font-size: 1rem; color: var(--status-success);">ACTIVE</div>
-                                </div>
-                            </div>
-                            ${peerListHtml}
-                        </div>
-                    `;
+                // Try new list_peers command first; fall back to legacy get_peer_info
+                let peers = [];
+                try {
+                    peers = await window.invoke('list_peers');
+                } catch (_e) {
+                    // Fallback: legacy get_peer_info
+                    const peerInfo = await window.invoke('get_peer_info');
+                    peers = (peerInfo.peers || []).map(p => ({
+                        address: p.address,
+                        direction: 'outbound',
+                        userAgent: p.version || '',
+                        protocolVersion: 0,
+                        pingRttMs: p.ping_ms,
+                        bytesIn: 0,
+                        bytesOut: 0,
+                        banScore: 0,
+                        connectedSince: p.connected_since || '',
+                    }));
                 }
+
+                renderPeerTable(peers);
+
+                // Update network indicator
+                const localHeight = BTPCNodeStatus ? BTPCNodeStatus.getState().height : 0;
+                const networkHeight = BTPCNodeStatus ? BTPCNodeStatus.getState().headersHeight : localHeight;
+                updateNetworkIndicator(peers.length, localHeight, networkHeight);
             } catch (e) {
                 console.log('Failed to refresh peers:', e);
                 const container = document.getElementById('peers-container');
@@ -830,6 +944,8 @@
                         document.getElementById('info-difficulty-target').textContent = '-';
                         document.getElementById('info-network-nodes').textContent = '0';
                         document.getElementById('info-best-block').textContent = '-';
+                        // Reset network indicator to disconnected state
+                        updateNetworkIndicator(0, 0, 0);
                         // Stop uptime tracking
                         if (nodeStartTime) stopUptimeTracking();
                     }
@@ -872,6 +988,11 @@
                         const peerCount = data.connections;
                         document.getElementById('peer-count').textContent = peerCount;
                         document.getElementById('info-network-nodes').textContent = peerCount;
+
+                        // FIX 2026-04-15: Update network connection indicator
+                        // on the Peers tab. Green = connected with peers,
+                        // red = isolated. Driven by the same 5s update cycle.
+                        updateNetworkIndicator(peerCount, localHeight, networkHeight);
                     }
 
                     // Update sync progress
@@ -916,6 +1037,29 @@
             }
         }
         initNodePage();
+
+        // T079 (US4): Auto-refresh peer table on PeerListUpdated events
+        if (window.__TAURI__ && window.__TAURI__.event) {
+            window.__TAURI__.event.listen('blockchain-event', (evt) => {
+                const payload = evt.payload;
+                if (payload && payload.PeerListUpdated) {
+                    renderPeerTable(payload.PeerListUpdated.peers.map(p => ({
+                        address: p.address || '',
+                        direction: p.direction || 'outbound',
+                        userAgent: p.userAgent || '',
+                        protocolVersion: p.protocolVersion || 0,
+                        pingRttMs: p.pingRttMs,
+                        bytesIn: p.bytesIn || 0,
+                        bytesOut: p.bytesOut || 0,
+                        banScore: p.banScore || 0,
+                    })));
+                    const peerCount = payload.PeerListUpdated.peers.length;
+                    const localHeight = BTPCNodeStatus ? BTPCNodeStatus.getState().height : 0;
+                    const networkHeight = BTPCNodeStatus ? BTPCNodeStatus.getState().headersHeight : localHeight;
+                    updateNetworkIndicator(peerCount, localHeight, networkHeight);
+                }
+            });
+        }
 
         // REMOVED: setupStateManagerEvents() - Duplicate of updateManager subscription
         // The StateManager event listener was competing with updateManager polling (lines 542-608)

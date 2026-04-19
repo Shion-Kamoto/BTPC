@@ -467,9 +467,9 @@ impl RpcClient {
 
 // Implement the trait for RpcClient
 impl RpcClientInterface for RpcClient {
-    async fn get_block_template(
-        &self,
-    ) -> Result<BlockTemplate> { self.get_block_template().await }
+    async fn get_block_template(&self) -> Result<BlockTemplate> {
+        self.get_block_template().await
+    }
 
     fn submit_block(
         &self,

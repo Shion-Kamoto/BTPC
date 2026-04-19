@@ -107,13 +107,16 @@ impl TransactionHistory {
              PRAGMA synchronous=NORMAL;
              PRAGMA busy_timeout=5000;
              PRAGMA cache_size=-64000;
-             PRAGMA foreign_keys=ON;"
+             PRAGMA foreign_keys=ON;",
         )?;
 
         // Create schema
         Self::create_schema(&conn)?;
 
-        info!("Opened tx_history SQLite database for network: {:?}", network);
+        info!(
+            "Opened tx_history SQLite database for network: {:?}",
+            network
+        );
         debug!("Database path: {:?}", db_path);
 
         Ok(Self {
@@ -230,7 +233,11 @@ impl TransactionHistory {
         )?;
 
         // Determine if this address is the sender
-        let is_sender = tx.sender_address.as_ref().map(|s| s == address).unwrap_or(false);
+        let is_sender = tx
+            .sender_address
+            .as_ref()
+            .map(|s| s == address)
+            .unwrap_or(false);
 
         // UPSERT address association
         conn.execute(
@@ -254,7 +261,10 @@ impl TransactionHistory {
             };
 
             let block_height = tx.block_height.unwrap_or(0);
-            let created_at = tx.confirmed_at.map(|dt| dt.timestamp()).unwrap_or_else(|| Utc::now().timestamp());
+            let created_at = tx
+                .confirmed_at
+                .map(|dt| dt.timestamp())
+                .unwrap_or_else(|| Utc::now().timestamp());
 
             conn.execute(
                 "INSERT INTO utxos (txid, vout, value_credits, address, block_height, is_coinbase, created_at, script_pubkey)
@@ -275,7 +285,11 @@ impl TransactionHistory {
             )?;
         }
 
-        info!("Transaction {} added/updated for address {}", &tx.txid[..16.min(tx.txid.len())], &address[..20.min(address.len())]);
+        info!(
+            "Transaction {} added/updated for address {}",
+            &tx.txid[..16.min(tx.txid.len())],
+            &address[..20.min(address.len())]
+        );
         Ok(())
     }
 
@@ -307,7 +321,13 @@ impl TransactionHistory {
     }
 
     /// Mark a UTXO as spent
-    pub fn mark_utxo_spent(&self, txid: &str, vout: u32, spent_in_tx: &str, spent_at_height: u64) -> Result<()> {
+    pub fn mark_utxo_spent(
+        &self,
+        txid: &str,
+        vout: u32,
+        spent_in_tx: &str,
+        spent_at_height: u64,
+    ) -> Result<()> {
         let conn = self.conn.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
 
         let rows = conn.execute(
@@ -347,7 +367,17 @@ impl TransactionHistory {
         ).optional()?;
 
         match result {
-            Some((version, lock_time, fork_id, block_height, confirmed_at_ts, is_coinbase, sender_address, inputs_json, outputs_json)) => {
+            Some((
+                version,
+                lock_time,
+                fork_id,
+                block_height,
+                confirmed_at_ts,
+                is_coinbase,
+                sender_address,
+                inputs_json,
+                outputs_json,
+            )) => {
                 let inputs: Vec<TxInput> = serde_json::from_str(&inputs_json)?;
                 let outputs: Vec<TxOutput> = serde_json::from_str(&outputs_json)?;
                 let confirmed_at = confirmed_at_ts.and_then(|ts| Utc.timestamp_opt(ts, 0).single());
@@ -393,8 +423,21 @@ impl TransactionHistory {
         ).optional()?;
 
         match result {
-            Some((value_credits, address, block_height, is_coinbase, created_at_ts, spent, spent_in_tx, spent_at_height, script_pubkey)) => {
-                let created_at = Utc.timestamp_opt(created_at_ts, 0).single().unwrap_or_else(Utc::now);
+            Some((
+                value_credits,
+                address,
+                block_height,
+                is_coinbase,
+                created_at_ts,
+                spent,
+                spent_in_tx,
+                spent_at_height,
+                script_pubkey,
+            )) => {
+                let created_at = Utc
+                    .timestamp_opt(created_at_ts, 0)
+                    .single()
+                    .unwrap_or_else(Utc::now);
 
                 Ok(Some(UTXO {
                     txid: txid.to_string(),
@@ -424,33 +467,38 @@ impl TransactionHistory {
              FROM utxos WHERE spent = 0"
         )?;
 
-        let utxos = stmt.query_map([], |row| {
-            let txid: String = row.get(0)?;
-            let vout: u32 = row.get(1)?;
-            let value_credits: u64 = row.get(2)?;
-            let address: String = row.get(3)?;
-            let block_height: u64 = row.get(4)?;
-            let is_coinbase: bool = row.get::<_, i32>(5)? != 0;
-            let created_at_ts: i64 = row.get(6)?;
-            let script_pubkey: Vec<u8> = row.get(7)?;
+        let utxos = stmt
+            .query_map([], |row| {
+                let txid: String = row.get(0)?;
+                let vout: u32 = row.get(1)?;
+                let value_credits: u64 = row.get(2)?;
+                let address: String = row.get(3)?;
+                let block_height: u64 = row.get(4)?;
+                let is_coinbase: bool = row.get::<_, i32>(5)? != 0;
+                let created_at_ts: i64 = row.get(6)?;
+                let script_pubkey: Vec<u8> = row.get(7)?;
 
-            let created_at = Utc.timestamp_opt(created_at_ts, 0).single().unwrap_or_else(Utc::now);
+                let created_at = Utc
+                    .timestamp_opt(created_at_ts, 0)
+                    .single()
+                    .unwrap_or_else(Utc::now);
 
-            Ok(UTXO {
-                txid,
-                vout,
-                value_credits,
-                value_btp: value_credits as f64 / 100_000_000.0,
-                address,
-                block_height,
-                is_coinbase,
-                created_at,
-                spent: false,
-                spent_in_tx: None,
-                spent_at_height: None,
-                script_pubkey,
-            })
-        })?.collect::<Result<Vec<_>, _>>()?;
+                Ok(UTXO {
+                    txid,
+                    vout,
+                    value_credits,
+                    value_btp: value_credits as f64 / 100_000_000.0,
+                    address,
+                    block_height,
+                    is_coinbase,
+                    created_at,
+                    spent: false,
+                    spent_in_tx: None,
+                    spent_at_height: None,
+                    script_pubkey,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
 
         debug!("Retrieved {} unspent UTXOs from tx_history", utxos.len());
         Ok(utxos)
@@ -458,7 +506,10 @@ impl TransactionHistory {
 
     /// Get a transaction with addresses decoded from UTXOs
     /// FIX 2025-12-12: Use single lock scope to avoid deadlock from nested get_transaction/get_utxo calls
-    pub fn get_transaction_with_addresses(&self, txid: &str) -> Result<Option<TransactionWithOutputs>> {
+    pub fn get_transaction_with_addresses(
+        &self,
+        txid: &str,
+    ) -> Result<Option<TransactionWithOutputs>> {
         let conn = self.conn.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
 
         // Get transaction data
@@ -481,7 +532,17 @@ impl TransactionHistory {
             },
         ).optional()?;
 
-        let (_version, lock_time, _fork_id, block_height, confirmed_at_ts, is_coinbase, sender_address, inputs_json, outputs_json) = match result {
+        let (
+            _version,
+            lock_time,
+            _fork_id,
+            block_height,
+            confirmed_at_ts,
+            is_coinbase,
+            sender_address,
+            inputs_json,
+            outputs_json,
+        ) = match result {
             Some(r) => r,
             None => return Ok(None),
         };
@@ -494,11 +555,14 @@ impl TransactionHistory {
         // Build outputs with addresses - query UTXO table within same lock
         let mut outputs_with_addresses = Vec::new();
         for (vout, output) in outputs.iter().enumerate() {
-            let address: Option<String> = conn.query_row(
-                "SELECT address FROM utxos WHERE txid = ?1 AND vout = ?2",
-                params![txid, vout as u32],
-                |row| row.get(0),
-            ).optional()?.or_else(|| decode_address_from_script(&output.script_pubkey, network));
+            let address: Option<String> = conn
+                .query_row(
+                    "SELECT address FROM utxos WHERE txid = ?1 AND vout = ?2",
+                    params![txid, vout as u32],
+                    |row| row.get(0),
+                )
+                .optional()?
+                .or_else(|| decode_address_from_script(&output.script_pubkey, network));
 
             outputs_with_addresses.push(OutputWithAddress {
                 value: output.value,
@@ -520,11 +584,19 @@ impl TransactionHistory {
     }
 
     /// Get paginated transactions for an address (pending first, then newest confirmed)
-    pub fn get_transactions_for_address(&self, address: &str, pagination: PaginationParams) -> Result<PaginatedTransactions> {
+    pub fn get_transactions_for_address(
+        &self,
+        address: &str,
+        pagination: PaginationParams,
+    ) -> Result<PaginatedTransactions> {
         let conn = self.conn.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
 
-        debug!("Querying transactions for address: {}, offset={}, limit={}",
-               &address[..20.min(address.len())], pagination.offset, pagination.limit);
+        debug!(
+            "Querying transactions for address: {}, offset={}, limit={}",
+            &address[..20.min(address.len())],
+            pagination.offset,
+            pagination.limit
+        );
 
         // Get total count
         let total_count: usize = conn.query_row(
@@ -548,34 +620,56 @@ impl TransactionHistory {
              ORDER BY
                  CASE WHEN t.confirmed_at IS NULL THEN 0 ELSE 1 END,
                  COALESCE(t.block_height, 999999999) DESC
-             LIMIT ?2 OFFSET ?3"
+             LIMIT ?2 OFFSET ?3",
         )?;
 
         let network = self.network;
 
         // Collect raw transaction data first (while holding the lock)
-        let raw_transactions: Vec<_> = stmt.query_map(
-            params![address, pagination.limit as i64, pagination.offset as i64],
-            |row| {
-                let txid: String = row.get(0)?;
-                let _version: u32 = row.get(1)?;
-                let lock_time: u32 = row.get(2)?;
-                let _fork_id: u8 = row.get(3)?;
-                let block_height: Option<u64> = row.get(4)?;
-                let confirmed_at_ts: Option<i64> = row.get(5)?;
-                let is_coinbase: bool = row.get::<_, i32>(6)? != 0;
-                let sender_address: Option<String> = row.get(7)?;
-                let inputs_json: String = row.get(8)?;
-                let outputs_json: String = row.get(9)?;
+        let raw_transactions: Vec<_> = stmt
+            .query_map(
+                params![address, pagination.limit as i64, pagination.offset as i64],
+                |row| {
+                    let txid: String = row.get(0)?;
+                    let _version: u32 = row.get(1)?;
+                    let lock_time: u32 = row.get(2)?;
+                    let _fork_id: u8 = row.get(3)?;
+                    let block_height: Option<u64> = row.get(4)?;
+                    let confirmed_at_ts: Option<i64> = row.get(5)?;
+                    let is_coinbase: bool = row.get::<_, i32>(6)? != 0;
+                    let sender_address: Option<String> = row.get(7)?;
+                    let inputs_json: String = row.get(8)?;
+                    let outputs_json: String = row.get(9)?;
 
-                Ok((txid, lock_time, block_height, confirmed_at_ts, is_coinbase, sender_address, inputs_json, outputs_json))
-            },
-        )?.filter_map(|r| r.ok()).collect();
+                    Ok((
+                        txid,
+                        lock_time,
+                        block_height,
+                        confirmed_at_ts,
+                        is_coinbase,
+                        sender_address,
+                        inputs_json,
+                        outputs_json,
+                    ))
+                },
+            )?
+            .filter_map(|r| r.ok())
+            .collect();
 
         // Now build the full transaction objects (still holding the same lock, no nested locking)
         let mut transactions: Vec<TransactionWithOutputs> = Vec::new();
 
-        for (txid, lock_time, block_height, confirmed_at_ts, is_coinbase, mut sender_address, inputs_json, outputs_json) in raw_transactions {
+        for (
+            txid,
+            lock_time,
+            block_height,
+            confirmed_at_ts,
+            is_coinbase,
+            mut sender_address,
+            inputs_json,
+            outputs_json,
+        ) in raw_transactions
+        {
             let inputs: Vec<TxInput> = match serde_json::from_str(&inputs_json) {
                 Ok(i) => i,
                 Err(_) => continue,
@@ -590,11 +684,14 @@ impl TransactionHistory {
             let mut outputs_with_addresses: Vec<OutputWithAddress> = Vec::new();
             for (vout, output) in outputs.iter().enumerate() {
                 // Try to get address from UTXO table
-                let output_address: Option<String> = conn.query_row(
-                    "SELECT address FROM utxos WHERE txid = ?1 AND vout = ?2",
-                    params![&txid, vout as u32],
-                    |row| row.get(0),
-                ).optional()?.or_else(|| decode_address_from_script(&output.script_pubkey, network));
+                let output_address: Option<String> = conn
+                    .query_row(
+                        "SELECT address FROM utxos WHERE txid = ?1 AND vout = ?2",
+                        params![&txid, vout as u32],
+                        |row| row.get(0),
+                    )
+                    .optional()?
+                    .or_else(|| decode_address_from_script(&output.script_pubkey, network));
 
                 outputs_with_addresses.push(OutputWithAddress {
                     value: output.value,
@@ -606,11 +703,13 @@ impl TransactionHistory {
             // Derive sender_address from inputs if not set
             if sender_address.is_none() && !is_coinbase && !inputs.is_empty() {
                 let first_input = &inputs[0];
-                sender_address = conn.query_row(
-                    "SELECT address FROM utxos WHERE txid = ?1 AND vout = ?2",
-                    params![&first_input.prev_txid, first_input.prev_vout],
-                    |row| row.get(0),
-                ).optional()?;
+                sender_address = conn
+                    .query_row(
+                        "SELECT address FROM utxos WHERE txid = ?1 AND vout = ?2",
+                        params![&first_input.prev_txid, first_input.prev_vout],
+                        |row| row.get(0),
+                    )
+                    .optional()?;
             }
 
             transactions.push(TransactionWithOutputs {
@@ -627,8 +726,12 @@ impl TransactionHistory {
 
         let has_more = pagination.offset + transactions.len() < total_count;
 
-        info!("Returned {} transactions for address {} (total: {})",
-              transactions.len(), &address[..20.min(address.len())], total_count);
+        info!(
+            "Returned {} transactions for address {} (total: {})",
+            transactions.len(),
+            &address[..20.min(address.len())],
+            total_count
+        );
 
         Ok(PaginatedTransactions {
             transactions,
@@ -659,21 +762,23 @@ impl TransactionHistory {
         let (type_filter, type_filter_count) = match tx_type {
             Some("sent") => (
                 "AND t.is_coinbase = 0 AND t.sender_address = ?4",
-                "AND t.is_coinbase = 0 AND t.sender_address = ?2"
+                "AND t.is_coinbase = 0 AND t.sender_address = ?2",
             ),
             Some("received") => (
                 "AND t.is_coinbase = 0 AND (t.sender_address IS NULL OR t.sender_address != ?4)",
-                "AND t.is_coinbase = 0 AND (t.sender_address IS NULL OR t.sender_address != ?2)"
+                "AND t.is_coinbase = 0 AND (t.sender_address IS NULL OR t.sender_address != ?2)",
             ),
-            Some("mining") => (
-                "AND t.is_coinbase = 1",
-                "AND t.is_coinbase = 1"
-            ),
+            Some("mining") => ("AND t.is_coinbase = 1", "AND t.is_coinbase = 1"),
             _ => ("", ""), // "all" or None = no filter
         };
 
-        debug!("Querying transactions for address: {}, type={:?}, offset={}, limit={}",
-               &address[..20.min(address.len())], tx_type, pagination.offset, pagination.limit);
+        debug!(
+            "Querying transactions for address: {}, type={:?}, offset={}, limit={}",
+            &address[..20.min(address.len())],
+            tx_type,
+            pagination.offset,
+            pagination.limit
+        );
 
         // Get total count with filter
         let count_query = format!(
@@ -708,51 +813,92 @@ impl TransactionHistory {
 
         // Execute query with appropriate params
         // Note: Collect results immediately to avoid borrow checker issues with stmt lifetime
-        let raw_transactions: Vec<(String, u32, Option<u64>, Option<i64>, bool, Option<String>, String, String)> =
-            if tx_type == Some("sent") || tx_type == Some("received") {
-                let mut stmt = conn.prepare(&select_query)?;
-                let rows = stmt.query_map(
-                    params![address, pagination.limit as i64, pagination.offset as i64, address],
-                    |row| {
-                        let txid: String = row.get(0)?;
-                        let _version: u32 = row.get(1)?;
-                        let lock_time: u32 = row.get(2)?;
-                        let _fork_id: u8 = row.get(3)?;
-                        let block_height: Option<u64> = row.get(4)?;
-                        let confirmed_at_ts: Option<i64> = row.get(5)?;
-                        let is_coinbase: bool = row.get::<_, i32>(6)? != 0;
-                        let sender_address: Option<String> = row.get(7)?;
-                        let inputs_json: String = row.get(8)?;
-                        let outputs_json: String = row.get(9)?;
-                        Ok((txid, lock_time, block_height, confirmed_at_ts, is_coinbase, sender_address, inputs_json, outputs_json))
-                    },
-                )?;
-                rows.filter_map(|r| r.ok()).collect()
-            } else {
-                let mut stmt = conn.prepare(&select_query)?;
-                let rows = stmt.query_map(
-                    params![address, pagination.limit as i64, pagination.offset as i64],
-                    |row| {
-                        let txid: String = row.get(0)?;
-                        let _version: u32 = row.get(1)?;
-                        let lock_time: u32 = row.get(2)?;
-                        let _fork_id: u8 = row.get(3)?;
-                        let block_height: Option<u64> = row.get(4)?;
-                        let confirmed_at_ts: Option<i64> = row.get(5)?;
-                        let is_coinbase: bool = row.get::<_, i32>(6)? != 0;
-                        let sender_address: Option<String> = row.get(7)?;
-                        let inputs_json: String = row.get(8)?;
-                        let outputs_json: String = row.get(9)?;
-                        Ok((txid, lock_time, block_height, confirmed_at_ts, is_coinbase, sender_address, inputs_json, outputs_json))
-                    },
-                )?;
-                rows.filter_map(|r| r.ok()).collect()
-            };
+        let raw_transactions: Vec<(
+            String,
+            u32,
+            Option<u64>,
+            Option<i64>,
+            bool,
+            Option<String>,
+            String,
+            String,
+        )> = if tx_type == Some("sent") || tx_type == Some("received") {
+            let mut stmt = conn.prepare(&select_query)?;
+            let rows = stmt.query_map(
+                params![
+                    address,
+                    pagination.limit as i64,
+                    pagination.offset as i64,
+                    address
+                ],
+                |row| {
+                    let txid: String = row.get(0)?;
+                    let _version: u32 = row.get(1)?;
+                    let lock_time: u32 = row.get(2)?;
+                    let _fork_id: u8 = row.get(3)?;
+                    let block_height: Option<u64> = row.get(4)?;
+                    let confirmed_at_ts: Option<i64> = row.get(5)?;
+                    let is_coinbase: bool = row.get::<_, i32>(6)? != 0;
+                    let sender_address: Option<String> = row.get(7)?;
+                    let inputs_json: String = row.get(8)?;
+                    let outputs_json: String = row.get(9)?;
+                    Ok((
+                        txid,
+                        lock_time,
+                        block_height,
+                        confirmed_at_ts,
+                        is_coinbase,
+                        sender_address,
+                        inputs_json,
+                        outputs_json,
+                    ))
+                },
+            )?;
+            rows.filter_map(|r| r.ok()).collect()
+        } else {
+            let mut stmt = conn.prepare(&select_query)?;
+            let rows = stmt.query_map(
+                params![address, pagination.limit as i64, pagination.offset as i64],
+                |row| {
+                    let txid: String = row.get(0)?;
+                    let _version: u32 = row.get(1)?;
+                    let lock_time: u32 = row.get(2)?;
+                    let _fork_id: u8 = row.get(3)?;
+                    let block_height: Option<u64> = row.get(4)?;
+                    let confirmed_at_ts: Option<i64> = row.get(5)?;
+                    let is_coinbase: bool = row.get::<_, i32>(6)? != 0;
+                    let sender_address: Option<String> = row.get(7)?;
+                    let inputs_json: String = row.get(8)?;
+                    let outputs_json: String = row.get(9)?;
+                    Ok((
+                        txid,
+                        lock_time,
+                        block_height,
+                        confirmed_at_ts,
+                        is_coinbase,
+                        sender_address,
+                        inputs_json,
+                        outputs_json,
+                    ))
+                },
+            )?;
+            rows.filter_map(|r| r.ok()).collect()
+        };
 
         // Build full transaction objects
         let mut transactions: Vec<TransactionWithOutputs> = Vec::new();
 
-        for (txid, lock_time, block_height, confirmed_at_ts, is_coinbase, mut sender_address, inputs_json, outputs_json) in raw_transactions {
+        for (
+            txid,
+            lock_time,
+            block_height,
+            confirmed_at_ts,
+            is_coinbase,
+            mut sender_address,
+            inputs_json,
+            outputs_json,
+        ) in raw_transactions
+        {
             let inputs: Vec<TxInput> = match serde_json::from_str(&inputs_json) {
                 Ok(i) => i,
                 Err(_) => continue,
@@ -766,11 +912,14 @@ impl TransactionHistory {
             // Build outputs with addresses
             let mut outputs_with_addresses: Vec<OutputWithAddress> = Vec::new();
             for (vout, output) in outputs.iter().enumerate() {
-                let output_address: Option<String> = conn.query_row(
-                    "SELECT address FROM utxos WHERE txid = ?1 AND vout = ?2",
-                    params![&txid, vout as u32],
-                    |row| row.get(0),
-                ).optional()?.or_else(|| decode_address_from_script(&output.script_pubkey, network));
+                let output_address: Option<String> = conn
+                    .query_row(
+                        "SELECT address FROM utxos WHERE txid = ?1 AND vout = ?2",
+                        params![&txid, vout as u32],
+                        |row| row.get(0),
+                    )
+                    .optional()?
+                    .or_else(|| decode_address_from_script(&output.script_pubkey, network));
 
                 outputs_with_addresses.push(OutputWithAddress {
                     value: output.value,
@@ -782,11 +931,13 @@ impl TransactionHistory {
             // Derive sender_address from inputs if not set
             if sender_address.is_none() && !is_coinbase && !inputs.is_empty() {
                 let first_input = &inputs[0];
-                sender_address = conn.query_row(
-                    "SELECT address FROM utxos WHERE txid = ?1 AND vout = ?2",
-                    params![&first_input.prev_txid, first_input.prev_vout],
-                    |row| row.get(0),
-                ).optional()?;
+                sender_address = conn
+                    .query_row(
+                        "SELECT address FROM utxos WHERE txid = ?1 AND vout = ?2",
+                        params![&first_input.prev_txid, first_input.prev_vout],
+                        |row| row.get(0),
+                    )
+                    .optional()?;
             }
 
             transactions.push(TransactionWithOutputs {
@@ -803,8 +954,13 @@ impl TransactionHistory {
 
         let has_more = pagination.offset + transactions.len() < total_count;
 
-        info!("Returned {} filtered ({:?}) transactions for address {} (total: {})",
-              transactions.len(), tx_type, &address[..20.min(address.len())], total_count);
+        info!(
+            "Returned {} filtered ({:?}) transactions for address {} (total: {})",
+            transactions.len(),
+            tx_type,
+            &address[..20.min(address.len())],
+            total_count
+        );
 
         Ok(PaginatedTransactions {
             transactions,
@@ -821,35 +977,40 @@ impl TransactionHistory {
 
         let mut stmt = conn.prepare(
             "SELECT txid, vout, value_credits, block_height, is_coinbase, created_at, script_pubkey
-             FROM utxos WHERE address = ?1 AND spent = 0"
+             FROM utxos WHERE address = ?1 AND spent = 0",
         )?;
 
-        let utxos = stmt.query_map(params![address], |row| {
-            let txid: String = row.get(0)?;
-            let vout: u32 = row.get(1)?;
-            let value_credits: u64 = row.get(2)?;
-            let block_height: u64 = row.get(3)?;
-            let is_coinbase: bool = row.get::<_, i32>(4)? != 0;
-            let created_at_ts: i64 = row.get(5)?;
-            let script_pubkey: Vec<u8> = row.get(6)?;
+        let utxos = stmt
+            .query_map(params![address], |row| {
+                let txid: String = row.get(0)?;
+                let vout: u32 = row.get(1)?;
+                let value_credits: u64 = row.get(2)?;
+                let block_height: u64 = row.get(3)?;
+                let is_coinbase: bool = row.get::<_, i32>(4)? != 0;
+                let created_at_ts: i64 = row.get(5)?;
+                let script_pubkey: Vec<u8> = row.get(6)?;
 
-            let created_at = Utc.timestamp_opt(created_at_ts, 0).single().unwrap_or_else(Utc::now);
+                let created_at = Utc
+                    .timestamp_opt(created_at_ts, 0)
+                    .single()
+                    .unwrap_or_else(Utc::now);
 
-            Ok(UTXO {
-                txid,
-                vout,
-                value_credits,
-                value_btp: value_credits as f64 / 100_000_000.0,
-                address: address.to_string(),
-                block_height,
-                is_coinbase,
-                created_at,
-                spent: false,
-                spent_in_tx: None,
-                spent_at_height: None,
-                script_pubkey,
-            })
-        })?.collect::<Result<Vec<_>, _>>()?;
+                Ok(UTXO {
+                    txid,
+                    vout,
+                    value_credits,
+                    value_btp: value_credits as f64 / 100_000_000.0,
+                    address: address.to_string(),
+                    block_height,
+                    is_coinbase,
+                    created_at,
+                    spent: false,
+                    spent_in_tx: None,
+                    spent_at_height: None,
+                    script_pubkey,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(utxos)
     }
@@ -891,12 +1052,11 @@ impl TransactionHistory {
              FROM transactions t
              JOIN tx_addresses ta ON t.txid = ta.txid
              WHERE ta.address = ?1 AND t.is_coinbase = 1
-             ORDER BY t.block_height DESC"
+             ORDER BY t.block_height DESC",
         )?;
 
-        let transactions: Vec<TransactionWithOutputs> = stmt.query_map(
-            params![address],
-            |row| {
+        let transactions: Vec<TransactionWithOutputs> = stmt
+            .query_map(params![address], |row| {
                 let txid: String = row.get(0)?;
                 let _version: u32 = row.get(1)?;
                 let lock_time: u32 = row.get(2)?;
@@ -906,22 +1066,30 @@ impl TransactionHistory {
                 let inputs_json: String = row.get(6)?;
                 let outputs_json: String = row.get(7)?;
 
-                Ok((txid, lock_time, block_height, confirmed_at_ts, inputs_json, outputs_json))
-            },
-        )?.filter_map(|result| {
-            match result {
+                Ok((
+                    txid,
+                    lock_time,
+                    block_height,
+                    confirmed_at_ts,
+                    inputs_json,
+                    outputs_json,
+                ))
+            })?
+            .filter_map(|result| match result {
                 Ok((txid, lock_time, block_height, confirmed_at_ts, inputs_json, outputs_json)) => {
                     let inputs: Vec<TxInput> = serde_json::from_str(&inputs_json).ok()?;
                     let outputs: Vec<TxOutput> = serde_json::from_str(&outputs_json).ok()?;
-                    let confirmed_at = confirmed_at_ts.and_then(|ts| Utc.timestamp_opt(ts, 0).single());
+                    let confirmed_at =
+                        confirmed_at_ts.and_then(|ts| Utc.timestamp_opt(ts, 0).single());
 
-                    let outputs_with_addresses: Vec<OutputWithAddress> = outputs.into_iter().map(|output| {
-                        OutputWithAddress {
+                    let outputs_with_addresses: Vec<OutputWithAddress> = outputs
+                        .into_iter()
+                        .map(|output| OutputWithAddress {
                             value: output.value,
                             address: Some(address.to_string()),
                             script_pubkey: output.script_pubkey,
-                        }
-                    }).collect();
+                        })
+                        .collect();
 
                     Some(TransactionWithOutputs {
                         txid,
@@ -935,8 +1103,8 @@ impl TransactionHistory {
                     })
                 }
                 Err(_) => None,
-            }
-        }).collect();
+            })
+            .collect();
 
         Ok(transactions)
     }
@@ -958,7 +1126,10 @@ impl TransactionHistory {
     pub fn get_diagnostic_info(&self, address: &str) -> Result<String> {
         let conn = self.conn.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
 
-        let mut output = format!("=== TX DIAGNOSTIC FOR {} ===\n", &address[..30.min(address.len())]);
+        let mut output = format!(
+            "=== TX DIAGNOSTIC FOR {} ===\n",
+            &address[..30.min(address.len())]
+        );
 
         // Count transactions
         let total: i64 = conn.query_row(
@@ -997,7 +1168,7 @@ impl TransactionHistory {
              JOIN tx_addresses ta ON t.txid = ta.txid
              WHERE ta.address = ?1
              ORDER BY COALESCE(t.confirmed_at, 9999999999) DESC
-             LIMIT 10"
+             LIMIT 10",
         )?;
 
         let rows = stmt.query_map(params![address], |row| {
@@ -1006,14 +1177,32 @@ impl TransactionHistory {
             let confirmed_at: Option<i64> = row.get(2)?;
             let is_coinbase: bool = row.get::<_, i32>(3)? != 0;
             let sender_address: Option<String> = row.get(4)?;
-            Ok((txid, block_height, confirmed_at, is_coinbase, sender_address))
+            Ok((
+                txid,
+                block_height,
+                confirmed_at,
+                is_coinbase,
+                sender_address,
+            ))
         })?;
 
         for (txid, block_height, confirmed_at, is_coinbase, sender_address) in rows.flatten() {
-            let status = if confirmed_at.is_some() { "CONFIRMED" } else { "PENDING" };
-            let sender = sender_address.map(|s| format!("sender={}...", &s[..20.min(s.len())])).unwrap_or_else(|| "sender=null".to_string());
-            output.push_str(&format!("  {} txid={}... block={:?} coinbase={} {}\n",
-                status, &txid[..16.min(txid.len())], block_height, is_coinbase, sender));
+            let status = if confirmed_at.is_some() {
+                "CONFIRMED"
+            } else {
+                "PENDING"
+            };
+            let sender = sender_address
+                .map(|s| format!("sender={}...", &s[..20.min(s.len())]))
+                .unwrap_or_else(|| "sender=null".to_string());
+            output.push_str(&format!(
+                "  {} txid={}... block={:?} coinbase={} {}\n",
+                status,
+                &txid[..16.min(txid.len())],
+                block_height,
+                is_coinbase,
+                sender
+            ));
         }
 
         Ok(output)
@@ -1034,7 +1223,7 @@ impl TransactionHistory {
         conn.execute_batch(
             "DELETE FROM tx_addresses;
              DELETE FROM transactions;
-             DELETE FROM utxos;"
+             DELETE FROM utxos;",
         )?;
         Ok(())
     }
@@ -1045,7 +1234,12 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    fn create_test_tx(txid: &str, is_coinbase: bool, block_height: Option<u64>, sender: Option<&str>) -> Transaction {
+    fn create_test_tx(
+        txid: &str,
+        is_coinbase: bool,
+        block_height: Option<u64>,
+        sender: Option<&str>,
+    ) -> Transaction {
         Transaction {
             txid: txid.to_string(),
             version: 1,
@@ -1075,7 +1269,9 @@ mod tests {
         let pending_tx = create_test_tx(txid, false, None, Some("mSender"));
         history.add_transaction(&pending_tx, address).unwrap();
 
-        let result = history.get_transactions_for_address(address, PaginationParams::default()).unwrap();
+        let result = history
+            .get_transactions_for_address(address, PaginationParams::default())
+            .unwrap();
         assert_eq!(result.total_count, 1);
 
         // Add as confirmed
@@ -1083,7 +1279,9 @@ mod tests {
         history.add_transaction(&confirmed_tx, address).unwrap();
 
         // Should still be 1 transaction
-        let result = history.get_transactions_for_address(address, PaginationParams::default()).unwrap();
+        let result = history
+            .get_transactions_for_address(address, PaginationParams::default())
+            .unwrap();
         assert_eq!(result.total_count, 1);
         assert_eq!(result.transactions[0].block_height, Some(100));
     }
@@ -1127,10 +1325,14 @@ mod tests {
         history.add_transaction(&tx, recipient).unwrap();
 
         // Each address sees exactly 1 transaction
-        let sender_result = history.get_transactions_for_address(sender, PaginationParams::default()).unwrap();
+        let sender_result = history
+            .get_transactions_for_address(sender, PaginationParams::default())
+            .unwrap();
         assert_eq!(sender_result.total_count, 1);
 
-        let recipient_result = history.get_transactions_for_address(recipient, PaginationParams::default()).unwrap();
+        let recipient_result = history
+            .get_transactions_for_address(recipient, PaginationParams::default())
+            .unwrap();
         assert_eq!(recipient_result.total_count, 1);
     }
 

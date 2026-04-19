@@ -23,19 +23,19 @@ pub mod auth_crypto;
 pub mod auth_state;
 
 // GPU Mining Dashboard modules (Feature 012)
+pub mod debug_logger;
 pub mod gpu_health_monitor; // GPU health monitoring and thermal management
 pub mod gpu_miner; // OpenCL GPU mining implementation
 pub mod gpu_stats_persistence; // GPU stats persistence and historical tracking
 pub mod gpu_stats_types;
 pub mod mining_thread_pool; // Unified CPU+GPU mining thread pool
-pub mod thermal_throttle; // Thermal throttling for GPU mining
-pub mod debug_logger; // Comprehensive debug event logger
+pub mod thermal_throttle; // Thermal throttling for GPU mining // Comprehensive debug event logger
 
 // Embedded blockchain node modules
-pub mod embedded_node;
-pub mod unified_database; // Unified RocksDB database for blockchain and UTXO data
-pub mod security; // Security manager for wallet encryption
 pub mod btpc_integration; // BTPC node integration
+pub mod embedded_node;
+pub mod security; // Security manager for wallet encryption
+pub mod unified_database; // Unified RocksDB database for blockchain and UTXO data
 pub mod wallet_manager; // Wallet management and balance caching (depends on security)
 
 // Persistent settings storage
@@ -52,6 +52,9 @@ pub mod reorg_handler; // Chain reorg detection, execution, and UTXO rollback
 
 // Stratum V2-BTPC pool mining protocol
 pub mod stratum;
+
+// Shared type definitions (NodeStatus, NodeStatusDto, etc.)
+pub mod types;
 
 // Note: fee_estimator is NOT exported here because it depends on EmbeddedNode
 // which creates circular import issues. It's declared in main.rs instead.

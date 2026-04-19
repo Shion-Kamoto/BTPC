@@ -31,15 +31,9 @@ pub fn encode(msg: &StratumMessage) -> Result<Vec<u8>> {
         StratumMessage::SetupConnectionError(m) => {
             (MessageType::SetupConnectionError, serde_json::to_vec(m)?)
         }
-        StratumMessage::NewMiningJob(m) => {
-            (MessageType::NewMiningJob, serde_json::to_vec(m)?)
-        }
-        StratumMessage::SetTarget(m) => {
-            (MessageType::SetTarget, serde_json::to_vec(m)?)
-        }
-        StratumMessage::SetNewPrevHash(m) => {
-            (MessageType::SetNewPrevHash, serde_json::to_vec(m)?)
-        }
+        StratumMessage::NewMiningJob(m) => (MessageType::NewMiningJob, serde_json::to_vec(m)?),
+        StratumMessage::SetTarget(m) => (MessageType::SetTarget, serde_json::to_vec(m)?),
+        StratumMessage::SetNewPrevHash(m) => (MessageType::SetNewPrevHash, serde_json::to_vec(m)?),
         StratumMessage::SubmitSharesStandard(m) => {
             (MessageType::SubmitSharesStandard, serde_json::to_vec(m)?)
         }
@@ -49,9 +43,7 @@ pub fn encode(msg: &StratumMessage) -> Result<Vec<u8>> {
         StratumMessage::SubmitSharesError(m) => {
             (MessageType::SubmitSharesError, serde_json::to_vec(m)?)
         }
-        StratumMessage::Reconnect(m) => {
-            (MessageType::Reconnect, serde_json::to_vec(m)?)
-        }
+        StratumMessage::Reconnect(m) => (MessageType::Reconnect, serde_json::to_vec(m)?),
     };
 
     let mut buf = BytesMut::with_capacity(HEADER_SIZE + payload.len());
@@ -107,9 +99,7 @@ pub fn decode(buf: &mut BytesMut) -> Result<Option<StratumMessage>> {
         MessageType::NewMiningJob => {
             StratumMessage::NewMiningJob(serde_json::from_slice(&payload)?)
         }
-        MessageType::SetTarget => {
-            StratumMessage::SetTarget(serde_json::from_slice(&payload)?)
-        }
+        MessageType::SetTarget => StratumMessage::SetTarget(serde_json::from_slice(&payload)?),
         MessageType::SetNewPrevHash => {
             StratumMessage::SetNewPrevHash(serde_json::from_slice(&payload)?)
         }
@@ -122,9 +112,7 @@ pub fn decode(buf: &mut BytesMut) -> Result<Option<StratumMessage>> {
         MessageType::SubmitSharesError => {
             StratumMessage::SubmitSharesError(serde_json::from_slice(&payload)?)
         }
-        MessageType::Reconnect => {
-            StratumMessage::Reconnect(serde_json::from_slice(&payload)?)
-        }
+        MessageType::Reconnect => StratumMessage::Reconnect(serde_json::from_slice(&payload)?),
     };
 
     Ok(Some(message))

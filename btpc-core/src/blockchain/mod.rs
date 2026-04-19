@@ -175,8 +175,8 @@ impl NetworkParams {
             genesis_hash: Hash::zero(), // Will be set after genesis creation
             default_port: 8333,
             magic_bytes: [0x42, 0x54, 0x00, 0x01], // "BT" + version
-            min_difficulty_target: 0x3c7fffff, // SHA-512 ~32 bits work
-            max_difficulty_target: 0x407fffff, // SHA-512 instant mining
+            min_difficulty_target: 0x3c7fffff,     // SHA-512 ~32 bits work
+            max_difficulty_target: 0x407fffff,     // SHA-512 instant mining
         }
     }
 
@@ -188,8 +188,8 @@ impl NetworkParams {
             genesis_hash: Hash::zero(), // Will be set after genesis creation
             default_port: 18333,
             magic_bytes: [0x42, 0x54, 0x01, 0x01], // "BT" + testnet version
-            min_difficulty_target: 0x3c7fffff, // SHA-512 ~32 bits work
-            max_difficulty_target: 0x407fffff, // SHA-512 instant mining
+            min_difficulty_target: 0x3c7fffff,     // SHA-512 ~32 bits work
+            max_difficulty_target: 0x407fffff,     // SHA-512 instant mining
         }
     }
 
@@ -201,8 +201,8 @@ impl NetworkParams {
             genesis_hash: Hash::zero(), // Will be set after genesis creation
             default_port: 18444,
             magic_bytes: [0x42, 0x54, 0x02, 0x01], // "BT" + regtest version
-            min_difficulty_target: 0x407fffff, // Regtest uses easiest difficulty
-            max_difficulty_target: 0x407fffff, // Same as min for regtest
+            min_difficulty_target: 0x407fffff,     // Regtest uses easiest difficulty
+            max_difficulty_target: 0x407fffff,     // Same as min for regtest
         }
     }
 
@@ -395,23 +395,28 @@ mod tests {
         // Verify blockchain constants are properly re-exported from economics module
         // This ensures single source of truth per Constitution §3.2
         assert_eq!(
-            BLOCKS_PER_YEAR, econ::BLOCKS_PER_YEAR,
+            BLOCKS_PER_YEAR,
+            econ::BLOCKS_PER_YEAR,
             "BLOCKS_PER_YEAR must match economics module"
         );
         assert_eq!(
-            DECAY_YEARS, econ::DECAY_DURATION_YEARS,
+            DECAY_YEARS,
+            econ::DECAY_DURATION_YEARS,
             "DECAY_YEARS must match economics module"
         );
         assert_eq!(
-            INITIAL_BLOCK_REWARD, econ::INITIAL_REWARD,
+            INITIAL_BLOCK_REWARD,
+            econ::INITIAL_REWARD,
             "INITIAL_BLOCK_REWARD must match economics module"
         );
         assert_eq!(
-            TAIL_EMISSION_REWARD, econ::TAIL_EMISSION,
+            TAIL_EMISSION_REWARD,
+            econ::TAIL_EMISSION,
             "TAIL_EMISSION_REWARD must match economics module"
         );
         assert_eq!(
-            COINBASE_MATURITY, econ::COINBASE_MATURITY,
+            COINBASE_MATURITY,
+            econ::COINBASE_MATURITY,
             "COINBASE_MATURITY must match economics module"
         );
 

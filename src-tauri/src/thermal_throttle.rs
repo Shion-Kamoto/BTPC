@@ -12,7 +12,7 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThrottleState {
     pub gpu_device_index: u32,
-    pub current_intensity: u8,        // 0-100%, 100% = full power
+    pub current_intensity: u8, // 0-100%, 100% = full power
     pub is_throttled: bool,
     pub temperature: f32,
     pub threshold: f32,
@@ -37,7 +37,7 @@ impl ThermalThrottle {
         Self {
             states: HashMap::new(),
             temperature_threshold,
-            hysteresis: 5.0,  // 5°C hysteresis
+            hysteresis: 5.0, // 5°C hysteresis
         }
     }
 
@@ -175,8 +175,8 @@ mod tests {
         let mut throttle = ThermalThrottle::new(80.0);
 
         // Heat up - trigger throttling
-        throttle.check_throttle(0, 85.0);  // 90%
-        let intensity = throttle.check_throttle(0, 85.0);  // 80%
+        throttle.check_throttle(0, 85.0); // 90%
+        let intensity = throttle.check_throttle(0, 85.0); // 80%
         assert_eq!(intensity, 80);
 
         // Cool down slightly (still above restore threshold of 75°C) - should stay at 80%
@@ -185,7 +185,10 @@ mod tests {
 
         // Cool down below restore threshold (75°C) - should restore to 100%
         let intensity = throttle.check_throttle(0, 74.0);
-        assert_eq!(intensity, 100, "Should restore to 100% below hysteresis threshold");
+        assert_eq!(
+            intensity, 100,
+            "Should restore to 100% below hysteresis threshold"
+        );
     }
 
     #[test]

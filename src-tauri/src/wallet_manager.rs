@@ -440,7 +440,11 @@ impl WalletManager {
                 },
             ));
         }
-        if request.nickname.contains('/') || request.nickname.contains('\\') || request.nickname.contains('\0') || request.nickname.contains("..") {
+        if request.nickname.contains('/')
+            || request.nickname.contains('\\')
+            || request.nickname.contains('\0')
+            || request.nickname.contains("..")
+        {
             return Err(BtpcError::Validation(
                 crate::error::ValidationError::CustomValidation {
                     rule: "nickname_safety".to_string(),
@@ -480,7 +484,9 @@ impl WalletManager {
         // FIX 2025-12-14: Handle import_data for mnemonic/key imports
         // When import_data is provided with seed_hex, create wallet from existing seed
         // This ensures the wallet file has the SAME keypair as the imported mnemonic
-        let (address, seed_phrase, private_key_hex, seed_hex) = if let Some(ref import_data) = request.import_data {
+        let (address, seed_phrase, private_key_hex, seed_hex) = if let Some(ref import_data) =
+            request.import_data
+        {
             if let Some(ref seed_hex_str) = import_data.seed_hex {
                 // Convert seed hex to bytes
                 let seed_bytes = hex::decode(seed_hex_str).map_err(|e| {
@@ -491,10 +497,12 @@ impl WalletManager {
                 })?;
 
                 if seed_bytes.len() != 32 {
-                    return Err(BtpcError::Validation(crate::error::ValidationError::CustomValidation {
-                        rule: "seed_length".to_string(),
-                        message: format!("Seed must be 32 bytes, got {}", seed_bytes.len()),
-                    }));
+                    return Err(BtpcError::Validation(
+                        crate::error::ValidationError::CustomValidation {
+                            rule: "seed_length".to_string(),
+                            message: format!("Seed must be 32 bytes, got {}", seed_bytes.len()),
+                        },
+                    ));
                 }
 
                 let mut seed: [u8; 32] = [0u8; 32];
@@ -517,11 +525,21 @@ impl WalletManager {
                 // import_data without seed_hex - use provided address but create new wallet file
                 // This is a fallback for compatibility but may cause issues
                 eprintln!("⚠️ Import without seed_hex - wallet file will have different keypair!");
-                self.create_btpc_wallet_file(&wallet_path, &request.password, btpc_integration, network)?
+                self.create_btpc_wallet_file(
+                    &wallet_path,
+                    &request.password,
+                    btpc_integration,
+                    network,
+                )?
             }
         } else {
             // Normal wallet creation - generate new keypair
-            self.create_btpc_wallet_file(&wallet_path, &request.password, btpc_integration, network)?
+            self.create_btpc_wallet_file(
+                &wallet_path,
+                &request.password,
+                btpc_integration,
+                network,
+            )?
         };
 
         // Prepare metadata
@@ -1048,7 +1066,12 @@ impl WalletManager {
                 })
             })?;
 
-        Ok((address.trim().to_string(), seed_phrase, private_key_hex, seed_hex))
+        Ok((
+            address.trim().to_string(),
+            seed_phrase,
+            private_key_hex,
+            seed_hex,
+        ))
     }
 
     // ========================================================================
@@ -1263,4 +1286,3 @@ impl WalletManager {
         })
     }
 }
-

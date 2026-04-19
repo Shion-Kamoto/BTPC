@@ -838,6 +838,9 @@ mod tests {
         almost_zero[31] = 1;
 
         let result = PrivateKey::from_seed(&almost_zero);
-        assert!(result.is_ok(), "Seed with at least one non-zero byte must be accepted");
+        assert!(
+            result.is_ok(),
+            "Seed with at least one non-zero byte must be accepted"
+        );
     }
 }

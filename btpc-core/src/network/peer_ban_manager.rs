@@ -228,13 +228,9 @@ impl BanStorage {
 
     fn iter_all(&self) -> Vec<(IpAddr, BanInfo)> {
         let mut out = Vec::new();
-        for item in self.db.iterator(rocksdb::IteratorMode::Start) {
-            if let Ok((k, v)) = item {
-                if let (Some(ip), Ok(info)) =
-                    (parse_ip_key(&k), bincode::deserialize::<BanInfo>(&v))
-                {
-                    out.push((ip, info));
-                }
+        for (k, v) in self.db.iterator(rocksdb::IteratorMode::Start).flatten() {
+            if let (Some(ip), Ok(info)) = (parse_ip_key(&k), bincode::deserialize::<BanInfo>(&v)) {
+                out.push((ip, info));
             }
         }
         out
@@ -280,9 +276,7 @@ impl PeerBanManager {
         let now = SystemTime::now();
         let mut guard = mgr.inner.write().expect("ban inner lock");
         for (ip, info) in storage.iter_all() {
-            let elapsed = now
-                .duration_since(info.banned_at)
-                .unwrap_or(Duration::ZERO);
+            let elapsed = now.duration_since(info.banned_at).unwrap_or(Duration::ZERO);
             if elapsed >= info.ban_duration {
                 // Expired — purge from disk lazily.
                 let _ = storage.delete(&ip);
@@ -326,12 +320,7 @@ impl PeerBanManager {
     /// Add misbehavior points to a peer.
     ///
     /// Returns `Some(BanReason)` if the peer crossed the ban threshold.
-    pub fn add_misbehavior(
-        &self,
-        ip: IpAddr,
-        points: u32,
-        reason: BanReason,
-    ) -> Option<BanReason> {
+    pub fn add_misbehavior(&self, ip: IpAddr, points: u32, reason: BanReason) -> Option<BanReason> {
         if self.is_banned(&ip) {
             return None;
         }
@@ -349,8 +338,7 @@ impl PeerBanManager {
 
         if let Ok(elapsed) = now.duration_since(info.last_updated) {
             if elapsed >= self.config.decay_period {
-                let decay_factor =
-                    (elapsed.as_secs() / self.config.decay_period.as_secs()) as u32;
+                let decay_factor = (elapsed.as_secs() / self.config.decay_period.as_secs()) as u32;
                 info.score = info.score.saturating_sub(decay_factor * 10);
             }
         }
@@ -501,9 +489,7 @@ impl PeerBanManager {
                 if !self.config.auto_unban {
                     return true;
                 }
-                let elapsed = now
-                    .duration_since(info.banned_at)
-                    .unwrap_or(Duration::ZERO);
+                let elapsed = now.duration_since(info.banned_at).unwrap_or(Duration::ZERO);
                 elapsed < info.ban_duration
             })
             .map(|(ip, info)| (*ip, info.clone()))

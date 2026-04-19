@@ -10,8 +10,10 @@
 use tauri::{Emitter, State};
 
 use crate::error::BtpcError;
-use btpc_desktop_app::tx_history::{PaginatedTransactions, PaginationParams, TransactionWithOutputs};
 use crate::AppState;
+use btpc_desktop_app::tx_history::{
+    PaginatedTransactions, PaginationParams, TransactionWithOutputs,
+};
 
 /// Get transaction history (DEPRECATED - O(n×m) complexity)
 /// Use get_paginated_transaction_history for list queries
@@ -129,7 +131,10 @@ pub async fn get_paginated_transaction_history(
     // but some wallets (especially default wallets created before fixes) may have the prefix
     // Without this cleaning, queries for default wallet transactions return empty results
     let address = if raw_address.starts_with("Address: ") {
-        raw_address.strip_prefix("Address: ").unwrap_or(&raw_address).to_string()
+        raw_address
+            .strip_prefix("Address: ")
+            .unwrap_or(&raw_address)
+            .to_string()
     } else {
         raw_address.clone()
     };
@@ -274,7 +279,10 @@ pub async fn get_wallet_balance_from_storage(
 
     // FIX 2025-12-09: Clean address by stripping "Address: " prefix if present
     let address = if raw_address.starts_with("Address: ") {
-        raw_address.strip_prefix("Address: ").unwrap_or(&raw_address).to_string()
+        raw_address
+            .strip_prefix("Address: ")
+            .unwrap_or(&raw_address)
+            .to_string()
     } else {
         raw_address
     };
@@ -298,7 +306,9 @@ pub async fn get_wallet_balance_from_storage(
 
 /// Get transaction count for the current wallet from SQLite storage
 #[tauri::command]
-pub async fn get_transaction_count_from_storage(state: State<'_, AppState>) -> Result<usize, String> {
+pub async fn get_transaction_count_from_storage(
+    state: State<'_, AppState>,
+) -> Result<usize, String> {
     // Get wallet address from WalletManager
     let raw_address = {
         let wallet_manager = state
@@ -314,7 +324,10 @@ pub async fn get_transaction_count_from_storage(state: State<'_, AppState>) -> R
 
     // FIX 2025-12-09: Clean address by stripping "Address: " prefix if present
     let address = if raw_address.starts_with("Address: ") {
-        raw_address.strip_prefix("Address: ").unwrap_or(&raw_address).to_string()
+        raw_address
+            .strip_prefix("Address: ")
+            .unwrap_or(&raw_address)
+            .to_string()
     } else {
         raw_address
     };
@@ -349,7 +362,10 @@ pub async fn get_mining_history_from_storage(
 
     // FIX 2025-12-09: Clean address by stripping "Address: " prefix if present
     let address = if raw_address.starts_with("Address: ") {
-        raw_address.strip_prefix("Address: ").unwrap_or(&raw_address).to_string()
+        raw_address
+            .strip_prefix("Address: ")
+            .unwrap_or(&raw_address)
+            .to_string()
     } else {
         raw_address
     };
@@ -515,13 +531,15 @@ pub async fn create_transaction_preview(
     })?;
 
     // Get spendable balance (excludes immature coinbase)
-    let (available_credits, available_btp) = utxo_manager.get_spendable_balance(&from_address, current_height);
+    let (available_credits, available_btp) =
+        utxo_manager.get_spendable_balance(&from_address, current_height);
 
     // Try to select UTXOs (with maturity check)
-    let selected_utxos = match utxo_manager.select_utxos_for_spending(&from_address, total_needed, current_height) {
-        Ok(utxos) => utxos,
-        Err(e) => return Err(format!("Cannot create transaction: {}", e)),
-    };
+    let selected_utxos =
+        match utxo_manager.select_utxos_for_spending(&from_address, total_needed, current_height) {
+            Ok(utxos) => utxos,
+            Err(e) => return Err(format!("Cannot create transaction: {}", e)),
+        };
 
     let total_input: u64 = selected_utxos.iter().map(|u| u.value_credits).sum();
     let change_amount = total_input - amount_credits - fee_credits;
@@ -581,7 +599,10 @@ pub async fn debug_tx_diagnostic(
 
     // Clean address
     let address = if raw_address.starts_with("Address: ") {
-        raw_address.strip_prefix("Address: ").unwrap_or(&raw_address).to_string()
+        raw_address
+            .strip_prefix("Address: ")
+            .unwrap_or(&raw_address)
+            .to_string()
     } else {
         raw_address
     };

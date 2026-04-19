@@ -424,14 +424,20 @@ impl GpuMiner {
             // For now, vendor extensions are not directly supported by opencl3 safe API
             // Would require unsafe FFI calls to clGetDeviceInfo with vendor-specific params
             // Returning None to indicate temperature monitoring not available
-            eprintln!("[THERMAL] NVIDIA GPU {} temperature query requires unsafe FFI (not implemented)", self.device_index);
+            eprintln!(
+                "[THERMAL] NVIDIA GPU {} temperature query requires unsafe FFI (not implemented)",
+                self.device_index
+            );
         }
 
         // Try AMD extension if AMD GPU
         if vendor_lower.contains("amd") || vendor_lower.contains("advanced micro devices") {
             // AMD temperature query also requires unsafe FFI with vendor extensions
             // opencl3 safe API doesn't support vendor-specific device info queries
-            eprintln!("[THERMAL] AMD GPU {} temperature query requires unsafe FFI (not implemented)", self.device_index);
+            eprintln!(
+                "[THERMAL] AMD GPU {} temperature query requires unsafe FFI (not implemented)",
+                self.device_index
+            );
         }
 
         // Intel or other vendors - no standard temperature extension available

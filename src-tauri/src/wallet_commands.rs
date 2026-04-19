@@ -22,7 +22,9 @@ pub async fn create_wallet_with_nickname(
         (*active_network).clone().into()
     };
 
-    let mut wallet_manager = state.wallet_manager.lock()
+    let mut wallet_manager = state
+        .wallet_manager
+        .lock()
         .map_err(|_| "Failed to lock wallet manager".to_string())?;
     wallet_manager
         .create_wallet(request, &state.btpc, network)
@@ -32,7 +34,9 @@ pub async fn create_wallet_with_nickname(
 /// List all wallets
 #[tauri::command]
 pub async fn list_wallets(state: State<'_, AppState>) -> Result<Vec<WalletInfo>, String> {
-    let wallet_manager = state.wallet_manager.lock()
+    let wallet_manager = state
+        .wallet_manager
+        .lock()
         .map_err(|_| "Failed to lock wallet manager".to_string())?;
     Ok(wallet_manager.list_wallets().into_iter().cloned().collect())
 }
@@ -43,7 +47,9 @@ pub async fn get_wallet(
     state: State<'_, AppState>,
     wallet_id: String,
 ) -> Result<Option<WalletInfo>, String> {
-    let wallet_manager = state.wallet_manager.lock()
+    let wallet_manager = state
+        .wallet_manager
+        .lock()
         .map_err(|_| "Failed to lock wallet manager".to_string())?;
     Ok(wallet_manager.get_wallet(&wallet_id).cloned())
 }
@@ -54,7 +60,9 @@ pub async fn get_wallet_by_nickname(
     state: State<'_, AppState>,
     nickname: String,
 ) -> Result<Option<WalletInfo>, String> {
-    let wallet_manager = state.wallet_manager.lock()
+    let wallet_manager = state
+        .wallet_manager
+        .lock()
         .map_err(|_| "Failed to lock wallet manager".to_string())?;
     Ok(wallet_manager.get_wallet_by_nickname(&nickname).cloned())
 }
@@ -62,7 +70,9 @@ pub async fn get_wallet_by_nickname(
 /// Get default wallet
 #[tauri::command]
 pub async fn get_default_wallet(state: State<'_, AppState>) -> Result<Option<WalletInfo>, String> {
-    let wallet_manager = state.wallet_manager.lock()
+    let wallet_manager = state
+        .wallet_manager
+        .lock()
         .map_err(|_| "Failed to lock wallet manager".to_string())?;
     Ok(wallet_manager.get_default_wallet().cloned())
 }
@@ -73,7 +83,9 @@ pub async fn update_wallet(
     state: State<'_, AppState>,
     request: UpdateWalletRequest,
 ) -> Result<WalletInfo, String> {
-    let mut wallet_manager = state.wallet_manager.lock()
+    let mut wallet_manager = state
+        .wallet_manager
+        .lock()
         .map_err(|_| "Failed to lock wallet manager".to_string())?;
     wallet_manager
         .update_wallet(request)
@@ -86,7 +98,9 @@ pub async fn delete_wallet(
     state: State<'_, AppState>,
     wallet_id: String,
 ) -> Result<String, String> {
-    let mut wallet_manager = state.wallet_manager.lock()
+    let mut wallet_manager = state
+        .wallet_manager
+        .lock()
         .map_err(|_| "Failed to lock wallet manager".to_string())?;
     wallet_manager
         .delete_wallet(&wallet_id)
@@ -98,7 +112,9 @@ pub async fn delete_wallet(
 #[tauri::command]
 pub async fn get_wallet_summary(state: State<'_, AppState>) -> Result<WalletSummary, String> {
     let mut summary = {
-        let wallet_manager = state.wallet_manager.lock()
+        let wallet_manager = state
+            .wallet_manager
+            .lock()
             .map_err(|_| "Failed to lock wallet manager".to_string())?;
         wallet_manager.get_summary()
     };
@@ -106,22 +122,35 @@ pub async fn get_wallet_summary(state: State<'_, AppState>) -> Result<WalletSumm
     // Calculate spendable balance (excludes immature coinbase UTXOs needing 100 confirmations)
     let current_height = state.embedded_node.read().await.get_height();
     let wallets = {
-        let wallet_manager = state.wallet_manager.lock()
+        let wallet_manager = state
+            .wallet_manager
+            .lock()
             .map_err(|_| "Failed to lock wallet manager".to_string())?;
-        wallet_manager.list_wallets().into_iter().cloned().collect::<Vec<_>>()
+        wallet_manager
+            .list_wallets()
+            .into_iter()
+            .cloned()
+            .collect::<Vec<_>>()
     };
 
     let mut total_spendable: u64 = 0;
     {
-        let utxo_manager = state.utxo_manager.lock()
+        let utxo_manager = state
+            .utxo_manager
+            .lock()
             .map_err(|_| "Failed to lock UTXO manager".to_string())?;
         for wallet in &wallets {
             let clean_address = if wallet.address.starts_with("Address: ") {
-                wallet.address.strip_prefix("Address: ").unwrap_or(&wallet.address).to_string()
+                wallet
+                    .address
+                    .strip_prefix("Address: ")
+                    .unwrap_or(&wallet.address)
+                    .to_string()
             } else {
                 wallet.address.clone()
             };
-            let (spendable_credits, _) = utxo_manager.get_spendable_balance(&clean_address, current_height);
+            let (spendable_credits, _) =
+                utxo_manager.get_spendable_balance(&clean_address, current_height);
             total_spendable = total_spendable.saturating_add(spendable_credits);
         }
     }
@@ -142,15 +171,20 @@ pub async fn update_wallet_balance(
 ) -> Result<String, String> {
     // Get old balance before updating
     let old_balance = {
-        let wallet_manager = state.wallet_manager.lock()
+        let wallet_manager = state
+            .wallet_manager
+            .lock()
             .map_err(|_| "Failed to lock wallet manager".to_string())?;
-        wallet_manager.get_wallet(&wallet_id)
+        wallet_manager
+            .get_wallet(&wallet_id)
             .ok_or_else(|| format!("Wallet with ID '{}' not found", wallet_id))?
             .cached_balance_credits
     };
 
     // Update balance
-    let mut wallet_manager = state.wallet_manager.lock()
+    let mut wallet_manager = state
+        .wallet_manager
+        .lock()
         .map_err(|_| "Failed to lock wallet manager".to_string())?;
     wallet_manager
         .update_wallet_balance(&wallet_id, balance_credits)
@@ -158,12 +192,16 @@ pub async fn update_wallet_balance(
 
     // REM-C002: Emit wallet_balance_updated event
     let change = balance_credits as i64 - old_balance as i64;
-    app.emit("wallet_balance_updated", serde_json::json!({
-        "wallet_id": wallet_id,
-        "old_balance": old_balance,
-        "new_balance": balance_credits,
-        "change": change
-    })).ok();
+    app.emit(
+        "wallet_balance_updated",
+        serde_json::json!({
+            "wallet_id": wallet_id,
+            "old_balance": old_balance,
+            "new_balance": balance_credits,
+            "change": change
+        }),
+    )
+    .ok();
 
     Ok("Balance updated successfully".to_string())
 }
@@ -176,14 +214,20 @@ pub async fn get_wallet_balance_by_id(
 ) -> Result<String, String> {
     // Extract address from wallet (drop lock before async)
     let clean_address = {
-        let wallet_manager = state.wallet_manager.lock()
+        let wallet_manager = state
+            .wallet_manager
+            .lock()
             .map_err(|_| "Failed to lock wallet manager".to_string())?;
         let wallet = wallet_manager
             .get_wallet(&wallet_id)
             .ok_or_else(|| format!("Wallet with ID '{}' not found", wallet_id))?;
 
         let addr = if wallet.address.starts_with("Address: ") {
-            wallet.address.strip_prefix("Address: ").unwrap_or(&wallet.address).to_string()
+            wallet
+                .address
+                .strip_prefix("Address: ")
+                .unwrap_or(&wallet.address)
+                .to_string()
         } else {
             wallet.address.clone()
         };
@@ -197,13 +241,17 @@ pub async fn get_wallet_balance_by_id(
 
     // Show total balance (including immature coinbase) for display
     let (balance_credits, balance_btp) = {
-        let utxo_manager = state.utxo_manager.lock()
-        .map_err(|_| "Failed to lock UTXO manager".to_string())?;
+        let utxo_manager = state
+            .utxo_manager
+            .lock()
+            .map_err(|_| "Failed to lock UTXO manager".to_string())?;
         utxo_manager.get_balance(&clean_address)
     };
 
     // Update wallet cache
-    let mut wallet_manager = state.wallet_manager.lock()
+    let mut wallet_manager = state
+        .wallet_manager
+        .lock()
         .map_err(|_| "Failed to lock wallet manager".to_string())?;
     let _ = wallet_manager.update_wallet_balance(&wallet_id, balance_credits);
 
@@ -229,8 +277,10 @@ pub async fn send_btpc_from_wallet(
     let password = Zeroizing::new(password);
     // Get wallet info
     let wallet = {
-        let wallet_manager = state.wallet_manager.lock()
-        .map_err(|_| "Failed to lock wallet manager".to_string())?;
+        let wallet_manager = state
+            .wallet_manager
+            .lock()
+            .map_err(|_| "Failed to lock wallet manager".to_string())?;
         wallet_manager
             .get_wallet(&wallet_id)
             .ok_or_else(|| format!("Wallet with ID '{}' not found", wallet_id))?
@@ -298,8 +348,10 @@ pub async fn send_btpc_from_wallet(
     let current_height = state.embedded_node.read().await.get_height();
     let fork_id = state.active_network.read().await.fork_id();
     let transaction_result = {
-        let utxo_manager = state.utxo_manager.lock()
-        .map_err(|_| "Failed to lock UTXO manager".to_string())?;
+        let utxo_manager = state
+            .utxo_manager
+            .lock()
+            .map_err(|_| "Failed to lock UTXO manager".to_string())?;
         utxo_manager.create_send_transaction(
             &clean_from_address,
             &clean_to_address,
@@ -409,8 +461,10 @@ async fn sign_and_broadcast_transaction(
 
     // NOW mark spent UTXOs in the UTXO manager (only after successful broadcast)
     {
-        let mut utxo_manager = state.utxo_manager.lock()
-        .map_err(|_| "Failed to lock UTXO manager".to_string())?;
+        let mut utxo_manager = state
+            .utxo_manager
+            .lock()
+            .map_err(|_| "Failed to lock UTXO manager".to_string())?;
         let mut marked_count = 0;
         let mut failed_marks = Vec::new();
 
@@ -475,7 +529,9 @@ pub async fn backup_wallet(
     state: State<'_, AppState>,
     wallet_id: String,
 ) -> Result<String, String> {
-    let wallet_manager = state.wallet_manager.lock()
+    let wallet_manager = state
+        .wallet_manager
+        .lock()
         .map_err(|_| "Failed to lock wallet manager".to_string())?;
     let backup_path = wallet_manager
         .backup_wallet(&wallet_id)
@@ -490,7 +546,9 @@ pub async fn set_default_wallet(
     state: State<'_, AppState>,
     wallet_id: String,
 ) -> Result<String, String> {
-    let mut wallet_manager = state.wallet_manager.lock()
+    let mut wallet_manager = state
+        .wallet_manager
+        .lock()
         .map_err(|_| "Failed to lock wallet manager".to_string())?;
 
     let update_request = UpdateWalletRequest {
@@ -519,7 +577,9 @@ pub async fn toggle_wallet_favorite(
     state: State<'_, AppState>,
     wallet_id: String,
 ) -> Result<String, String> {
-    let mut wallet_manager = state.wallet_manager.lock()
+    let mut wallet_manager = state
+        .wallet_manager
+        .lock()
         .map_err(|_| "Failed to lock wallet manager".to_string())?;
 
     let current_favorite = wallet_manager
@@ -553,7 +613,9 @@ pub async fn toggle_wallet_favorite(
 /// Get all favorite wallets
 #[tauri::command]
 pub async fn get_favorite_wallets(state: State<'_, AppState>) -> Result<Vec<WalletInfo>, String> {
-    let wallet_manager = state.wallet_manager.lock()
+    let wallet_manager = state
+        .wallet_manager
+        .lock()
         .map_err(|_| "Failed to lock wallet manager".to_string())?;
     let favorites: Vec<WalletInfo> = wallet_manager
         .list_wallets()
@@ -568,8 +630,10 @@ pub async fn get_favorite_wallets(state: State<'_, AppState>) -> Result<Vec<Wall
 #[tauri::command]
 pub async fn refresh_all_wallet_balances(state: State<'_, AppState>) -> Result<String, String> {
     let wallets = {
-        let wallet_manager = state.wallet_manager.lock()
-        .map_err(|_| "Failed to lock wallet manager".to_string())?;
+        let wallet_manager = state
+            .wallet_manager
+            .lock()
+            .map_err(|_| "Failed to lock wallet manager".to_string())?;
         wallet_manager
             .list_wallets()
             .into_iter()
@@ -592,19 +656,25 @@ pub async fn refresh_all_wallet_balances(state: State<'_, AppState>) -> Result<S
 
         // Get total balance from UTXO manager (includes immature coinbase for display)
         let (balance_credits, _) = {
-            let utxo_manager = state.utxo_manager.lock()
-        .map_err(|_| "Failed to lock UTXO manager".to_string())?;
+            let utxo_manager = state
+                .utxo_manager
+                .lock()
+                .map_err(|_| "Failed to lock UTXO manager".to_string())?;
             let balance = utxo_manager.get_balance(&clean_address);
             // DEBUG: Log balance refresh
-            eprintln!("🔄 refresh_all_wallet_balances: wallet='{}' address='{}' balance={} credits",
-                wallet.nickname, clean_address, balance.0);
+            eprintln!(
+                "🔄 refresh_all_wallet_balances: wallet='{}' address='{}' balance={} credits",
+                wallet.nickname, clean_address, balance.0
+            );
             balance
         };
 
         // Update wallet cache
         {
-            let mut wallet_manager = state.wallet_manager.lock()
-        .map_err(|_| "Failed to lock wallet manager".to_string())?;
+            let mut wallet_manager = state
+                .wallet_manager
+                .lock()
+                .map_err(|_| "Failed to lock wallet manager".to_string())?;
             if wallet_manager
                 .update_wallet_balance(&wallet.id, balance_credits)
                 .is_ok()
@@ -658,32 +728,37 @@ pub async fn import_wallet_from_key(
 
     // Derive address from private key based on input format
     // FIX 2025-12-14: Also capture seed_hex for proper wallet file creation
-    let (derived_address, derived_private_key_hex, seed_hex_for_import) = if private_key_hex.len() == 64 {
-        // 64 hex chars = 32 bytes = seed format
-        // Use from_seed() to regenerate full key pair (ML-DSA limitation workaround)
-        let seed_bytes = hex::decode(private_key_hex)
-            .map_err(|_| "Invalid hex encoding in private key")?;
+    let (derived_address, derived_private_key_hex, seed_hex_for_import) =
+        if private_key_hex.len() == 64 {
+            // 64 hex chars = 32 bytes = seed format
+            // Use from_seed() to regenerate full key pair (ML-DSA limitation workaround)
+            let seed_bytes =
+                hex::decode(private_key_hex).map_err(|_| "Invalid hex encoding in private key")?;
 
-        let mut seed: [u8; 32] = [0u8; 32];
-        seed.copy_from_slice(&seed_bytes);
+            let mut seed: [u8; 32] = [0u8; 32];
+            seed.copy_from_slice(&seed_bytes);
 
-        let private_key = PrivateKey::from_seed(&seed)
-            .map_err(|e| format!("Failed to derive key from seed: {:?}", e))?;
+            let private_key = PrivateKey::from_seed(&seed)
+                .map_err(|e| format!("Failed to derive key from seed: {:?}", e))?;
 
-        let public_key = private_key.public_key();
-        let address = Address::from_public_key(&public_key, network);
+            let public_key = private_key.public_key();
+            let address = Address::from_public_key(&public_key, network);
 
-        // FIX 2025-12-14: Return seed_hex for wallet file creation
-        (address.to_string(), hex::encode(private_key.to_bytes()), Some(hex::encode(seed)))
-    } else {
-        // For full private key (8000 hex chars), we can't derive public key
-        // due to ML-DSA library limitation. Return helpful error.
-        return Err(format!(
-            "Private key import requires 64 hex characters (32-byte seed). \
+            // FIX 2025-12-14: Return seed_hex for wallet file creation
+            (
+                address.to_string(),
+                hex::encode(private_key.to_bytes()),
+                Some(hex::encode(seed)),
+            )
+        } else {
+            // For full private key (8000 hex chars), we can't derive public key
+            // due to ML-DSA library limitation. Return helpful error.
+            return Err(format!(
+                "Private key import requires 64 hex characters (32-byte seed). \
              Got {} characters. For ML-DSA keys, use seed import or mnemonic recovery.",
-            private_key_hex.len()
-        ));
-    };
+                private_key_hex.len()
+            ));
+        };
 
     // Create wallet request
     let create_request = CreateWalletRequest {
@@ -707,7 +782,9 @@ pub async fn import_wallet_from_key(
 
     // Import the wallet
     let wallet_info = {
-        let mut wallet_manager = state.wallet_manager.lock()
+        let mut wallet_manager = state
+            .wallet_manager
+            .lock()
             .map_err(|_| "Failed to lock wallet manager".to_string())?;
         let create_response = wallet_manager
             .create_wallet(create_request, &state.btpc, network)
@@ -724,8 +801,13 @@ pub async fn import_wallet_from_key(
         match tx_storage_guard.get_unspent_utxos(&derived_address) {
             Ok(utxos) => {
                 if !utxos.is_empty() {
-                    println!("🔄 Found {} historical UTXOs for restored wallet address", utxos.len());
-                    let mut utxo_manager = state.utxo_manager.lock()
+                    println!(
+                        "🔄 Found {} historical UTXOs for restored wallet address",
+                        utxos.len()
+                    );
+                    let mut utxo_manager = state
+                        .utxo_manager
+                        .lock()
                         .map_err(|_| "Failed to lock UTXO manager".to_string())?;
                     match utxo_manager.sync_from_tx_storage_utxos(utxos) {
                         Ok(count) => {
@@ -736,7 +818,9 @@ pub async fn import_wallet_from_key(
                         }
                     }
                 } else {
-                    println!("📝 No historical UTXOs found for restored address (new or empty wallet)");
+                    println!(
+                        "📝 No historical UTXOs found for restored address (new or empty wallet)"
+                    );
                 }
             }
             Err(e) => {
@@ -748,14 +832,20 @@ pub async fn import_wallet_from_key(
     // Get initial spendable balance (excludes immature coinbase)
     let balance_credits = {
         let height = state.embedded_node.read().await.get_height();
-        let utxo_manager = state.utxo_manager.lock()
+        let utxo_manager = state
+            .utxo_manager
+            .lock()
             .map_err(|_| "Failed to lock UTXO manager".to_string())?;
-        utxo_manager.get_spendable_balance(&derived_address, height).0
+        utxo_manager
+            .get_spendable_balance(&derived_address, height)
+            .0
     };
 
     // Update wallet balance cache (re-acquire lock)
     {
-        let mut wallet_manager = state.wallet_manager.lock()
+        let mut wallet_manager = state
+            .wallet_manager
+            .lock()
             .map_err(|_| "Failed to lock wallet manager".to_string())?;
         let _ = wallet_manager.update_wallet_balance(&wallet_info.id, balance_credits);
     }
@@ -856,7 +946,9 @@ pub async fn import_wallet_from_mnemonic(
 
     // Import the wallet
     let wallet_info = {
-        let mut wallet_manager = state.wallet_manager.lock()
+        let mut wallet_manager = state
+            .wallet_manager
+            .lock()
             .map_err(|_| "Failed to lock wallet manager".to_string())?;
         let create_response = wallet_manager
             .create_wallet(create_request, &state.btpc, network)
@@ -873,12 +965,20 @@ pub async fn import_wallet_from_mnemonic(
         match tx_storage_guard.get_unspent_utxos(&derived_address) {
             Ok(utxos) => {
                 if !utxos.is_empty() {
-                    println!("🔄 Found {} historical UTXOs for mnemonic-restored wallet", utxos.len());
-                    let mut utxo_manager = state.utxo_manager.lock()
+                    println!(
+                        "🔄 Found {} historical UTXOs for mnemonic-restored wallet",
+                        utxos.len()
+                    );
+                    let mut utxo_manager = state
+                        .utxo_manager
+                        .lock()
                         .map_err(|_| "Failed to lock UTXO manager".to_string())?;
                     match utxo_manager.sync_from_tx_storage_utxos(utxos) {
                         Ok(count) => {
-                            println!("✅ Synced {} UTXOs from tx_storage for mnemonic-restored wallet", count);
+                            println!(
+                                "✅ Synced {} UTXOs from tx_storage for mnemonic-restored wallet",
+                                count
+                            );
                         }
                         Err(e) => {
                             println!("⚠️ Failed to sync UTXOs from tx_storage: {} (balance may be incomplete)", e);
@@ -897,14 +997,20 @@ pub async fn import_wallet_from_mnemonic(
     // Get initial spendable balance (excludes immature coinbase)
     let balance_credits = {
         let height = state.embedded_node.read().await.get_height();
-        let utxo_manager = state.utxo_manager.lock()
+        let utxo_manager = state
+            .utxo_manager
+            .lock()
             .map_err(|_| "Failed to lock UTXO manager".to_string())?;
-        utxo_manager.get_spendable_balance(&derived_address, height).0
+        utxo_manager
+            .get_spendable_balance(&derived_address, height)
+            .0
     };
 
     // Update wallet balance cache (re-acquire lock)
     {
-        let mut wallet_manager = state.wallet_manager.lock()
+        let mut wallet_manager = state
+            .wallet_manager
+            .lock()
             .map_err(|_| "Failed to lock wallet manager".to_string())?;
         let _ = wallet_manager.update_wallet_balance(&wallet_info.id, balance_credits);
     }
@@ -944,19 +1050,21 @@ pub async fn import_wallet_from_backup(
 
     // Decrypt using provided password
     let secure_password = SecurePassword::new(password.clone());
-    let wallet_data = encrypted_wallet.decrypt(&secure_password)
+    let wallet_data = encrypted_wallet
+        .decrypt(&secure_password)
         .map_err(|e| format!("Failed to decrypt backup (wrong password?): {:?}", e))?;
 
     // Extract key information from decrypted wallet
-    let key_entry = wallet_data.keys.first()
+    let key_entry = wallet_data
+        .keys
+        .first()
         .ok_or("Backup file contains no keys")?;
 
     let address = key_entry.address.clone();
     let private_key_hex = hex::encode(&key_entry.private_key_bytes);
 
     // Extract seed if available (required for proper wallet file creation)
-    let seed_hex = key_entry.seed.as_ref()
-        .map(hex::encode);
+    let seed_hex = key_entry.seed.as_ref().map(hex::encode);
 
     eprintln!("🔐 Decrypted backup wallet:");
     eprintln!("   Address: {}", address);
@@ -991,7 +1099,9 @@ pub async fn import_wallet_from_backup(
 
     // Import the wallet
     let wallet_info = {
-        let mut wallet_manager = state.wallet_manager.lock()
+        let mut wallet_manager = state
+            .wallet_manager
+            .lock()
             .map_err(|_| "Failed to lock wallet manager".to_string())?;
         let create_response = wallet_manager
             .create_wallet(create_request, &state.btpc, network)
@@ -1008,12 +1118,20 @@ pub async fn import_wallet_from_backup(
         match tx_storage_guard.get_unspent_utxos(&address) {
             Ok(utxos) => {
                 if !utxos.is_empty() {
-                    println!("🔄 Found {} historical UTXOs for backup-restored wallet", utxos.len());
-                    let mut utxo_manager = state.utxo_manager.lock()
+                    println!(
+                        "🔄 Found {} historical UTXOs for backup-restored wallet",
+                        utxos.len()
+                    );
+                    let mut utxo_manager = state
+                        .utxo_manager
+                        .lock()
                         .map_err(|_| "Failed to lock UTXO manager".to_string())?;
                     match utxo_manager.sync_from_tx_storage_utxos(utxos) {
                         Ok(count) => {
-                            println!("✅ Synced {} UTXOs from tx_storage for backup-restored wallet", count);
+                            println!(
+                                "✅ Synced {} UTXOs from tx_storage for backup-restored wallet",
+                                count
+                            );
                         }
                         Err(e) => {
                             println!("⚠️ Failed to sync UTXOs from tx_storage: {} (balance may be incomplete)", e);
@@ -1032,14 +1150,18 @@ pub async fn import_wallet_from_backup(
     // Get initial spendable balance (excludes immature coinbase)
     let balance_credits = {
         let height = state.embedded_node.read().await.get_height();
-        let utxo_manager = state.utxo_manager.lock()
+        let utxo_manager = state
+            .utxo_manager
+            .lock()
             .map_err(|_| "Failed to lock UTXO manager".to_string())?;
         utxo_manager.get_spendable_balance(&address, height).0
     };
 
     // Update wallet balance cache (re-acquire lock)
     {
-        let mut wallet_manager = state.wallet_manager.lock()
+        let mut wallet_manager = state
+            .wallet_manager
+            .lock()
             .map_err(|_| "Failed to lock wallet manager".to_string())?;
         let _ = wallet_manager.update_wallet_balance(&wallet_info.id, balance_credits);
     }
@@ -1071,8 +1193,10 @@ pub async fn export_wallet_to_json(
 
     // Get wallet info
     let wallet = {
-        let wallet_manager = state.wallet_manager.lock()
-        .map_err(|_| "Failed to lock wallet manager".to_string())?;
+        let wallet_manager = state
+            .wallet_manager
+            .lock()
+            .map_err(|_| "Failed to lock wallet manager".to_string())?;
         wallet_manager
             .get_wallet(&wallet_id)
             .ok_or_else(|| format!("Wallet with ID '{}' not found", wallet_id))?
@@ -1138,8 +1262,10 @@ pub async fn export_wallet_address(
 ) -> Result<String, String> {
     // Get wallet info
     let wallet = {
-        let wallet_manager = state.wallet_manager.lock()
-        .map_err(|_| "Failed to lock wallet manager".to_string())?;
+        let wallet_manager = state
+            .wallet_manager
+            .lock()
+            .map_err(|_| "Failed to lock wallet manager".to_string())?;
         wallet_manager
             .get_wallet(&wallet_id)
             .ok_or_else(|| format!("Wallet with ID '{}' not found", wallet_id))?
@@ -1177,8 +1303,10 @@ pub async fn export_all_wallets_summary(
 
     // Get all wallets and summary
     let (wallets, summary) = {
-        let wallet_manager = state.wallet_manager.lock()
-        .map_err(|_| "Failed to lock wallet manager".to_string())?;
+        let wallet_manager = state
+            .wallet_manager
+            .lock()
+            .map_err(|_| "Failed to lock wallet manager".to_string())?;
         let wallets: Vec<_> = wallet_manager.list_wallets().into_iter().cloned().collect();
         let summary = wallet_manager.get_summary();
         (wallets, summary)
@@ -1242,8 +1370,10 @@ pub async fn generate_wallet_recovery_data(
 
     // Get wallet info
     let wallet = {
-        let wallet_manager = state.wallet_manager.lock()
-        .map_err(|_| "Failed to lock wallet manager".to_string())?;
+        let wallet_manager = state
+            .wallet_manager
+            .lock()
+            .map_err(|_| "Failed to lock wallet manager".to_string())?;
         wallet_manager
             .get_wallet(&wallet_id)
             .ok_or_else(|| format!("Wallet with ID '{}' not found", wallet_id))?
@@ -1325,8 +1455,10 @@ pub async fn migrate_utxo_addresses(state: State<'_, AppState>) -> Result<String
             if count > 0 {
                 // Reload UTXOs into manager after migration
                 {
-                    let mut utxo_manager = state.utxo_manager.lock()
-        .map_err(|_| "Failed to lock UTXO manager".to_string())?;
+                    let mut utxo_manager = state
+                        .utxo_manager
+                        .lock()
+                        .map_err(|_| "Failed to lock UTXO manager".to_string())?;
                     if let Err(e) = utxo_manager.reload_utxos() {
                         return Err(format!(
                             "Migration successful but failed to reload UTXOs: {}",
@@ -1456,8 +1588,10 @@ pub async fn clean_orphaned_utxos(
         Ok(report) => {
             if !dry_run && report.orphaned_utxos > 0 {
                 // Reload UTXO manager after cleanup
-                let mut utxo_manager = state.utxo_manager.lock()
-        .map_err(|_| "Failed to lock UTXO manager".to_string())?;
+                let mut utxo_manager = state
+                    .utxo_manager
+                    .lock()
+                    .map_err(|_| "Failed to lock UTXO manager".to_string())?;
                 if let Err(e) = utxo_manager.reload_utxos() {
                     return Err(format!(
                         "Cleanup successful but failed to reload UTXOs: {}",

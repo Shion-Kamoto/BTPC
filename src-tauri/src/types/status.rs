@@ -67,6 +67,49 @@ impl Default for NodeStatus {
     }
 }
 
+/// camelCase DTO for the JS/UI layer. Built via `From<NodeStatus>`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NodeStatusDto {
+    pub running: bool,
+    pub block_height: u64,
+    pub peer_count: u32,
+    pub peer_count_in: u32,
+    pub peer_count_out: u32,
+    pub sync_progress: f64,
+    pub network: String,
+    pub difficulty: f64,
+    pub tip_hash: String,
+    pub headers_height: u64,
+    pub is_syncing: bool,
+    pub last_block_time: Option<u64>,
+    pub mempool_size: u32,
+    pub ban_count: u32,
+    pub generated_at: u64,
+}
+
+impl From<NodeStatus> for NodeStatusDto {
+    fn from(ns: NodeStatus) -> Self {
+        NodeStatusDto {
+            running: ns.running,
+            block_height: ns.block_height,
+            peer_count: ns.peer_count,
+            peer_count_in: ns.peer_count_in,
+            peer_count_out: ns.peer_count_out,
+            sync_progress: ns.sync_progress,
+            network: ns.network,
+            difficulty: ns.difficulty,
+            tip_hash: ns.tip_hash.unwrap_or_default(),
+            headers_height: ns.headers_height,
+            is_syncing: ns.is_syncing,
+            last_block_time: ns.last_block_time,
+            mempool_size: ns.mempool_size,
+            ban_count: ns.ban_count,
+            generated_at: ns.generated_at,
+        }
+    }
+}
+
 #[cfg(test)]
 mod red_phase_dto_tests {
     //! T101 RED-phase — `NodeStatusDto` + `From<NodeStatus>` do not yet exist.

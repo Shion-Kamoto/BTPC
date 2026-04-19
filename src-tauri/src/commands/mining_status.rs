@@ -33,7 +33,8 @@ pub async fn get_mining_status(state: State<'_, AppState>) -> Result<serde_json:
         // Get current blockchain height for linear decay calculation (Issue #3)
         let current_height = {
             let node = state.embedded_node.read().await;
-            node.get_blockchain_state().await
+            node.get_blockchain_state()
+                .await
                 .map(|state| state.current_height)
                 .unwrap_or(0)
         };

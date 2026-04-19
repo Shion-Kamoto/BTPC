@@ -233,10 +233,10 @@ impl RewardParams {
     /// Uses constants from economics module for single source of truth
     pub fn mainnet() -> Self {
         RewardParams {
-            initial_reward: econ::INITIAL_REWARD,      // 32.375 BTPC
-            tail_emission: econ::TAIL_EMISSION,        // 0.5 BTPC
-            blocks_per_year: econ::BLOCKS_PER_YEAR,    // 52,596 (365.25 * 24 * 6)
-            decay_years: econ::DECAY_DURATION_YEARS,   // 24 years
+            initial_reward: econ::INITIAL_REWARD,    // 32.375 BTPC
+            tail_emission: econ::TAIL_EMISSION,      // 0.5 BTPC
+            blocks_per_year: econ::BLOCKS_PER_YEAR,  // 52,596 (365.25 * 24 * 6)
+            decay_years: econ::DECAY_DURATION_YEARS, // 24 years
         }
     }
 
@@ -250,10 +250,10 @@ impl RewardParams {
     /// Higher rewards and 2-year decay allows testing full reward curve quickly
     pub fn regtest() -> Self {
         RewardParams {
-            initial_reward: 10_000_000_000,         // 100 BTPC (3x mainnet for faster accumulation)
-            tail_emission: 100_000_000,             // 1 BTPC (2x mainnet)
+            initial_reward: 10_000_000_000, // 100 BTPC (3x mainnet for faster accumulation)
+            tail_emission: 100_000_000,     // 1 BTPC (2x mainnet)
             blocks_per_year: econ::BLOCKS_PER_YEAR, // Same block timing (52,596)
-            decay_years: 2,                         // 2 years instead of 24 (12x faster decay testing)
+            decay_years: 2,                 // 2 years instead of 24 (12x faster decay testing)
         }
     }
 }

@@ -4,8 +4,11 @@
 
 use tauri::State;
 
+use crate::auth_crypto::{
+    constant_time_compare, decrypt_aes_gcm, derive_key_argon2id, generate_random_nonce,
+    generate_random_salt, AES_KEY_SIZE,
+};
 use crate::auth_state::{self, get_credentials_path, MasterCredentials};
-use crate::auth_crypto::{derive_key_argon2id, decrypt_aes_gcm, constant_time_compare, AES_KEY_SIZE, generate_random_salt, generate_random_nonce};
 use crate::AppState;
 use zeroize::Zeroizing;
 
@@ -29,9 +32,18 @@ pub async fn check_wallet_lock_status(state: State<'_, AppState>) -> Result<bool
         let home = dirs::home_dir().ok_or("Cannot find home directory")?;
         let search_paths = vec![
             home.join(".btpc").join("wallets"),
-            home.join(".btpc").join("data").join("mainnet").join("wallets"),
-            home.join(".btpc").join("data").join("testnet").join("wallets"),
-            home.join(".btpc").join("data").join("regtest").join("wallets"),
+            home.join(".btpc")
+                .join("data")
+                .join("mainnet")
+                .join("wallets"),
+            home.join(".btpc")
+                .join("data")
+                .join("testnet")
+                .join("wallets"),
+            home.join(".btpc")
+                .join("data")
+                .join("regtest")
+                .join("wallets"),
         ];
 
         let mut found_wallet = false;
@@ -116,7 +128,8 @@ pub async fn unlock_wallets(
             &credentials.aes_tag,
             &encryption_key,
             &credentials.aes_nonce,
-        ).map_err(|_| "Incorrect password".to_string())?;
+        )
+        .map_err(|_| "Incorrect password".to_string())?;
 
         // Compare derived key with stored hash using constant-time comparison
         let derived_key = derive_key_argon2id(&password, &credentials.argon2_salt)
@@ -195,14 +208,17 @@ pub async fn unlock_wallets(
                 if let Ok(nonce) = generate_random_nonce() {
                     // Encrypt the password hash with AES-256-GCM
                     use sha2::{Digest, Sha256};
-                    let encryption_key_material = Zeroizing::new(format!("{}:encryption", password));
+                    let encryption_key_material =
+                        Zeroizing::new(format!("{}:encryption", password));
                     let mut hasher = Sha256::new();
                     hasher.update(encryption_key_material.as_bytes());
                     let encryption_key_vec = hasher.finalize();
                     let mut encryption_key = [0u8; AES_KEY_SIZE];
                     encryption_key.copy_from_slice(&encryption_key_vec[..AES_KEY_SIZE]);
 
-                    if let Ok((encrypted_hash, aes_tag)) = crate::auth_crypto::encrypt_aes_gcm(&password_hash, &encryption_key, &nonce) {
+                    if let Ok((encrypted_hash, aes_tag)) =
+                        crate::auth_crypto::encrypt_aes_gcm(&password_hash, &encryption_key, &nonce)
+                    {
                         // Argon2id parameters
                         const ARGON2_MEMORY_KB: u32 = 65536;
                         const ARGON2_ITERATIONS: u32 = 3;
@@ -250,7 +266,10 @@ pub async fn lock_wallets(state: State<'_, AppState>) -> Result<String, String> 
 
             // Save current wallet state to encrypted file
             if let Err(e) = wallet_manager.save_wallets_encrypted(password) {
-                eprintln!("⚠️ Warning: Failed to save encrypted wallets before lock: {}", e);
+                eprintln!(
+                    "⚠️ Warning: Failed to save encrypted wallets before lock: {}",
+                    e
+                );
                 // Continue with lock even if save fails - don't block user
             } else {
                 eprintln!("✅ Saved wallet metadata to encrypted file before locking");
@@ -356,8 +375,7 @@ pub async fn migrate_to_encrypted(
         }
 
         // Generate salt and derive key from password using Argon2id
-        let salt = generate_random_salt()
-            .map_err(|e| format!("Failed to generate salt: {}", e))?;
+        let salt = generate_random_salt().map_err(|e| format!("Failed to generate salt: {}", e))?;
 
         let derived_key = derive_key_argon2id(&password, &salt)
             .map_err(|_| "Failed to derive key".to_string())?;
@@ -366,8 +384,8 @@ pub async fn migrate_to_encrypted(
         let password_hash = derived_key.as_ref().to_vec();
 
         // Generate nonce for AES-GCM encryption
-        let nonce = generate_random_nonce()
-            .map_err(|e| format!("Failed to generate nonce: {}", e))?;
+        let nonce =
+            generate_random_nonce().map_err(|e| format!("Failed to generate nonce: {}", e))?;
 
         // Encrypt the password hash with AES-256-GCM
         use sha2::{Digest, Sha256};
@@ -378,13 +396,14 @@ pub async fn migrate_to_encrypted(
         let mut encryption_key = [0u8; AES_KEY_SIZE];
         encryption_key.copy_from_slice(&encryption_key_vec[..AES_KEY_SIZE]);
 
-        let (encrypted_hash, aes_tag) = crate::auth_crypto::encrypt_aes_gcm(&password_hash, &encryption_key, &nonce)
-            .map_err(|_| "Failed to encrypt credentials".to_string())?;
+        let (encrypted_hash, aes_tag) =
+            crate::auth_crypto::encrypt_aes_gcm(&password_hash, &encryption_key, &nonce)
+                .map_err(|_| "Failed to encrypt credentials".to_string())?;
 
         // Argon2id parameters (match auth_commands.rs constants)
-        const ARGON2_MEMORY_KB: u32 = 65536;   // 64 MB
-        const ARGON2_ITERATIONS: u32 = 3;       // 3 iterations
-        const ARGON2_PARALLELISM: u32 = 4;      // 4 parallel threads
+        const ARGON2_MEMORY_KB: u32 = 65536; // 64 MB
+        const ARGON2_ITERATIONS: u32 = 3; // 3 iterations
+        const ARGON2_PARALLELISM: u32 = 4; // 4 parallel threads
 
         // Create MasterCredentials struct
         let credentials = MasterCredentials::new(
@@ -398,7 +417,8 @@ pub async fn migrate_to_encrypted(
         );
 
         // Save credentials.enc
-        credentials.save_to_file(&creds_path)
+        credentials
+            .save_to_file(&creds_path)
             .map_err(|e| format!("Failed to save credentials: {}", e))?;
 
         eprintln!("✅ Created credentials.enc for master password verification");

@@ -178,11 +178,7 @@ impl PeerRateLimiter {
     /// Record a typed message against the per-message-type quota.
     /// Returns a [`RateLimitOutcome`] — callers are responsible for
     /// applying the ban score and disconnecting the peer if required.
-    pub fn record_message_type(
-        &mut self,
-        mt: MessageType,
-        size: usize,
-    ) -> RateLimitOutcome {
+    pub fn record_message_type(&mut self, mt: MessageType, size: usize) -> RateLimitOutcome {
         if size > MAX_FRAME_BYTES {
             return RateLimitOutcome::InstantBan {
                 reason: "oversized frame > 32 MB",
@@ -222,11 +218,7 @@ impl PeerRateLimiter {
 
     /// Record an unknown / unparseable command frame. Always returns
     /// an `Exceeded` outcome — unknown commands are never allowed.
-    pub fn record_unknown_command(
-        &mut self,
-        _command: &str,
-        _size: usize,
-    ) -> RateLimitOutcome {
+    pub fn record_unknown_command(&mut self, _command: &str, _size: usize) -> RateLimitOutcome {
         let quota = MessageTypeQuota::default_for(MessageType::Unknown);
         RateLimitOutcome::Exceeded {
             message_type: MessageType::Unknown,
@@ -512,8 +504,8 @@ mod tests {
 #[cfg(test)]
 mod red_phase_per_type_tests {
     use super::*;
-    use crate::network::rate_limiter::{MessageTypeQuota, RateLimitOutcome};
     use crate::network::protocol::MessageType;
+    use crate::network::rate_limiter::{MessageTypeQuota, RateLimitOutcome};
 
     fn mk_limiter() -> PeerRateLimiter {
         PeerRateLimiter::new(RateLimiterConfig::default())

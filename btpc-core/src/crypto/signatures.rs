@@ -93,7 +93,6 @@ impl Signature {
 
         Ok(results)
     }
-
 }
 
 impl fmt::Display for Signature {

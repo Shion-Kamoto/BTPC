@@ -61,23 +61,31 @@ impl MiningStats {
                     Ok(data) => {
                         eprintln!(
                             "[MiningStats] Loaded: {} blocks found from {:?}",
-                            data.lifetime_blocks_found,
-                            stats_file
+                            data.lifetime_blocks_found, stats_file
                         );
                         data.lifetime_blocks_found
                     }
                     Err(e) => {
-                        eprintln!("[MiningStats] Failed to parse {:?}: {}, starting from 0", stats_file, e);
+                        eprintln!(
+                            "[MiningStats] Failed to parse {:?}: {}, starting from 0",
+                            stats_file, e
+                        );
                         0
                     }
                 },
                 Err(e) => {
-                    eprintln!("[MiningStats] Failed to read {:?}: {}, starting from 0", stats_file, e);
+                    eprintln!(
+                        "[MiningStats] Failed to read {:?}: {}, starting from 0",
+                        stats_file, e
+                    );
                     0
                 }
             }
         } else {
-            eprintln!("[MiningStats] No existing stats at {:?}, starting from 0", stats_file);
+            eprintln!(
+                "[MiningStats] No existing stats at {:?}, starting from 0",
+                stats_file
+            );
             0
         };
 
@@ -112,9 +120,15 @@ impl MiningStats {
         match serde_json::to_string_pretty(&data) {
             Ok(json) => {
                 if let Err(e) = std::fs::write(&self.stats_file, json) {
-                    eprintln!("[MiningStats] Failed to save to {:?}: {}", self.stats_file, e);
+                    eprintln!(
+                        "[MiningStats] Failed to save to {:?}: {}",
+                        self.stats_file, e
+                    );
                 } else {
-                    eprintln!("[MiningStats] Saved: {} blocks found to {:?}", self.blocks_found, self.stats_file);
+                    eprintln!(
+                        "[MiningStats] Saved: {} blocks found to {:?}",
+                        self.blocks_found, self.stats_file
+                    );
                 }
             }
             Err(e) => {

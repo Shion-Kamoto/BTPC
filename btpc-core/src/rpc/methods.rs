@@ -620,7 +620,8 @@ impl RpcMethods {
             .unwrap_or(0);
 
         // Calculate confirmations: tip_height - block_height + 1
-        let confirmations = self.blockchain_db
+        let confirmations = self
+            .blockchain_db
             .get_chain_tip()
             .ok()
             .flatten()
@@ -675,12 +676,14 @@ impl RpcMethods {
         let header_hash = header.hash();
 
         // Get height from database
-        let height = self.blockchain_db
+        let height = self
+            .blockchain_db
             .get_block_height(&header_hash)
             .unwrap_or(0);
 
         // Calculate confirmations: tip_height - block_height + 1
-        let confirmations = self.blockchain_db
+        let confirmations = self
+            .blockchain_db
             .get_chain_tip()
             .ok()
             .flatten()
@@ -831,13 +834,15 @@ impl RpcMethods {
             && script_bytes[1] == 0xa9  // OP_HASH160
             && script_bytes[2] == 0x14  // Push 20 bytes
             && script_bytes[23] == 0x88 // OP_EQUALVERIFY
-            && script_bytes[24] == 0xac // OP_CHECKSIG
+            && script_bytes[24] == 0xac
+        // OP_CHECKSIG
         {
             "pubkeyhash".to_string()
         } else if script_bytes.len() == 23
             && script_bytes[0] == 0xa9  // OP_HASH160
             && script_bytes[1] == 0x14  // Push 20 bytes
-            && script_bytes[22] == 0x87 // OP_EQUAL
+            && script_bytes[22] == 0x87
+        // OP_EQUAL
         {
             "scripthash".to_string()
         } else if !script_bytes.is_empty() && script_bytes[0] == 0x6a {

@@ -1,3 +1,17 @@
+//! Blockchain and mining events emitted over the Tauri `app.emit()` bridge.
+//!
+//! **Single authoritative channel**: `BlockchainEvent::SyncProgressUpdated` is
+//! the ONE event that carries the full `NodeStatus` payload (height, peers,
+//! sync progress, mempool, bans, tip hash, etc.) to every UI page via the
+//! `btpc-node-status.js` subscriber. Per-page polling is deprecated.
+//!
+//! `PeerListUpdated` is emitted alongside `SyncProgressUpdated` on peer
+//! connect/disconnect to push the live peer table to `node.html` without a
+//! manual refresh. `PeerBanned` provides a one-shot toast notification.
+//!
+//! **Do NOT invent parallel event channels.** All node-status data flows
+//! through `SyncProgressUpdated`; extend its payload if new fields are needed.
+
 use serde::{Deserialize, Serialize};
 use tauri::Emitter;
 
@@ -35,9 +49,7 @@ pub enum BlockchainEvent {
     /// Peer table shape changed (connect, disconnect, ban). Payload placeholder
     /// until `PeerSummary` DTO lands in T070; typed as `serde_json::Value` so
     /// this variant can be wired through without depending on later tasks.
-    PeerListUpdated {
-        peers: Vec<serde_json::Value>,
-    },
+    PeerListUpdated { peers: Vec<serde_json::Value> },
     /// One-shot notification that a peer was banned (for UI toasts/log lines).
     PeerBanned {
         address: String,
@@ -487,9 +499,15 @@ impl<R: tauri::Runtime> EmitSystemEvent for tauri::AppHandle<R> {
     fn emit_disk_space_event(&self, event: DiskSpaceEvent) -> Result<(), String> {
         let event_name = match &event {
             DiskSpaceEvent::DiskSpaceWarning { .. } => disk_space_event_names::DISK_SPACE_WARNING,
-            DiskSpaceEvent::SyncPausedLowSpace { .. } => disk_space_event_names::SYNC_PAUSED_LOW_SPACE,
-            DiskSpaceEvent::MiningPreventedLowSpace { .. } => disk_space_event_names::MINING_PREVENTED_LOW_SPACE,
-            DiskSpaceEvent::DiskSpaceRecovered { .. } => disk_space_event_names::DISK_SPACE_RECOVERED,
+            DiskSpaceEvent::SyncPausedLowSpace { .. } => {
+                disk_space_event_names::SYNC_PAUSED_LOW_SPACE
+            }
+            DiskSpaceEvent::MiningPreventedLowSpace { .. } => {
+                disk_space_event_names::MINING_PREVENTED_LOW_SPACE
+            }
+            DiskSpaceEvent::DiskSpaceRecovered { .. } => {
+                disk_space_event_names::DISK_SPACE_RECOVERED
+            }
         };
 
         self.emit(event_name, event)
@@ -502,7 +520,9 @@ impl<R: tauri::Runtime> EmitSystemEvent for tauri::AppHandle<R> {
             ChainReorgEvent::ReorgInProgress { .. } => chain_reorg_event_names::REORG_IN_PROGRESS,
             ChainReorgEvent::ReorgCompleted { .. } => chain_reorg_event_names::REORG_COMPLETED,
             ChainReorgEvent::ReorgFailed { .. } => chain_reorg_event_names::REORG_FAILED,
-            ChainReorgEvent::ConfirmationsInvalidated { .. } => chain_reorg_event_names::CONFIRMATIONS_INVALIDATED,
+            ChainReorgEvent::ConfirmationsInvalidated { .. } => {
+                chain_reorg_event_names::CONFIRMATIONS_INVALIDATED
+            }
         };
 
         self.emit(event_name, event)

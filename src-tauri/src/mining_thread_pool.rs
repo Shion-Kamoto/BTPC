@@ -59,21 +59,21 @@ pub enum MiningEvent {
     /// Emitted every ~500ms with current mining state for live ASCII console display
     MiningActivity {
         device_id: u32,
-        hashrate: f64,           // Current hashrate in H/s
-        total_hashes: u64,       // Total hashes computed
-        current_nonce: u64,      // Current nonce being tested
-        block_height: u64,       // Block height being mined
-        difficulty: String,      // Current difficulty target
-        uptime_seconds: u64,     // Mining uptime
-        blocks_found: u64,       // Total blocks found this session
-        message: String,         // Status message (e.g., "Searching...", "Template fetched")
-        extra_nonce: u64,        // FIX 2026-02-23: extraNonce counter (increments when u32 nonce exhausted)
+        hashrate: f64,       // Current hashrate in H/s
+        total_hashes: u64,   // Total hashes computed
+        current_nonce: u64,  // Current nonce being tested
+        block_height: u64,   // Block height being mined
+        difficulty: String,  // Current difficulty target
+        uptime_seconds: u64, // Mining uptime
+        blocks_found: u64,   // Total blocks found this session
+        message: String,     // Status message (e.g., "Searching...", "Template fetched")
+        extra_nonce: u64, // FIX 2026-02-23: extraNonce counter (increments when u32 nonce exhausted)
     },
     /// FIX 2025-12-08: Block construction log event for live mining console display
     /// Emitted when coinbase TX, merkle root, or block header is constructed
     BlockConstruction {
-        log_type: String,        // "COINBASE", "MERKLE", or "HEADER"
-        message: String,         // Formatted log message
+        log_type: String, // "COINBASE", "MERKLE", or "HEADER"
+        message: String,  // Formatted log message
     },
 }
 
@@ -230,8 +230,8 @@ impl MiningThreadPool {
             gpu_shutdown_tx: None,
             per_gpu_stats: Arc::new(RwLock::new(HashMap::new())),
             gpu_device_info: Arc::new(RwLock::new(HashMap::new())),
-            mining_event_tx: None, // REM-C002
-            template_version: Arc::new(AtomicU64::new(0)), // FIX 2025-11-26
+            mining_event_tx: None,                               // REM-C002
+            template_version: Arc::new(AtomicU64::new(0)),       // FIX 2025-11-26
             gpu_hash_samples: Arc::new(RwLock::new(Vec::new())), // FIX 2025-12-11: Rolling window
             network_fork_id,
         }
@@ -244,7 +244,10 @@ impl MiningThreadPool {
 
         if samples.len() < 2 {
             // Not enough samples - fall back to lifetime average
-            let uptime = self.start_time.read().unwrap()
+            let uptime = self
+                .start_time
+                .read()
+                .unwrap()
                 .map(|s| s.elapsed().as_secs())
                 .unwrap_or(0);
             let hashes = self.gpu_total_hashes.load(Ordering::SeqCst);
@@ -261,7 +264,10 @@ impl MiningThreadPool {
 
         // Calculate delta hashes over delta time
         let delta_hashes = newest.hashes.saturating_sub(oldest.hashes);
-        let delta_secs = newest.timestamp.duration_since(oldest.timestamp).as_secs_f64();
+        let delta_secs = newest
+            .timestamp
+            .duration_since(oldest.timestamp)
+            .as_secs_f64();
 
         if delta_secs > 0.0 {
             delta_hashes as f64 / delta_secs
@@ -696,34 +702,50 @@ impl MiningThreadPool {
                         addr_lock.clone()
                     };
 
-                    let recipient_hash =
-                        match btpc_core::crypto::address::Address::from_string(&mining_addr_str) {
-                            Ok(address) => {
-                                // Extract the hash160 (20 bytes) from the address
-                                // Address contains the pubkey_hash which is what we need
-                                let hash_bytes = address.hash160(); // Returns &[u8; 20]
+                    let recipient_hash = match btpc_core::crypto::address::Address::from_string(
+                        &mining_addr_str,
+                    ) {
+                        Ok(address) => {
+                            // Extract the hash160 (20 bytes) from the address
+                            // Address contains the pubkey_hash which is what we need
+                            let hash_bytes = address.hash160(); // Returns &[u8; 20]
 
-                                // Convert 20-byte hash160 to 64-byte Hash (pad with zeros)
-                                let mut padded = [0u8; 64];
-                                padded[..20].copy_from_slice(hash_bytes);
-                                let result_hash = btpc_core::crypto::Hash::from_bytes(padded);
+                            // Convert 20-byte hash160 to 64-byte Hash (pad with zeros)
+                            let mut padded = [0u8; 64];
+                            padded[..20].copy_from_slice(hash_bytes);
+                            let result_hash = btpc_core::crypto::Hash::from_bytes(padded);
 
-                                eprintln!("[GPU MINING] ✅ Successfully parsed mining address: '{}'", mining_addr_str);
-                                eprintln!("[GPU MINING] ✅ Extracted hash160 (first 20 bytes): {}", hex::encode(&hash_bytes[..20]));
+                            eprintln!(
+                                "[GPU MINING] ✅ Successfully parsed mining address: '{}'",
+                                mining_addr_str
+                            );
+                            eprintln!(
+                                "[GPU MINING] ✅ Extracted hash160 (first 20 bytes): {}",
+                                hex::encode(&hash_bytes[..20])
+                            );
 
-                                result_hash
-                            }
-                            Err(e) => {
-                                eprintln!("[GPU MINING] ❌❌❌ CRITICAL ERROR ❌❌❌");
-                                eprintln!("[GPU MINING] ❌ Failed to parse mining address: '{}'", mining_addr_str);
-                                eprintln!("[GPU MINING] ❌ Error details: {}", e);
-                                eprintln!("[GPU MINING] ❌ Address length: {} bytes", mining_addr_str.len());
-                                eprintln!("[GPU MINING] ❌ Address format: {:?}", mining_addr_str.chars().take(20).collect::<String>());
-                                eprintln!("[GPU MINING] ⚠️ MINING REWARDS WILL BE LOST - Using fallback zero hash");
-                                eprintln!("[GPU MINING] ⚠️ All mined blocks will credit to address: 0000000000000000000000000000000000000000");
-                                btpc_core::crypto::Hash::zero() // Fallback
-                            }
-                        };
+                            result_hash
+                        }
+                        Err(e) => {
+                            eprintln!("[GPU MINING] ❌❌❌ CRITICAL ERROR ❌❌❌");
+                            eprintln!(
+                                "[GPU MINING] ❌ Failed to parse mining address: '{}'",
+                                mining_addr_str
+                            );
+                            eprintln!("[GPU MINING] ❌ Error details: {}", e);
+                            eprintln!(
+                                "[GPU MINING] ❌ Address length: {} bytes",
+                                mining_addr_str.len()
+                            );
+                            eprintln!(
+                                "[GPU MINING] ❌ Address format: {:?}",
+                                mining_addr_str.chars().take(20).collect::<String>()
+                            );
+                            eprintln!("[GPU MINING] ⚠️ MINING REWARDS WILL BE LOST - Using fallback zero hash");
+                            eprintln!("[GPU MINING] ⚠️ All mined blocks will credit to address: 0000000000000000000000000000000000000000");
+                            btpc_core::crypto::Hash::zero() // Fallback
+                        }
+                    };
 
                     let mut coinbase_tx = btpc_core::blockchain::Transaction::coinbase(
                         block_template.coinbasevalue,
@@ -743,7 +765,8 @@ impl MiningThreadPool {
                         coinbase_data.extend_from_slice(&block_template.height.to_le_bytes());
                         coinbase_data.extend_from_slice(&extra_nonce.to_le_bytes());
                         coinbase_data.extend_from_slice(&device_index.to_le_bytes());
-                        coinbase_tx.inputs[0].script_sig = btpc_core::crypto::Script::from_bytes(coinbase_data);
+                        coinbase_tx.inputs[0].script_sig =
+                            btpc_core::crypto::Script::from_bytes(coinbase_data);
                     }
 
                     // Debug log: Coinbase transaction
@@ -773,17 +796,24 @@ impl MiningThreadPool {
                     for tx_json in &block_template.transactions {
                         if let Some(tx_data_hex) = tx_json.get("data").and_then(|d| d.as_str()) {
                             if let Ok(tx_bytes) = hex::decode(tx_data_hex) {
-                                if let Ok(tx) = btpc_core::blockchain::Transaction::deserialize(&tx_bytes) {
+                                if let Ok(tx) =
+                                    btpc_core::blockchain::Transaction::deserialize(&tx_bytes)
+                                {
                                     transactions.push(tx);
                                 } else {
-                                    eprintln!("[GPU MINING] ⚠️ Failed to deserialize mempool transaction");
+                                    eprintln!(
+                                        "[GPU MINING] ⚠️ Failed to deserialize mempool transaction"
+                                    );
                                 }
                             }
                         }
                     }
 
                     if transactions.len() > 1 {
-                        eprintln!("[GPU MINING] 📦 Block includes {} mempool transactions", transactions.len() - 1);
+                        eprintln!(
+                            "[GPU MINING] 📦 Block includes {} mempool transactions",
+                            transactions.len() - 1
+                        );
                     }
 
                     let merkle_root =
@@ -792,16 +822,16 @@ impl MiningThreadPool {
                                 // Debug log: Merkle root
                                 let merkle_hex = hex::encode(root.as_slice());
                                 if let Some(logger) = get_debug_logger() {
-                                    logger.log_merkle_root(
-                                        transactions.len(),
-                                        &merkle_hex,
-                                    );
+                                    logger.log_merkle_root(transactions.len(), &merkle_hex);
                                 }
                                 // FIX 2025-12-08: Emit BlockConstruction event for frontend console
                                 if let Some(ref tx) = event_tx_clone {
                                     let _ = tx.send(MiningEvent::BlockConstruction {
                                         log_type: "MERKLE".to_string(),
-                                        message: format!("[MERKLE] Calculated from {} txs", transactions.len()),
+                                        message: format!(
+                                            "[MERKLE] Calculated from {} txs",
+                                            transactions.len()
+                                        ),
                                     });
                                 }
                                 root
@@ -865,16 +895,19 @@ impl MiningThreadPool {
                     // Send mining progress update every 10 batches (~10M hashes) to reduce UI load
                     // At 100 MH/s this is 10 messages/sec instead of 100, preventing WebView freezing
                     const LOG_FREQUENCY_BATCHES: u32 = 10;
-                    if nonce_start % (crate::gpu_miner::NONCES_PER_BATCH * LOG_FREQUENCY_BATCHES) == 0 {
+                    if nonce_start % (crate::gpu_miner::NONCES_PER_BATCH * LOG_FREQUENCY_BATCHES)
+                        == 0
+                    {
                         if let Some(ref tx) = log_tx_clone {
                             // Pick a random nonce within current batch to show realistic activity
                             // This represents one of the ~1M nonces the GPU is actually testing
-                            use rand::{Rng, rngs::OsRng};
-                            let random_offset: u32 = OsRng.gen_range(0..crate::gpu_miner::NONCES_PER_BATCH);
+                            use rand::{rngs::OsRng, Rng};
+                            let random_offset: u32 =
+                                OsRng.gen_range(0..crate::gpu_miner::NONCES_PER_BATCH);
                             let display_nonce = nonce_start.wrapping_add(random_offset);
 
                             // Compute a sample hash for display (single hash on CPU, doesn't impact GPU mining)
-                            use sha2::{Sha512, Digest};
+                            use sha2::{Digest, Sha512};
                             let mut sample_header = header.clone();
                             sample_header.nonce = display_nonce;
                             let header_bytes = sample_header.serialize();
@@ -951,7 +984,7 @@ impl MiningThreadPool {
                                         device_index,
                                         block_template.height,
                                         nonce,
-                                        &block_hash_hex[..16]  // First 16 chars only
+                                        &block_hash_hex[..16] // First 16 chars only
                                     ),
                                 ));
                             }
@@ -979,8 +1012,8 @@ impl MiningThreadPool {
                             // Only ONE GPU can successfully increment version from N to N+1
                             // Other GPUs see the CAS fail and skip submission immediately
                             let claimed = template_version_clone.compare_exchange(
-                                my_template_version,      // Expected: my version
-                                my_template_version + 1,  // New: increment to claim
+                                my_template_version,     // Expected: my version
+                                my_template_version + 1, // New: increment to claim
                                 Ordering::SeqCst,
                                 Ordering::SeqCst,
                             );
@@ -991,7 +1024,9 @@ impl MiningThreadPool {
                                     my_template_version += 1;
                                     eprintln!(
                                         "[GPU {}] 🔒 CLAIMED submission rights (version {} -> {})",
-                                        device_index, my_template_version - 1, my_template_version
+                                        device_index,
+                                        my_template_version - 1,
+                                        my_template_version
                                     );
                                 }
                                 Err(current_version) => {
@@ -1161,7 +1196,10 @@ impl MiningThreadPool {
 
                         if temperature >= THERMAL_SHUTDOWN {
                             // Emergency shutdown
-                            eprintln!("🔥 GPU {} CRITICAL TEMPERATURE: {}°C - EMERGENCY SHUTDOWN", device_index, temperature);
+                            eprintln!(
+                                "🔥 GPU {} CRITICAL TEMPERATURE: {}°C - EMERGENCY SHUTDOWN",
+                                device_index, temperature
+                            );
 
                             if let Some(ref tx) = event_tx_clone {
                                 let _ = tx.send(MiningEvent::ThermalThrottle {
@@ -1178,7 +1216,10 @@ impl MiningThreadPool {
                             break;
                         } else if temperature >= THERMAL_THROTTLE {
                             // Throttle mining (reduce hashrate)
-                            eprintln!("⚠️ GPU {} HIGH TEMPERATURE: {}°C - THROTTLING", device_index, temperature);
+                            eprintln!(
+                                "⚠️ GPU {} HIGH TEMPERATURE: {}°C - THROTTLING",
+                                device_index, temperature
+                            );
 
                             if let Some(ref tx) = event_tx_clone {
                                 let _ = tx.send(MiningEvent::ThermalThrottle {
@@ -1252,7 +1293,10 @@ impl MiningThreadPool {
                     {
                         let mut samples = hash_samples_clone.write().unwrap();
                         let now = Instant::now();
-                        samples.push(HashrateSample { timestamp: now, hashes: cumulative_hashes });
+                        samples.push(HashrateSample {
+                            timestamp: now,
+                            hashes: cumulative_hashes,
+                        });
                         // Prune samples older than 60 seconds
                         let cutoff = now - Duration::from_secs(HASHRATE_WINDOW_SECONDS);
                         samples.retain(|s| s.timestamp > cutoff);
@@ -1266,19 +1310,22 @@ impl MiningThreadPool {
                     if last_activity_event.elapsed() >= ACTIVITY_EVENT_INTERVAL {
                         if let Some(ref tx) = event_tx_clone {
                             // Use template values if available, otherwise use cached values
-                            let (block_height, difficulty_str) = if let Some(ref tmpl) = current_template {
-                                (tmpl.height, tmpl.bits.clone())
-                            } else {
-                                // FIX 2025-12-13: Use cached values when template is being rebuilt
-                                (cached_block_height, cached_difficulty.clone())
-                            };
+                            let (block_height, difficulty_str) =
+                                if let Some(ref tmpl) = current_template {
+                                    (tmpl.height, tmpl.bits.clone())
+                                } else {
+                                    // FIX 2025-12-13: Use cached values when template is being rebuilt
+                                    (cached_block_height, cached_difficulty.clone())
+                                };
 
-                            let blocks_found_now = blocks_found_counter_clone.load(Ordering::SeqCst);
+                            let blocks_found_now =
+                                blocks_found_counter_clone.load(Ordering::SeqCst);
 
                             // FIX 2025-12-09: Show realistic nonce value instead of round batch numbers
                             // Add random offset within current batch to show actual nonce being tested
-                            use rand::{Rng, rngs::OsRng};
-                            let random_offset: u32 = OsRng.gen_range(0..crate::gpu_miner::NONCES_PER_BATCH);
+                            use rand::{rngs::OsRng, Rng};
+                            let random_offset: u32 =
+                                OsRng.gen_range(0..crate::gpu_miner::NONCES_PER_BATCH);
                             let display_nonce = nonce_start.wrapping_add(random_offset) as u64;
 
                             // FIX 2025-12-21: Use rolling window hashrate for consistency with get_stats()
@@ -1289,8 +1336,15 @@ impl MiningThreadPool {
                                     let oldest = samples.first().unwrap();
                                     let newest = samples.last().unwrap();
                                     let delta_hashes = newest.hashes.saturating_sub(oldest.hashes);
-                                    let delta_secs = newest.timestamp.duration_since(oldest.timestamp).as_secs_f64();
-                                    if delta_secs > 0.0 { delta_hashes as f64 / delta_secs } else { 0.0 }
+                                    let delta_secs = newest
+                                        .timestamp
+                                        .duration_since(oldest.timestamp)
+                                        .as_secs_f64();
+                                    if delta_secs > 0.0 {
+                                        delta_hashes as f64 / delta_secs
+                                    } else {
+                                        0.0
+                                    }
                                 } else {
                                     current_hashrate // Fall back to lifetime average if not enough samples
                                 }

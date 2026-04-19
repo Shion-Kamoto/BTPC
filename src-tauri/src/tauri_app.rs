@@ -94,7 +94,10 @@ pub fn run() {
                 .scan_and_adopt(vec![("node", "btpc_node"), ("miner", "btpc_miner")]);
 
             if !adopted.is_empty() {
-                eprintln!("[BTPC::App] Adopted {} existing process(es):", adopted.len());
+                eprintln!(
+                    "[BTPC::App] Adopted {} existing process(es):",
+                    adopted.len()
+                );
                 for process in &adopted {
                     eprintln!("[BTPC::App]   - {}", process);
                 }
@@ -104,7 +107,9 @@ pub fn run() {
 
             // Set app handle and wallet manager in embedded node
             {
-                eprintln!("[BTPC::App] Setting up embedded node with app handle and wallet manager...");
+                eprintln!(
+                    "[BTPC::App] Setting up embedded node with app handle and wallet manager..."
+                );
                 let app_state = app.state::<AppState>();
                 let embedded_node = app_state.embedded_node.clone();
                 let wallet_manager = app_state.wallet_manager.clone();
@@ -147,10 +152,13 @@ pub fn run() {
                         }
                         node_active.store(true, std::sync::atomic::Ordering::SeqCst);
                         let app_state_inner = app_handle.state::<AppState>();
-                        let _ = app_state_inner.node_status.update(|status| {
-                            status.running = true;
-                            status.pid = None;
-                        }, &app_handle);
+                        let _ = app_state_inner.node_status.update(
+                            |status| {
+                                status.running = true;
+                                status.pid = None;
+                            },
+                            &app_handle,
+                        );
                         eprintln!("[BTPC::App] P2P sync auto-started successfully");
                     });
                 } else {
@@ -166,7 +174,6 @@ pub fn run() {
             // WebView widget inside it does not, so keyboard events never reach JS.
             let _ = window.set_focus();
 
-
             let pm = process_manager.clone();
             let app_handle_for_close = app.handle().clone();
             window.on_window_event(move |event| {
@@ -176,8 +183,12 @@ pub fn run() {
                     let app_state = app_handle_for_close.state::<AppState>();
 
                     // 1. Stop background polling loops and network monitor
-                    app_state.node_active.store(false, std::sync::atomic::Ordering::SeqCst);
-                    app_state.network_monitor_active.store(false, std::sync::atomic::Ordering::SeqCst);
+                    app_state
+                        .node_active
+                        .store(false, std::sync::atomic::Ordering::SeqCst);
+                    app_state
+                        .network_monitor_active
+                        .store(false, std::sync::atomic::Ordering::SeqCst);
 
                     // 2. Stop mining pool
                     let mining_pool = app_state.mining_pool.clone();
@@ -243,7 +254,10 @@ pub fn run() {
                     let app_state = app_handle_for_mining.state::<AppState>();
 
                     // Skip polling if node is shutting down (logout/close)
-                    if !app_state.node_active.load(std::sync::atomic::Ordering::SeqCst) {
+                    if !app_state
+                        .node_active
+                        .load(std::sync::atomic::Ordering::SeqCst)
+                    {
                         continue;
                     }
 
@@ -262,14 +276,16 @@ pub fn run() {
                             Ok(state) => {
                                 let difficulty = bits_to_difficulty(state.difficulty_bits);
                                 (state.current_height, difficulty.to_string())
-                            },
+                            }
                             Err(_) => (0, "1.0".to_string()),
                         }
                     };
 
                     // Persist blocks_found to disk (for app restart persistence)
                     {
-                        let mut persistent_stats = app_state.mining_stats.lock()
+                        let mut persistent_stats = app_state
+                            .mining_stats
+                            .lock()
                             .expect("Failed to lock mining_stats");
 
                         // Only update and save if blocks_found has changed
@@ -279,14 +295,17 @@ pub fn run() {
                         }
                     }
 
-                    let _ = app_state.mining_status.update(|status| {
-                        status.active = mining_stats.is_mining;
-                        status.hashrate = mining_stats.total_hashrate as u64;
-                        status.blocks_mined = mining_stats.blocks_found as u32;
-                        status.current_difficulty = current_difficulty;
-                        status.threads = mining_stats.cpu_threads + mining_stats.gpu_devices;
-                        status.current_height = current_height;
-                    }, &app_handle_for_mining);
+                    let _ = app_state.mining_status.update(
+                        |status| {
+                            status.active = mining_stats.is_mining;
+                            status.hashrate = mining_stats.total_hashrate as u64;
+                            status.blocks_mined = mining_stats.blocks_found as u32;
+                            status.current_difficulty = current_difficulty;
+                            status.threads = mining_stats.cpu_threads + mining_stats.gpu_devices;
+                            status.current_height = current_height;
+                        },
+                        &app_handle_for_mining,
+                    );
                 }
             });
 
@@ -300,7 +319,10 @@ pub fn run() {
                     let app_state = app_handle_for_node.state::<AppState>();
 
                     // Skip polling if node is shutting down (logout/close)
-                    if !app_state.node_active.load(std::sync::atomic::Ordering::SeqCst) {
+                    if !app_state
+                        .node_active
+                        .load(std::sync::atomic::Ordering::SeqCst)
+                    {
                         continue;
                     }
 
@@ -319,15 +341,18 @@ pub fn run() {
                             }
                         });
 
-                        let _ = app_state.node_status.update(|status| {
-                            status.running = true; // Node is always running (embedded)
-                            status.pid = None; // No separate process
-                            status.block_height = blockchain_state.current_height;
-                            status.peer_count = sync_progress.connected_peers;
-                            status.sync_progress = sync_progress.sync_percentage / 100.0;
-                            status.network = node.get_network();
-                            status.difficulty = difficulty; // THIS is the fix!
-                        }, &app_handle_for_node);
+                        let _ = app_state.node_status.update(
+                            |status| {
+                                status.running = true; // Node is always running (embedded)
+                                status.pid = None; // No separate process
+                                status.block_height = blockchain_state.current_height;
+                                status.peer_count = sync_progress.connected_peers;
+                                status.sync_progress = sync_progress.sync_percentage / 100.0;
+                                status.network = node.get_network();
+                                status.difficulty = difficulty; // THIS is the fix!
+                            },
+                            &app_handle_for_node,
+                        );
                     }
                 }
             });
@@ -427,6 +452,13 @@ pub fn run() {
             commands::embedded_node::clear_peers,         // P2P testing
             commands::embedded_node::connect_to_peer,     // Real P2P connection
             commands::embedded_node::get_disk_space_info, // FR-058: Disk space monitoring
+            // Shared node visibility commands (US2, 003-testnet-p2p-hardening)
+            commands::node_commands::get_shared_node_status,
+            commands::node_commands::list_peers,
+            commands::node_commands::ban_peer,
+            commands::node_commands::disconnect_peer,
+            commands::node_commands::add_node,
+            commands::node_commands::get_network_info,
             // Block explorer commands
             commands::blockchain::get_blockchain_info,
             commands::blockchain::get_network_health_info,

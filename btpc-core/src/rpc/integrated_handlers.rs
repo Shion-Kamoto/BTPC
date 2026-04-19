@@ -15,8 +15,8 @@ use tokio::sync::RwLock as TokioRwLock;
 use crate::{
     blockchain::{Block, BlockHeader, Transaction, TransactionError},
     consensus::{
-        ConsensusEngine, ConsensusParams, DifficultyTarget, RewardCalculator, StorageBlockValidator,
-        StorageTransactionValidator, StorageValidationError,
+        ConsensusEngine, ConsensusParams, DifficultyTarget, RewardCalculator,
+        StorageBlockValidator, StorageTransactionValidator, StorageValidationError,
     },
     crypto::{Address, Hash},
     mempool::{Mempool, MempoolError},
@@ -175,9 +175,11 @@ impl IntegratedRpcHandlers {
             .register_method("getblock", move |params| {
                 let blockchain_db = Arc::clone(&blockchain_db);
                 let block_validator = Arc::clone(&block_validator);
-                tokio::runtime::Handle::current().block_on(
-                    Self::get_block_with_validation(blockchain_db, block_validator, params)
-                )
+                tokio::runtime::Handle::current().block_on(Self::get_block_with_validation(
+                    blockchain_db,
+                    block_validator,
+                    params,
+                ))
             })
             .await;
 
@@ -234,17 +236,15 @@ impl IntegratedRpcHandlers {
         server
             .register_method("sendrawtransaction", move |params| {
                 // Block on async function since register_method requires sync closure
-                tokio::runtime::Handle::current().block_on(
-                    Self::send_raw_transaction(
-                        Arc::clone(&tx_validator),
-                        Arc::clone(&blockchain_db),
-                        Arc::clone(&utxo_db),
-                        Arc::clone(&mempool),
-                        Arc::clone(&sync_manager),
-                        network_for_tx,
-                        params
-                    )
-                )
+                tokio::runtime::Handle::current().block_on(Self::send_raw_transaction(
+                    Arc::clone(&tx_validator),
+                    Arc::clone(&blockchain_db),
+                    Arc::clone(&utxo_db),
+                    Arc::clone(&mempool),
+                    Arc::clone(&sync_manager),
+                    network_for_tx,
+                    params,
+                ))
             })
             .await;
 
@@ -252,9 +252,8 @@ impl IntegratedRpcHandlers {
         server
             .register_method("validatetransaction", move |params| {
                 let tx_validator = Arc::clone(&tx_validator);
-                tokio::runtime::Handle::current().block_on(
-                    Self::validate_transaction(tx_validator, params)
-                )
+                tokio::runtime::Handle::current()
+                    .block_on(Self::validate_transaction(tx_validator, params))
             })
             .await;
     }
@@ -368,13 +367,14 @@ impl IntegratedRpcHandlers {
             .register_method("getmininginfo", move |_| {
                 // Get mining info from chain tip (single lock acquisition)
                 let (difficulty, height, networkhashps) = {
-                    let db = blockchain_db.read().map_err(|e| {
-                        RpcServerError::Internal(format!("Lock poisoned: {}", e))
-                    })?;
+                    let db = blockchain_db
+                        .read()
+                        .map_err(|e| RpcServerError::Internal(format!("Lock poisoned: {}", e)))?;
 
                     let tip = db.get_chain_tip().ok().flatten();
 
-                    let h = tip.as_ref()
+                    let h = tip
+                        .as_ref()
                         .and_then(|t| db.get_block_height(&t.hash()).ok())
                         .unwrap_or(0);
 
@@ -414,8 +414,8 @@ impl IntegratedRpcHandlers {
         server
             .register_method("getpeerinfo", move |_| {
                 let sync_manager = Arc::clone(&sync_manager);
-                let stats = tokio::runtime::Handle::current()
-                    .block_on(sync_manager.get_sync_stats());
+                let stats =
+                    tokio::runtime::Handle::current().block_on(sync_manager.get_sync_stats());
                 Ok(json!({
                     "connected_peers": stats.connected_peers,
                     "syncing_peers": stats.syncing_peers,
@@ -428,8 +428,8 @@ impl IntegratedRpcHandlers {
         server
             .register_method("getsyncinfo", move |_| {
                 let sync_manager = Arc::clone(&sync_manager);
-                let stats = tokio::runtime::Handle::current()
-                    .block_on(sync_manager.get_sync_stats());
+                let stats =
+                    tokio::runtime::Handle::current().block_on(sync_manager.get_sync_stats());
                 Ok(json!({
                     "state": format!("{:?}", stats.state),
                     "progress": stats.progress,
@@ -445,8 +445,8 @@ impl IntegratedRpcHandlers {
         server
             .register_method("getnetworkinfo", move |_| {
                 let sync_manager = Arc::clone(&sync_manager);
-                let stats = tokio::runtime::Handle::current()
-                    .block_on(sync_manager.get_sync_stats());
+                let stats =
+                    tokio::runtime::Handle::current().block_on(sync_manager.get_sync_stats());
                 Ok(json!({
                     "version": 1000000,
                     "subversion": "/BTPC:0.1.0/",
@@ -472,9 +472,9 @@ impl IntegratedRpcHandlers {
             .register_method("getconsensusinfo", move |_| {
                 // Get current height from chain tip
                 let height = {
-                    let db = blockchain_db.read().map_err(|e| {
-                        RpcServerError::Internal(format!("Lock poisoned: {}", e))
-                    })?;
+                    let db = blockchain_db
+                        .read()
+                        .map_err(|e| RpcServerError::Internal(format!("Lock poisoned: {}", e)))?;
                     db.get_chain_tip()
                         .ok()
                         .flatten()
@@ -502,14 +502,16 @@ impl IntegratedRpcHandlers {
             .register_method("getdifficultyinfo", move |_| {
                 // Get current difficulty and height from chain tip
                 let (difficulty, height) = {
-                    let db = blockchain_db.read().map_err(|e| {
-                        RpcServerError::Internal(format!("Lock poisoned: {}", e))
-                    })?;
+                    let db = blockchain_db
+                        .read()
+                        .map_err(|e| RpcServerError::Internal(format!("Lock poisoned: {}", e)))?;
                     let tip = db.get_chain_tip().ok().flatten();
-                    let diff = tip.as_ref()
+                    let diff = tip
+                        .as_ref()
                         .map(|t| DifficultyTarget::from_bits(t.header.bits).as_f64())
                         .unwrap_or(1.0);
-                    let h = tip.as_ref()
+                    let h = tip
+                        .as_ref()
                         .and_then(|t| db.get_block_height(&t.hash()).ok())
                         .unwrap_or(0);
                     (diff, h)
@@ -531,9 +533,7 @@ impl IntegratedRpcHandlers {
             .register_method("getrewardinfo", move |params| {
                 // Get height from params or use chain tip
                 let height = if let Some(Value::Array(arr)) = params {
-                    arr.first()
-                        .and_then(|v| v.as_u64())
-                        .map(|h| h as u32)
+                    arr.first().and_then(|v| v.as_u64()).map(|h| h as u32)
                 } else {
                     None
                 };
@@ -556,9 +556,9 @@ impl IntegratedRpcHandlers {
                 let reward = RewardCalculator::calculate_reward(height).unwrap_or(0);
                 let reward_btpc = reward as f64 / 100_000_000.0;
                 let initial_reward = RewardCalculator::calculate_reward(0).unwrap_or(0);
-                let tail_emission = RewardCalculator::calculate_reward(
-                    crate::economics::BLOCKS_PER_YEAR * 24
-                ).unwrap_or(0);
+                let tail_emission =
+                    RewardCalculator::calculate_reward(crate::economics::BLOCKS_PER_YEAR * 24)
+                        .unwrap_or(0);
 
                 Ok(json!({
                     "height": height,
@@ -590,26 +590,26 @@ impl IntegratedRpcHandlers {
                     "Missing block hash".to_string(),
                 ))?;
 
-                let block_hash = if let Value::Array(ref arr) = params {
-                    arr.first()
-                        .and_then(|v| v.as_str())
-                        .ok_or(RpcServerError::InvalidParams(
-                            "Invalid block hash".to_string(),
-                        ))?
-                } else {
-                    return Err(RpcServerError::InvalidParams(
-                        "Expected array parameters".to_string(),
-                    ));
-                };
+                let block_hash =
+                    if let Value::Array(ref arr) = params {
+                        arr.first().and_then(|v| v.as_str()).ok_or(
+                            RpcServerError::InvalidParams("Invalid block hash".to_string()),
+                        )?
+                    } else {
+                        return Err(RpcServerError::InvalidParams(
+                            "Expected array parameters".to_string(),
+                        ));
+                    };
 
-                let hash = Hash::from_hex(block_hash)
-                    .map_err(|_| RpcServerError::InvalidParams("Invalid hash format".to_string()))?;
+                let hash = Hash::from_hex(block_hash).map_err(|_| {
+                    RpcServerError::InvalidParams("Invalid hash format".to_string())
+                })?;
 
                 // Get block from database
                 let block = {
-                    let db = blockchain_db.read().map_err(|e| {
-                        RpcServerError::Internal(format!("Lock poisoned: {}", e))
-                    })?;
+                    let db = blockchain_db
+                        .read()
+                        .map_err(|e| RpcServerError::Internal(format!("Lock poisoned: {}", e)))?;
                     db.get_block(&hash)
                         .map_err(|e| RpcServerError::Internal(e.to_string()))?
                         .ok_or(RpcServerError::InvalidParams("Block not found".to_string()))?
@@ -650,7 +650,8 @@ impl IntegratedRpcHandlers {
                 .read()
                 .map_err(|e| RpcServerError::Internal(format!("Lock poisoned: {}", e)))?;
 
-            let chain_tip = db.get_chain_tip()
+            let chain_tip = db
+                .get_chain_tip()
                 .map_err(|e| RpcServerError::Internal(e.to_string()))?;
 
             if let Some(tip) = chain_tip {
@@ -762,12 +763,14 @@ impl IntegratedRpcHandlers {
                 .read()
                 .map_err(|e| RpcServerError::Internal(format!("Lock poisoned: {}", e)))?;
 
-            let block_opt = db.get_block(&hash)
+            let block_opt = db
+                .get_block(&hash)
                 .map_err(|e| RpcServerError::Internal(e.to_string()))?;
 
             let block_height = db.get_block_height(&hash).unwrap_or(0);
 
-            let tip_height = db.get_chain_tip()
+            let tip_height = db
+                .get_chain_tip()
                 .ok()
                 .flatten()
                 .and_then(|tip| db.get_block_height(&tip.hash()).ok())
@@ -850,9 +853,8 @@ impl IntegratedRpcHandlers {
         };
 
         // Deserialize transaction from hex
-        let tx_bytes = hex::decode(tx_hex).map_err(|e| {
-            RpcServerError::InvalidParams(format!("Invalid hex encoding: {}", e))
-        })?;
+        let tx_bytes = hex::decode(tx_hex)
+            .map_err(|e| RpcServerError::InvalidParams(format!("Invalid hex encoding: {}", e)))?;
         let transaction = Transaction::deserialize(&tx_bytes).map_err(|e| {
             RpcServerError::InvalidParams(format!("Invalid transaction format: {}", e))
         })?;
@@ -877,10 +879,9 @@ impl IntegratedRpcHandlers {
         tx_validator
             .validate_transaction_with_context(&transaction)
             .await
-            .map_err(|e| RpcServerError::InvalidParams(format!(
-                "Transaction validation failed: {}",
-                e
-            )))?;
+            .map_err(|e| {
+                RpcServerError::InvalidParams(format!("Transaction validation failed: {}", e))
+            })?;
 
         let txid = transaction.hash();
 
@@ -916,7 +917,11 @@ impl IntegratedRpcHandlers {
         // First try INV message (standard Bitcoin protocol)
         match sync_manager.broadcast_transaction(&txid).await {
             Ok(peer_count) => {
-                tracing::info!("Broadcast TX {} via INV to {} peers", txid.to_hex(), peer_count);
+                tracing::info!(
+                    "Broadcast TX {} via INV to {} peers",
+                    txid.to_hex(),
+                    peer_count
+                );
             }
             Err(e) => {
                 // If INV fails (e.g., no peers), try full TX broadcast
@@ -953,9 +958,8 @@ impl IntegratedRpcHandlers {
         };
 
         // Deserialize transaction from hex
-        let tx_bytes = hex::decode(tx_hex).map_err(|e| {
-            RpcServerError::InvalidParams(format!("Invalid hex encoding: {}", e))
-        })?;
+        let tx_bytes = hex::decode(tx_hex)
+            .map_err(|e| RpcServerError::InvalidParams(format!("Invalid hex encoding: {}", e)))?;
         let transaction = match Transaction::deserialize(&tx_bytes) {
             Ok(tx) => tx,
             Err(e) => {
@@ -1321,8 +1325,13 @@ impl IntegratedRpcHandlers {
                 let hash = block.hash();
                 Ok(json!(hex::encode(hash.as_bytes())))
             }
-            Ok(None) => Ok(json!("0000000000000000000000000000000000000000000000000000000000000000")),
-            Err(e) => Err(RpcServerError::Internal(format!("Failed to get chain tip: {}", e))),
+            Ok(None) => Ok(json!(
+                "0000000000000000000000000000000000000000000000000000000000000000"
+            )),
+            Err(e) => Err(RpcServerError::Internal(format!(
+                "Failed to get chain tip: {}",
+                e
+            ))),
         }
     }
 
@@ -1349,7 +1358,10 @@ impl IntegratedRpcHandlers {
                 Ok(json!(height))
             }
             Ok(None) => Ok(json!(0)),
-            Err(e) => Err(RpcServerError::Internal(format!("Failed to get chain tip: {}", e))),
+            Err(e) => Err(RpcServerError::Internal(format!(
+                "Failed to get chain tip: {}",
+                e
+            ))),
         }
     }
 
@@ -1384,9 +1396,11 @@ impl IntegratedRpcHandlers {
             let db = blockchain_db
                 .read()
                 .map_err(|e| RpcServerError::Internal(format!("Lock poisoned: {}", e)))?;
-            let tip = db.get_chain_tip()
+            let tip = db
+                .get_chain_tip()
                 .map_err(|e| RpcServerError::Internal(e.to_string()))?;
-            let height = tip.as_ref()
+            let height = tip
+                .as_ref()
                 .and_then(|t| db.get_block_height(&t.hash()).ok())
                 .unwrap_or(0) as u64;
             (tip, height)
@@ -1464,12 +1478,10 @@ impl IntegratedRpcHandlers {
     ) -> Result<Value, RpcServerError> {
         // Parse address from params
         let address_str = match params {
-            Some(Value::Array(arr)) if !arr.is_empty() => {
-                arr[0]
-                    .as_str()
-                    .ok_or_else(|| RpcServerError::InvalidParams("Address must be a string".into()))?
-                    .to_string()
-            }
+            Some(Value::Array(arr)) if !arr.is_empty() => arr[0]
+                .as_str()
+                .ok_or_else(|| RpcServerError::InvalidParams("Address must be a string".into()))?
+                .to_string(),
             Some(Value::Object(obj)) => obj
                 .get("address")
                 .and_then(|v| v.as_str())
@@ -1494,9 +1506,9 @@ impl IntegratedRpcHandlers {
             RpcServerError::Internal(format!("Failed to acquire database lock: {}", e))
         })?;
 
-        let utxos = db.get_utxos_for_pubkey_hash(pubkey_hash).map_err(|e| {
-            RpcServerError::Internal(format!("Failed to query UTXOs: {:?}", e))
-        })?;
+        let utxos = db
+            .get_utxos_for_pubkey_hash(pubkey_hash)
+            .map_err(|e| RpcServerError::Internal(format!("Failed to query UTXOs: {:?}", e)))?;
 
         // Convert UTXOs to JSON response
         let utxo_list: Vec<Value> = utxos
@@ -1571,10 +1583,7 @@ impl IntegratedRpcHandlers {
 
     /// Estimate network hashrate based on block timestamps and difficulty
     /// Uses the last `num_blocks` blocks to calculate average block time
-    fn estimate_network_hashrate(
-        db: &dyn BlockchainDatabase,
-        num_blocks: u32,
-    ) -> f64 {
+    fn estimate_network_hashrate(db: &dyn BlockchainDatabase, num_blocks: u32) -> f64 {
         // Get chain tip
         let tip = match db.get_chain_tip() {
             Ok(Some(tip)) => tip,
@@ -1662,8 +1671,13 @@ mod tests {
 
         let mempool = Arc::new(std::sync::RwLock::new(crate::mempool::Mempool::new()));
 
-        let handlers =
-            IntegratedRpcHandlers::new(blockchain_db, utxo_db, sync_manager, mempool, Network::Regtest);
+        let handlers = IntegratedRpcHandlers::new(
+            blockchain_db,
+            utxo_db,
+            sync_manager,
+            mempool,
+            Network::Regtest,
+        );
 
         (handlers, temp_dir)
     }
