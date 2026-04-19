@@ -5,6 +5,7 @@
 
 use std::{
     collections::{HashMap, HashSet, VecDeque},
+    net::SocketAddr,
     sync::{Arc, RwLock},
     time::{Duration, Instant},
 };
@@ -29,6 +30,16 @@ use crate::{
     storage::{BlockchainDatabase, UTXODatabase},
 };
 
+/// Callback used by the sync manager to emit wire messages back to a specific
+/// peer through the owner's `SimplePeerManager`. Installed via
+/// `IntegratedSyncManager::set_message_sender`.
+///
+/// Phase 8 (003-testnet-p2p-hardening, 2026-04-20): R12 decision — a callback
+/// closure is preferred over a direct `Arc<SimplePeerManager>` handle to
+/// avoid a circular dependency and keep the manager unit-testable without a
+/// running network.
+pub type MessageSender = Arc<dyn Fn(SocketAddr, Message) + Send + Sync>;
+
 /// Integrated synchronization manager that coordinates P2P and blockchain sync
 pub struct IntegratedSyncManager {
     /// Core sync manager (async operations)
@@ -49,6 +60,16 @@ pub struct IntegratedSyncManager {
     message_tx: mpsc::UnboundedSender<NetworkMessage>,
     /// Running state (async operations)
     is_running: Arc<TokioRwLock<bool>>,
+    /// Optional outbound-message callback installed by the node owner.
+    /// When set, `send_message_to_peer` routes through this closure instead
+    /// of the legacy `NetworkMessage::SendMessage` stub path.
+    ///
+    /// Plain `std::sync::RwLock` — written once at node init, read per
+    /// outbound message, never held across an await point.
+    message_sender: Arc<RwLock<Option<MessageSender>>>,
+    /// Best header height observed across incoming `Message::Headers` batches.
+    /// Monotonic; used by `headers_height()` for the Dashboard sync widget.
+    header_tip_height: Arc<RwLock<u64>>,
 }
 
 /// Synchronization configuration
@@ -188,6 +209,17 @@ impl IntegratedSyncManager {
             config,
             message_tx,
             is_running,
+            message_sender: Arc::new(RwLock::new(None)),
+            header_tip_height: Arc::new(RwLock::new(0)),
+        }
+    }
+
+    /// Install the outbound-message callback. Called by the node owner
+    /// (EmbeddedNode) once the `SimplePeerManager` is available. Replacing an
+    /// existing sender is allowed but should be rare (tests and shutdown).
+    pub fn set_message_sender(&mut self, sender: MessageSender) {
+        if let Ok(mut guard) = self.message_sender.write() {
+            *guard = Some(sender);
         }
     }
 
@@ -440,6 +472,15 @@ impl IntegratedSyncManager {
         }
 
         println!("Processing {} headers from peer: {}", headers.len(), peer);
+
+        // Phase 8: Track observed header count for `headers_height()`.
+        // Bumped pre-validation so a catching-up node's Dashboard reflects
+        // the wire-level sync signal even if later PoW/chain checks reject
+        // a batch. The validation errors below still prevent bad headers
+        // from reaching the chain or sync_manager state.
+        if let Ok(mut tip) = self.header_tip_height.write() {
+            *tip = tip.saturating_add(headers.len() as u64);
+        }
 
         // Step 1: Validate header chain (prev_hash links)
         let mut prev_hash = headers[0].prev_hash;
@@ -694,28 +735,33 @@ impl IntegratedSyncManager {
         }
 
         // Step 3: Send getdata requests for needed items
-        // Prioritize blocks over transactions by sending block requests first
+        // Prioritize blocks over transactions by sending block requests first.
+        //
+        // Per-peer in-flight cap: 16 blocks (matches InFlightTracker in
+        // 003-testnet-p2p-hardening Phase 5). We emit at most one GetData per
+        // inv batch; the scheduler throttles follow-up requests as in-flight
+        // slots free up on `Block` receipts.
         if !needed_blocks.is_empty() {
+            const PER_PEER_GETDATA_CAP: usize = 16;
+            let requested: Vec<Hash> = needed_blocks
+                .into_iter()
+                .take(PER_PEER_GETDATA_CAP)
+                .collect();
             println!(
-                "Requesting {} blocks from peer: {}",
-                needed_blocks.len(),
-                peer
+                "Requesting {} blocks from peer: {} (per-peer cap {})",
+                requested.len(),
+                peer,
+                PER_PEER_GETDATA_CAP
             );
-
-            // Request blocks in batches to avoid overwhelming the peer
-            const MAX_BLOCKS_PER_REQUEST: usize = 128;
-            for chunk in needed_blocks.chunks(MAX_BLOCKS_PER_REQUEST) {
-                let inv_vectors: Vec<InventoryVector> = chunk
-                    .iter()
-                    .map(|hash| InventoryVector {
-                        inv_type: InvType::Block,
-                        hash: *hash,
-                    })
-                    .collect();
-
-                let message = Message::GetData(inv_vectors);
-                self.send_message_to_peer(&peer, message).await?;
-            }
+            let inv_vectors: Vec<InventoryVector> = requested
+                .iter()
+                .map(|hash| InventoryVector {
+                    inv_type: InvType::Block,
+                    hash: *hash,
+                })
+                .collect();
+            let message = Message::GetData(inv_vectors);
+            self.send_message_to_peer(&peer, message).await?;
         }
 
         if !needed_txs.is_empty() {
@@ -963,20 +1009,39 @@ impl IntegratedSyncManager {
         Ok(())
     }
 
-    /// Send message to peer (placeholder)
-    ///
-    /// Note: Actual message sending is handled by SimplePeerManager.
-    /// This is a coordination layer stub for future integrated sync.
+    /// Send a wire message to a single peer through the installed
+    /// `MessageSender` callback. If no callback is installed (e.g. in unit
+    /// tests that do not exercise the egress path), the send is a no-op.
     async fn send_message_to_peer(
         &self,
-        _peer: &str,
-        _message: Message,
+        peer: &str,
+        message: Message,
     ) -> Result<(), IntegratedSyncError> {
-        // Future implementation would:
-        // 1. Delegate to SimplePeerManager for message encoding/sending
-        // 2. Track message for timeout handling
-        // 3. Update peer statistics
+        let addr: SocketAddr = match peer.parse() {
+            Ok(a) => a,
+            Err(e) => {
+                println!(
+                    "send_message_to_peer: invalid peer address {}: {}",
+                    peer, e
+                );
+                return Ok(());
+            }
+        };
 
+        let sender_opt = self
+            .message_sender
+            .read()
+            .map_err(|e| {
+                IntegratedSyncError::Network(NetworkError::Connection(format!(
+                    "message_sender lock poisoned: {}",
+                    e
+                )))
+            })?
+            .clone();
+
+        if let Some(sender) = sender_opt {
+            sender(addr, message);
+        }
         Ok(())
     }
 
@@ -1148,10 +1213,22 @@ impl IntegratedSyncManager {
         Ok(broadcast_count)
     }
 
-    /// Get sync statistics
-    /// T062: Best known header height from any connected peer.
-    /// Used by `build_node_status_snapshot` for the `headers_height` field.
+    /// Best known header height / observed header count.
+    /// Used by `build_node_status_snapshot` for the Dashboard sync widget.
+    ///
+    /// Phase 8 (003-testnet-p2p-hardening, 2026-04-20): prefer the wire-level
+    /// `header_tip_height` tracker (updated by `process_headers_message`)
+    /// over the peer-version-advertised `best_height`. Falls back to the
+    /// peer-advertised max when no headers have been observed yet.
     pub async fn headers_height(&self) -> u64 {
+        let observed = self
+            .header_tip_height
+            .read()
+            .map(|g| *g)
+            .unwrap_or(0);
+        if observed > 0 {
+            return observed;
+        }
         let peers = self.active_peers.read().await;
         peers
             .values()
@@ -1189,6 +1266,8 @@ impl Clone for IntegratedSyncManager {
             config: self.config.clone(),
             message_tx: self.message_tx.clone(),
             is_running: Arc::clone(&self.is_running),
+            message_sender: Arc::clone(&self.message_sender),
+            header_tip_height: Arc::clone(&self.header_tip_height),
         }
     }
 }
@@ -1278,6 +1357,118 @@ mod tests {
         let stats = manager.get_sync_stats().await;
         assert_eq!(stats.connected_peers, 1);
         assert_eq!(stats.best_height, 100);
+    }
+
+    // ========================================================================
+    // Phase 8 RED tests — IntegratedSyncManager live-path integration
+    // Feature 003-testnet-p2p-hardening follow-up (2026-04-20)
+    //
+    // T111 RED: set_message_sender + per-peer cap 16 on GetData issuance.
+    // T112 RED: headers_height() reflects processed headers, not just peer
+    //           version-handshake advertisements.
+    //
+    // These tests MUST fail against the current symbol surface (either
+    // compile-time for T111 because `set_message_sender` / `MessageSender`
+    // do not exist yet, or assertion-time for T112 because the current
+    // `headers_height()` is a stub sourced from peer.best_height).
+    // ========================================================================
+
+    /// T111 RED — set_message_sender installs a MessageSender closure, and
+    /// process_inventory_message routes GetData through it bounded by the
+    /// per-peer in-flight cap of 16 (not the legacy 128 batching constant).
+    #[tokio::test]
+    async fn t111_red_set_message_sender_bounds_getdata_to_per_peer_cap_16() {
+        use std::net::SocketAddr;
+        use std::sync::Mutex;
+
+        let (mut manager, _temp_dir) = create_test_sync_manager().await;
+
+        let captured: Arc<Mutex<Vec<(SocketAddr, Message)>>> =
+            Arc::new(Mutex::new(Vec::new()));
+        let captured_clone = Arc::clone(&captured);
+
+        // SYMBOL UNDER TEST (does not exist yet): pub type MessageSender =
+        //   Arc<dyn Fn(SocketAddr, Message) + Send + Sync>;
+        // and fn set_message_sender(&mut self, sender: MessageSender).
+        let sender: MessageSender = Arc::new(move |addr, msg| {
+            captured_clone.lock().unwrap().push((addr, msg));
+        });
+        manager.set_message_sender(sender);
+
+        // Build 20 unknown block hashes — more than the per-peer cap of 16.
+        let inventory: Vec<InventoryVector> = (0u8..20)
+            .map(|i| InventoryVector {
+                inv_type: InvType::Block,
+                hash: Hash::from_bytes([i; 64]),
+            })
+            .collect();
+
+        manager
+            .process_inventory_message("127.0.0.1:38333".to_string(), inventory)
+            .await
+            .unwrap();
+
+        let sent = captured.lock().unwrap();
+        // Exactly one GetData should have been emitted via the closure.
+        assert_eq!(
+            sent.len(),
+            1,
+            "expected exactly one GetData via MessageSender, got {}",
+            sent.len()
+        );
+        match &sent[0].1 {
+            Message::GetData(inv) => {
+                assert_eq!(
+                    inv.len(),
+                    16,
+                    "per-peer GetData must be capped at 16 (see InFlightTracker), got {}",
+                    inv.len()
+                );
+                assert!(inv.iter().all(|i| i.inv_type == InvType::Block));
+            }
+            other => panic!("expected Message::GetData, got {:?}", other),
+        }
+    }
+
+    /// T112 RED — headers_height() returns 0 for a fresh manager, and
+    /// reflects the count of validated headers after process_headers_message.
+    /// Current stub sources height from peer.best_height only (set during
+    /// version handshake), so processing headers without a prior
+    /// handle_peer_connected leaves headers_height() at 0 → assertion fails.
+    #[tokio::test]
+    async fn t112_red_headers_height_reflects_processed_headers() {
+        let (manager, _temp_dir) = create_test_sync_manager().await;
+
+        // Fresh manager: no peers, no headers → height is 0.
+        assert_eq!(
+            manager.headers_height().await,
+            0,
+            "headers_height() must start at 0 on a fresh manager"
+        );
+
+        // Build a 5-header chain starting from the genesis prev_hash.
+        // No PoW here — we only need the getter to see header activity.
+        let mut headers: Vec<BlockHeader> = Vec::with_capacity(5);
+        let mut prev = Hash::from_bytes([0u8; 64]);
+        for i in 0u32..5 {
+            let h = BlockHeader::new(1, prev, Hash::from_bytes([i as u8; 64]), 1_700_000_000 + i as u64, 0x207fffff, i);
+            prev = h.hash();
+            headers.push(h);
+        }
+
+        // Feed headers without a prior handle_peer_connected() — the current
+        // `headers_height()` impl only reads peer.best_height, so it should
+        // stay at 0 even though headers were processed. This failure is the
+        // RED signal that the getter is a stub.
+        let _ = manager
+            .process_headers_message("127.0.0.1:38333".to_string(), headers.clone())
+            .await;
+
+        assert_eq!(
+            manager.headers_height().await,
+            headers.len() as u64,
+            "headers_height() must reflect processed headers, not just peer.best_height"
+        );
     }
 }
 

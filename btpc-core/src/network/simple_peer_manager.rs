@@ -30,7 +30,8 @@ use tokio::{
 };
 
 use crate::{
-    blockchain::Block,
+    blockchain::{Block, BlockHeader},
+    crypto::Hash,
     network::{
         address_manager::AddressManager, discovery::PeerDiscovery, protocol::*, ConnectionTracker,
         NetworkConfig, NetworkError, NetworkResult, PeerRateLimiter,
@@ -62,6 +63,27 @@ pub enum PeerEvent {
     InventoryReceived {
         from: SocketAddr,
         inv: Vec<InventoryVector>,
+    },
+    /// Headers received from a peer (reply to our GetHeaders, or an
+    /// unsolicited announcement).
+    ///
+    /// Routed to `IntegratedSyncManager::process_headers_message` in the
+    /// live dispatch loop — without this variant, a catching-up node's
+    /// GetHeaders request gets a silently-dropped reply at
+    /// `handle_peer_message`'s match fall-through and sync stalls.
+    HeadersReceived {
+        from: SocketAddr,
+        headers: Vec<BlockHeader>,
+    },
+    /// Peer asked us for headers (we are a seed for their catch-up).
+    ///
+    /// Serviced by walking our local `BlockSource` (fork-point + headers-after)
+    /// and replying with `Message::Headers`. Without this variant we cannot
+    /// seed a catching-up node.
+    GetHeadersRequested {
+        from: SocketAddr,
+        locator: Vec<Hash>,
+        hash_stop: Hash,
     },
 }
 
@@ -1108,6 +1130,30 @@ impl SimplePeerManager {
                     tx: tx.clone(),
                 });
             }
+            Message::Headers(headers) => {
+                println!(
+                    "📜 Received {} header(s) from {}",
+                    headers.len(),
+                    from
+                );
+                let _ = event_tx.try_send(PeerEvent::HeadersReceived {
+                    from,
+                    headers: headers.clone(),
+                });
+            }
+            Message::GetHeaders(gh) => {
+                println!(
+                    "📖 Peer {} requested headers (locator len={}, stop={})",
+                    from,
+                    gh.block_locator.len(),
+                    gh.hash_stop.to_hex()
+                );
+                let _ = event_tx.try_send(PeerEvent::GetHeadersRequested {
+                    from,
+                    locator: gh.block_locator.clone(),
+                    hash_stop: gh.hash_stop,
+                });
+            }
             _ => {}
         }
     }
@@ -1600,5 +1646,109 @@ mod red_phase_tests {
         mgr.set_ban_score_for_test(&addr, 42).await;
         peer.refresh_ban_score(&mgr).await;
         assert_eq!(peer.ban_score(), 42);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // T110 RED (Phase 8, US3 follow-up) — PeerEvent::HeadersReceived
+    // and PeerEvent::GetHeadersRequested must be emitted by
+    // handle_peer_message. Both variants are missing from the enum at
+    // the top of this file, so these tests fail to compile until T113
+    // adds them and T114 wires the emission.
+    //
+    // Unresolved-path failures = RED evidence per Art. V §6.3.3.
+    // ──────────────────────────────────────────────────────────────────
+
+    use crate::blockchain::BlockHeader;
+    use crate::crypto::Hash;
+    use std::collections::HashMap as RedHashMap;
+
+    #[tokio::test]
+    async fn handle_peer_message_emits_headers_received_on_message_headers() {
+        let (event_tx, mut event_rx) = mpsc::channel::<PeerEvent>(8);
+        let (peer_tx, _peer_rx) = mpsc::channel::<Message>(8);
+        let discovery = Arc::new(RwLock::new(PeerDiscovery::new(1000)));
+        let all_peers: Arc<RwLock<RedHashMap<SocketAddr, PeerHandle>>> =
+            Arc::new(RwLock::new(RedHashMap::new()));
+        let mut getaddr_replied = false;
+
+        let from = mk_peer_addr(40001);
+        let hdr = BlockHeader::new(1, Hash::zero(), Hash::zero(), 1_700_000_000, 0x1d00ffff, 0);
+        let msg = Message::Headers(vec![hdr]);
+
+        SimplePeerManager::handle_peer_message(
+            &msg,
+            from,
+            &event_tx,
+            &peer_tx,
+            &discovery,
+            &all_peers,
+            &mut getaddr_replied,
+        )
+        .await;
+
+        let ev = tokio::time::timeout(std::time::Duration::from_millis(200), event_rx.recv())
+            .await
+            .expect("event channel should have received a PeerEvent::HeadersReceived")
+            .expect("event channel must not be closed");
+
+        match ev {
+            PeerEvent::HeadersReceived {
+                from: ev_from,
+                headers,
+            } => {
+                assert_eq!(ev_from, from);
+                assert_eq!(headers.len(), 1);
+            }
+            other => panic!("expected PeerEvent::HeadersReceived, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn handle_peer_message_emits_getheaders_requested_on_message_getheaders() {
+        let (event_tx, mut event_rx) = mpsc::channel::<PeerEvent>(8);
+        let (peer_tx, _peer_rx) = mpsc::channel::<Message>(8);
+        let discovery = Arc::new(RwLock::new(PeerDiscovery::new(1000)));
+        let all_peers: Arc<RwLock<RedHashMap<SocketAddr, PeerHandle>>> =
+            Arc::new(RwLock::new(RedHashMap::new()));
+        let mut getaddr_replied = false;
+
+        let from = mk_peer_addr(40002);
+        let locator_hash = Hash::from_bytes([0x11u8; 64]);
+        let stop_hash = Hash::from_bytes([0x22u8; 64]);
+        let getheaders_msg = GetHeadersMessage {
+            version: 1,
+            block_locator: vec![locator_hash],
+            hash_stop: stop_hash,
+        };
+        let msg = Message::GetHeaders(getheaders_msg);
+
+        SimplePeerManager::handle_peer_message(
+            &msg,
+            from,
+            &event_tx,
+            &peer_tx,
+            &discovery,
+            &all_peers,
+            &mut getaddr_replied,
+        )
+        .await;
+
+        let ev = tokio::time::timeout(std::time::Duration::from_millis(200), event_rx.recv())
+            .await
+            .expect("event channel should have received a PeerEvent::GetHeadersRequested")
+            .expect("event channel must not be closed");
+
+        match ev {
+            PeerEvent::GetHeadersRequested {
+                from: ev_from,
+                locator,
+                hash_stop,
+            } => {
+                assert_eq!(ev_from, from);
+                assert_eq!(locator, vec![locator_hash]);
+                assert_eq!(hash_stop, stop_hash);
+            }
+            other => panic!("expected PeerEvent::GetHeadersRequested, got {:?}", other),
+        }
     }
 }
