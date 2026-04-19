@@ -1181,25 +1181,31 @@ impl EmbeddedNode {
                             }
                         }
                         PeerEvent::InventoryReceived { from, inv } => {
-                            // FIX 2026-04-12: Request blocks we don't have
+                            // FIX 2026-04-12: Request blocks we don't have.
+                            // Phase 8 (2026-04-20, T117): per-peer in-flight cap 16
+                            // matches InFlightTracker in IntegratedSyncManager.
                             use btpc_core::network::protocol::{InvType, InventoryVector, Message};
+                            const PER_PEER_GETDATA_CAP: usize = 16;
                             let mut needed: Vec<InventoryVector> = Vec::new();
                             for item in &inv {
                                 if item.inv_type == InvType::Block {
-                                    // Check if we already have this block
                                     let hash_bytes = item.hash.as_bytes().to_vec();
                                     let have_it =
                                         database_clone.has_block_hash(&hash_bytes).unwrap_or(false);
                                     if !have_it {
                                         needed.push(item.clone());
+                                        if needed.len() >= PER_PEER_GETDATA_CAP {
+                                            break;
+                                        }
                                     }
                                 }
                             }
                             if !needed.is_empty() {
                                 eprintln!(
-                                    "📋 Requesting {} block(s) from peer {}",
+                                    "📋 Requesting {} block(s) from peer {} (cap {})",
                                     needed.len(),
-                                    from
+                                    from,
+                                    PER_PEER_GETDATA_CAP
                                 );
                                 peer_manager_arc
                                     .send_to_peer(&from, Message::GetData(needed))
@@ -1209,6 +1215,77 @@ impl EmbeddedNode {
                         PeerEvent::TransactionReceived { from, tx } => {
                             eprintln!("💳 Received tx {} from peer {}", tx.hash().to_hex(), from);
                             // TODO: Add to mempool when mempool accepts external txs
+                        }
+                        // ── Phase 8 (003-testnet-p2p-hardening, 2026-04-20) ──
+                        //
+                        // Live-path headers-first catch-up. Before T113/T117 the
+                        // SimplePeerManager match dropped Message::Headers into a
+                        // `_ => {}` fall-through, so a catching-up node's
+                        // GetHeaders reply was silently discarded and sync stalled.
+                        // We now:
+                        //   - issue GetData for each returned header we don't
+                        //     already have, bounded by the per-peer cap of 16;
+                        //   - reply to inbound GetHeaders with Message::Headers
+                        //     built from UnifiedDatabaseBlockSource.
+                        PeerEvent::HeadersReceived { from, headers } => {
+                            use btpc_core::network::protocol::{InvType, InventoryVector, Message};
+                            eprintln!(
+                                "📜 Processing {} header(s) from peer {}",
+                                headers.len(),
+                                from
+                            );
+                            const PER_PEER_GETDATA_CAP: usize = 16;
+                            let mut needed: Vec<InventoryVector> = Vec::new();
+                            for header in &headers {
+                                let hash = header.hash();
+                                let hash_bytes = hash.as_bytes().to_vec();
+                                if !database_clone.has_block_hash(&hash_bytes).unwrap_or(false) {
+                                    needed.push(InventoryVector {
+                                        inv_type: InvType::Block,
+                                        hash,
+                                    });
+                                    if needed.len() >= PER_PEER_GETDATA_CAP {
+                                        break;
+                                    }
+                                }
+                            }
+                            if !needed.is_empty() {
+                                eprintln!(
+                                    "📥 Requesting {} block(s) from peer {} via header walk (cap {})",
+                                    needed.len(),
+                                    from,
+                                    PER_PEER_GETDATA_CAP
+                                );
+                                peer_manager_arc
+                                    .send_to_peer(&from, Message::GetData(needed))
+                                    .await;
+                            }
+                        }
+                        PeerEvent::GetHeadersRequested {
+                            from,
+                            locator,
+                            hash_stop,
+                        } => {
+                            use btpc_core::network::block_source::BlockSource;
+                            use btpc_core::network::protocol::Message;
+                            use crate::node_block_source::UnifiedDatabaseBlockSource;
+                            // Build a read-only view around our UnifiedDatabase
+                            // on demand. Cheap — it's just an Arc wrap.
+                            let db_arc = Arc::new(database_clone.clone());
+                            let source = UnifiedDatabaseBlockSource::new(db_arc);
+                            let start = source.find_fork_point(&locator);
+                            let headers = source.headers_after(start, 2000, &hash_stop);
+                            eprintln!(
+                                "📖 Serving {} header(s) to peer {} from height {}",
+                                headers.len(),
+                                from,
+                                start
+                            );
+                            if !headers.is_empty() {
+                                peer_manager_arc
+                                    .send_to_peer(&from, Message::Headers(headers))
+                                    .await;
+                            }
                         }
                     }
                 }

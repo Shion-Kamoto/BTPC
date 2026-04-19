@@ -34,6 +34,7 @@ pub mod thermal_throttle; // Thermal throttling for GPU mining // Comprehensive 
 // Embedded blockchain node modules
 pub mod btpc_integration; // BTPC node integration
 pub mod embedded_node;
+pub mod node_block_source; // UnifiedDatabase-backed BlockSource (T116)
 pub mod security; // Security manager for wallet encryption
 pub mod unified_database; // Unified RocksDB database for blockchain and UTXO data
 pub mod wallet_manager; // Wallet management and balance caching (depends on security)
