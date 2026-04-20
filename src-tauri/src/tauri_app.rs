@@ -343,8 +343,10 @@ pub fn run() {
 
                         let _ = app_state.node_status.update(
                             |status| {
-                                status.running = true; // Node is always running (embedded)
-                                status.pid = None; // No separate process
+                                // Reached only when node_active is true (guard above),
+                                // so running=true here reflects real sync-stack state.
+                                status.running = true;
+                                status.pid = None;
                                 status.block_height = blockchain_state.current_height;
                                 status.peer_count = sync_progress.connected_peers;
                                 status.sync_progress = sync_progress.sync_percentage / 100.0;
