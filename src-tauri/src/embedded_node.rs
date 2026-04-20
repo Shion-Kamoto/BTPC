@@ -463,6 +463,15 @@ impl EmbeddedNode {
             .load(std::sync::atomic::Ordering::SeqCst)
     }
 
+    /// Returns true once start_sync_inner has completed its bootstrap and the
+    /// P2P event loop / tickers are active. Used by callers who need to gate
+    /// behaviour on "is the embedded node's sync stack live" without reaching
+    /// into the private atomic.
+    pub fn is_sync_running(&self) -> bool {
+        self.is_syncing
+            .load(std::sync::atomic::Ordering::SeqCst)
+    }
+
     /// Get network type
     ///
     /// # Returns
@@ -871,6 +880,19 @@ impl EmbeddedNode {
         &mut self,
         node_arc: Option<Arc<RwLock<EmbeddedNode>>>,
     ) -> Result<()> {
+        // Idempotency guard: if sync is already running, return Ok without
+        // re-binding the listener, re-spawning tickers, or re-querying DNS.
+        // Without this, a second invocation (e.g. auto-start racing a manual
+        // start_node click) would fail to bind the P2P port and leave
+        // orphaned background tasks.
+        if self
+            .is_syncing
+            .load(std::sync::atomic::Ordering::SeqCst)
+        {
+            eprintln!("📡 start_sync_inner: sync already running — no-op");
+            return Ok(());
+        }
+
         // ── Bitcoin-style P2P bootstrap ──────────────────────────────────────
         eprintln!("📡 Starting P2P sync for network: {:?}", self.network);
         eprintln!(
@@ -1395,6 +1417,38 @@ impl EmbeddedNode {
         // Set sync active flag (persists across page navigation)
         self.is_syncing
             .store(true, std::sync::atomic::Ordering::SeqCst);
+
+        // Emit one SyncProgressUpdated snapshot immediately so any frontend
+        // page that subscribed while the node was stopped gets a fresh
+        // running-state snapshot without waiting up to 1s for the ticker.
+        // Without this, auto-start on app launch appears as "running but no
+        // counters" until the first tick fires, driving the user to manually
+        // stop+start the node to force a refresh.
+        if let Some(ref node_arc_inner) = node_arc {
+            let snapshot_node = Arc::clone(node_arc_inner);
+            let snapshot_app = self.app_handle.clone();
+            tokio::spawn(async move {
+                let status = build_node_status_snapshot(&snapshot_node).await;
+                if let Some(ref app) = snapshot_app {
+                    use tauri::Emitter;
+                    let event = crate::events::BlockchainEvent::SyncProgressUpdated {
+                        current_height: status.block_height,
+                        target_height: status.headers_height,
+                        is_syncing: status.is_syncing,
+                        connected_peers: status.peer_count,
+                        tip_hash: status.tip_hash.clone(),
+                        headers_height: status.headers_height,
+                        last_block_time: status.last_block_time,
+                        peer_count_in: status.peer_count_in,
+                        peer_count_out: status.peer_count_out,
+                        mempool_size: status.mempool_size,
+                        ban_count: status.ban_count,
+                        generated_at: status.generated_at,
+                    };
+                    let _ = app.emit("blockchain-event", &event);
+                }
+            });
+        }
 
         eprintln!("✅ Blockchain sync started (Bitcoin-style P2P active)");
         Ok(())
