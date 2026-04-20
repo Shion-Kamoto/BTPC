@@ -1040,7 +1040,11 @@ impl EmbeddedNode {
                                 }
                             }
 
-                            // If peer has more blocks than us, request their headers
+                            // If peer has more blocks than us, request their headers.
+                            // Bug #1 (2026-04-20): Use a proper Bitcoin-style
+                            // exponentially-spaced locator instead of a single
+                            // tip hash, so the serving peer can find a common
+                            // ancestor even when our chain has diverged.
                             let our_height =
                                 current_height_atomic.load(std::sync::atomic::Ordering::SeqCst);
                             if (height as u64) > our_height {
@@ -1048,23 +1052,15 @@ impl EmbeddedNode {
                                     "📡 Peer {} has height {} (we have {}), requesting blocks via GetHeaders",
                                     addr, height, our_height
                                 );
-                                // Build block locator (simplified: just our tip hash)
-                                if let Ok(Some(tip_hash_bytes)) =
-                                    database_clone.get_block_hash_at_height(our_height as u32)
-                                {
+                                let locator =
+                                    build_block_locator(&database_clone, our_height as u32);
+                                if !locator.is_empty() {
                                     use btpc_core::network::protocol::{
                                         GetHeadersMessage, Message,
                                     };
-                                    let mut hash_array = [0u8; 64];
-                                    let copy_len = tip_hash_bytes.len().min(64);
-                                    hash_array[..copy_len]
-                                        .copy_from_slice(&tip_hash_bytes[..copy_len]);
-                                    let locator_hash =
-                                        btpc_core::crypto::Hash::from_bytes(hash_array);
-
                                     let get_headers = Message::GetHeaders(GetHeadersMessage {
                                         version: 1,
-                                        block_locator: vec![locator_hash],
+                                        block_locator: locator,
                                         hash_stop: btpc_core::crypto::Hash::zero(),
                                     });
                                     peer_manager_arc.send_to_peer(&addr, get_headers).await;
@@ -1228,13 +1224,16 @@ impl EmbeddedNode {
                         //   - reply to inbound GetHeaders with Message::Headers
                         //     built from UnifiedDatabaseBlockSource.
                         PeerEvent::HeadersReceived { from, headers } => {
-                            use btpc_core::network::protocol::{InvType, InventoryVector, Message};
+                            use btpc_core::network::protocol::{
+                                GetHeadersMessage, InvType, InventoryVector, Message,
+                            };
                             eprintln!(
                                 "📜 Processing {} header(s) from peer {}",
                                 headers.len(),
                                 from
                             );
                             const PER_PEER_GETDATA_CAP: usize = 16;
+                            const HEADERS_BATCH_MAX: usize = 2000;
                             let mut needed: Vec<InventoryVector> = Vec::new();
                             for header in &headers {
                                 let hash = header.hash();
@@ -1259,6 +1258,36 @@ impl EmbeddedNode {
                                 peer_manager_arc
                                     .send_to_peer(&from, Message::GetData(needed))
                                     .await;
+                            }
+                            // Bug #2 (2026-04-20): if the peer returned a full
+                            // batch, more headers almost certainly exist — chain
+                            // the next GetHeaders immediately so sync keeps
+                            // walking forward without waiting for a future
+                            // PeerConnected tick. The locator leads with the
+                            // last received header hash (unstored but known to
+                            // the remote) and falls back to our stored tip
+                            // locator so the peer can still fork-point match.
+                            if headers.len() >= HEADERS_BATCH_MAX {
+                                if let Some(last_header) = headers.last() {
+                                    let our_height = current_height_atomic
+                                        .load(std::sync::atomic::Ordering::SeqCst);
+                                    let mut locator: Vec<Hash> = Vec::with_capacity(16);
+                                    locator.push(last_header.hash());
+                                    locator.extend(build_block_locator(
+                                        &database_clone,
+                                        our_height as u32,
+                                    ));
+                                    let get_headers = Message::GetHeaders(GetHeadersMessage {
+                                        version: 1,
+                                        block_locator: locator,
+                                        hash_stop: Hash::zero(),
+                                    });
+                                    eprintln!(
+                                        "🔁 Chaining next GetHeaders to peer {} (batch full)",
+                                        from
+                                    );
+                                    peer_manager_arc.send_to_peer(&from, get_headers).await;
+                                }
                             }
                         }
                         PeerEvent::GetHeadersRequested {
@@ -3029,6 +3058,34 @@ impl EmbeddedNode {
         arr.copy_from_slice(&bytes);
         DifficultyTarget::from_hash(&Hash::from_bytes(arr)).bits
     }
+}
+
+/// Build a Bitcoin-style block locator from our tip down to genesis.
+///
+/// Returns hashes newest → oldest: first 10 consecutive heights from the tip,
+/// then exponentially larger steps, always terminating with the genesis hash.
+/// An empty return value means we have no chain yet (not even genesis).
+fn build_block_locator(database: &UnifiedDatabase, tip_height: u32) -> Vec<Hash> {
+    let mut locator: Vec<Hash> = Vec::new();
+    let mut height = tip_height;
+    let mut step: u32 = 1;
+    loop {
+        if let Ok(Some(hash_bytes)) = database.get_block_hash_at_height(height) {
+            if hash_bytes.len() == 64 {
+                let mut arr = [0u8; 64];
+                arr.copy_from_slice(&hash_bytes);
+                locator.push(Hash::from_bytes(arr));
+            }
+        }
+        if height == 0 {
+            break;
+        }
+        if locator.len() > 10 {
+            step = step.saturating_mul(2);
+        }
+        height = height.saturating_sub(step);
+    }
+    locator
 }
 
 /// Build an atomic `NodeStatus` snapshot from the embedded node's current state.
