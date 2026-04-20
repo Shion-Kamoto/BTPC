@@ -486,6 +486,13 @@ impl Node {
                             locator.len()
                         );
                     }
+                    PeerEvent::GetDataRequested { from, inv } => {
+                        println!(
+                            "📥 Peer {} requested {} object(s) — headless node has no BlockSource, ignoring",
+                            from,
+                            inv.len()
+                        );
+                    }
                 }
             }
         });

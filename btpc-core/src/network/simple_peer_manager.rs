@@ -142,6 +142,16 @@ pub enum PeerEvent {
         locator: Vec<Hash>,
         hash_stop: Hash,
     },
+    /// Peer asked us to send full objects (blocks or transactions).
+    ///
+    /// Serviced by looking each inventory item up in our local `BlockSource`
+    /// and replying with `Message::Block` for hits (or `Message::NotFound`
+    /// for misses). Without this variant a catching-up peer receives headers
+    /// but never the actual blocks, so its height stays at zero.
+    GetDataRequested {
+        from: SocketAddr,
+        inv: Vec<InventoryVector>,
+    },
 }
 
 /// Reason for peer disconnection
@@ -1218,6 +1228,17 @@ impl SimplePeerManager {
                     from,
                     locator: gh.block_locator.clone(),
                     hash_stop: gh.hash_stop,
+                });
+            }
+            Message::GetData(inv) => {
+                println!(
+                    "📥 GetData from {} — {} item(s) requested",
+                    from,
+                    inv.len()
+                );
+                let _ = event_tx.try_send(PeerEvent::GetDataRequested {
+                    from,
+                    inv: inv.clone(),
                 });
             }
             _ => {}

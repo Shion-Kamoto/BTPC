@@ -1316,6 +1316,38 @@ impl EmbeddedNode {
                                     .await;
                             }
                         }
+                        PeerEvent::GetDataRequested { from, inv } => {
+                            use btpc_core::network::block_source::BlockSource;
+                            use btpc_core::network::protocol::{InvType, Message};
+                            use crate::node_block_source::UnifiedDatabaseBlockSource;
+                            let db_arc = Arc::new(database_clone.clone());
+                            let source = UnifiedDatabaseBlockSource::new(db_arc);
+                            let mut not_found: Vec<_> = Vec::new();
+                            let mut served: usize = 0;
+                            for item in inv.into_iter() {
+                                if item.inv_type == InvType::Block {
+                                    if let Some(block) = source.get_block_by_hash(&item.hash) {
+                                        peer_manager_arc
+                                            .send_to_peer(&from, Message::Block(block))
+                                            .await;
+                                        served += 1;
+                                        continue;
+                                    }
+                                }
+                                not_found.push(item);
+                            }
+                            eprintln!(
+                                "📦 Served {} block(s) to peer {} ({} not found)",
+                                served,
+                                from,
+                                not_found.len()
+                            );
+                            if !not_found.is_empty() {
+                                peer_manager_arc
+                                    .send_to_peer(&from, Message::NotFound(not_found))
+                                    .await;
+                            }
+                        }
                     }
                 }
             });
