@@ -22,12 +22,69 @@
 //! The current per-IP limits (Issue #4) already provide basic eclipse attack
 //! protection by limiting connections from any single IP or subnet.
 
-use std::{collections::HashMap, net::SocketAddr, sync::Arc};
+use std::{
+    collections::HashMap,
+    net::SocketAddr,
+    sync::{Arc, Mutex, OnceLock},
+    time::{Duration, Instant},
+};
 
 use tokio::{
     net::{TcpListener, TcpStream},
     sync::{mpsc, RwLock},
 };
+
+// ── Bug #3 (2026-04-20) — addr-relay dedup ─────────────────────────────
+//
+// The Addr-relay logic in `handle_peer_message` forwards every small
+// (≤10 entry) `addr` message to two neighbours, which creates an
+// exponential gossip storm: the same address bounces back and forth
+// between peers until a rate limiter trips and the connection is torn
+// down. The storm is exactly what produced the "Rate limit exceeded"
+// disconnect on Machine A in the post-PR #8 log.
+//
+// This table remembers each `SocketAddr` we've already relayed and
+// suppresses a second relay within `ADDR_RELAY_DEDUP_TTL`. Entries are
+// evicted lazily; when the table exceeds `ADDR_RELAY_DEDUP_CAP`, the
+// oldest half is dropped.
+const ADDR_RELAY_DEDUP_TTL: Duration = Duration::from_secs(60);
+const ADDR_RELAY_DEDUP_CAP: usize = 1000;
+
+fn addr_relay_dedup() -> &'static Mutex<HashMap<SocketAddr, Instant>> {
+    static INSTANCE: OnceLock<Mutex<HashMap<SocketAddr, Instant>>> = OnceLock::new();
+    INSTANCE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Filter `candidates` down to addresses we have not relayed within
+/// `ADDR_RELAY_DEDUP_TTL`; each survivor is marked as relayed at `now`.
+fn dedup_addrs_for_relay(candidates: &[NetworkAddress]) -> Vec<NetworkAddress> {
+    let mut seen = match addr_relay_dedup().lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    let now = Instant::now();
+    // Lazy eviction: drop entries older than TTL.
+    seen.retain(|_, t| now.duration_since(*t) < ADDR_RELAY_DEDUP_TTL);
+    // Hard cap: drop oldest half if we've blown past the limit.
+    if seen.len() > ADDR_RELAY_DEDUP_CAP {
+        let mut by_age: Vec<(SocketAddr, Instant)> =
+            seen.iter().map(|(k, v)| (*k, *v)).collect();
+        by_age.sort_by_key(|(_, t)| *t);
+        let drop_n = seen.len() - ADDR_RELAY_DEDUP_CAP / 2;
+        for (k, _) in by_age.into_iter().take(drop_n) {
+            seen.remove(&k);
+        }
+    }
+    let mut out = Vec::with_capacity(candidates.len());
+    for a in candidates {
+        let sa = a.socket_addr();
+        if !seen.contains_key(&sa) {
+            seen.insert(sa, now);
+            out.push(a.clone());
+        }
+    }
+    out
+}
 
 use crate::{
     blockchain::{Block, BlockHeader},
@@ -1077,18 +1134,27 @@ impl SimplePeerManager {
 
                 // T024: Relay to 2 random peers if ≤10 entries (gossip protocol).
                 // Bulk dumps (>10) are NOT relayed — they are responses to getaddr.
+                //
+                // Bug #3 (2026-04-20): run `fresh` through a per-address
+                // dedup table so we don't re-forward the same SocketAddr
+                // we just relayed a few seconds ago. Without this, any
+                // small addr message bounces between peers in an
+                // exponential storm and trips the 100/sec rate limiter.
                 if count <= 10 && !fresh.is_empty() {
-                    let relay_msg = Message::Addr(fresh);
-                    let peers = all_peers.read().await;
-                    let mut candidates: Vec<&SocketAddr> =
-                        peers.keys().filter(|a| **a != from).collect();
-                    // Deterministic shuffle approximation: take first 2 after sort
-                    // (real randomness would use rand::seq::SliceRandom, but this
-                    // avoids adding a new rand dep for relay peer selection).
-                    candidates.sort();
-                    for relay_addr in candidates.into_iter().take(2) {
-                        if let Some(handle) = peers.get(relay_addr) {
-                            let _ = handle.tx.try_send(relay_msg.clone());
+                    let relay_list = dedup_addrs_for_relay(&fresh);
+                    if !relay_list.is_empty() {
+                        let relay_msg = Message::Addr(relay_list);
+                        let peers = all_peers.read().await;
+                        let mut candidates: Vec<&SocketAddr> =
+                            peers.keys().filter(|a| **a != from).collect();
+                        // Deterministic shuffle approximation: take first 2 after sort
+                        // (real randomness would use rand::seq::SliceRandom, but this
+                        // avoids adding a new rand dep for relay peer selection).
+                        candidates.sort();
+                        for relay_addr in candidates.into_iter().take(2) {
+                            if let Some(handle) = peers.get(relay_addr) {
+                                let _ = handle.tx.try_send(relay_msg.clone());
+                            }
                         }
                     }
                 }
