@@ -112,9 +112,17 @@ pub const MAX_TX_MESSAGE_SIZE: usize = 100 * 1024;
 /// (Bitcoin limit: 50,000 items per inv message)
 pub const MAX_INV_MESSAGE_SIZE: usize = 50_000 * 36;
 
-/// Maximum headers message size: 2K headers * 81 bytes each
-/// (Bitcoin sends max 2,000 headers per message)
-pub const MAX_HEADERS_MESSAGE_SIZE: usize = 2_000 * 81;
+/// Maximum headers message size: 2K headers * 512 bytes each (~1 MB).
+///
+/// Bitcoin Core caps this at 2,000 * 81 bytes because each block header is a
+/// fixed 80 bytes. BTPC block headers embed post-quantum Dilithium signatures
+/// and serialize to ~361 bytes each (observed: 723,392 bytes for a 2,000-entry
+/// batch), so the Bitcoin-sized cap causes every initial-block-download
+/// response to be rejected as "too large" and the connection dropped. We
+/// round up to 512 B/header for headroom; this keeps the per-message ceiling
+/// well below Bitcoin's 4 MiB `MAX_PROTOCOL_MESSAGE_LENGTH` and avoids having
+/// to halve the batch size (which would double IBD round-trips).
+pub const MAX_HEADERS_MESSAGE_SIZE: usize = 2_000 * 512;
 
 /// Maximum address message size: 1K addresses * 30 bytes each
 /// (Bitcoin limit: 1,000 addresses per addr message)
@@ -910,7 +918,7 @@ mod tests {
         assert_eq!(MAX_BLOCK_MESSAGE_SIZE, 2 * 1024 * 1024); // 2MB
         assert_eq!(MAX_TX_MESSAGE_SIZE, 100 * 1024); // 100KB
         assert_eq!(MAX_INV_MESSAGE_SIZE, 50_000 * 36); // 1.8MB
-        assert_eq!(MAX_HEADERS_MESSAGE_SIZE, 2_000 * 81); // 162KB
+        assert_eq!(MAX_HEADERS_MESSAGE_SIZE, 2_000 * 512); // ~1MB, accommodates Dilithium-signed headers
         assert_eq!(MAX_ADDR_MESSAGE_SIZE, 1_000 * 30); // 30KB
         assert_eq!(MAX_VERSION_MESSAGE_SIZE, 256); // 256 bytes
         assert_eq!(MAX_GENERIC_MESSAGE_SIZE, 1024 * 1024); // 1MB
