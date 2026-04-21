@@ -1650,22 +1650,44 @@ impl EmbeddedNode {
             block.transactions.len()
         );
 
-        // FIX 2026-02-21 (H6): Enforce block timestamp monotonicity
-        // New block's timestamp must be strictly greater than previous block's timestamp.
-        // Prevents timestamp manipulation attacks (time-warp difficulty manipulation).
+        // FIX 2026-04-21: MTP-11 (median-time-past) rule replaces strict > prev check.
+        // Bitcoin consensus: new ts must be strictly greater than the median timestamp
+        // of the last min(11, current_height) blocks. Allows legitimate same-second
+        // blocks while still preventing time-warp difficulty manipulation.
         if current_height > 0 {
-            if let Ok(Some(prev_block)) = self.database.get_block(current_height as u32) {
-                if block.header.timestamp <= prev_block.header.timestamp {
-                    eprintln!(
-                        "[SUBMIT_BLOCK] ❌ REJECTED: Timestamp {} not after previous block timestamp {}",
-                        block.header.timestamp, prev_block.header.timestamp
-                    );
-                    return Err(anyhow::anyhow!(
-                        "Block timestamp {} must be strictly after previous block timestamp {}",
-                        block.header.timestamp,
-                        prev_block.header.timestamp
-                    ));
+            let window = std::cmp::min(11u32, current_height as u32);
+            let start = (current_height as u32).saturating_sub(window - 1);
+            let mut timestamps: Vec<u64> = Vec::with_capacity(window as usize);
+            for h in start..=(current_height as u32) {
+                if let Ok(Some(b)) = self.database.get_block(h) {
+                    timestamps.push(b.header.timestamp);
                 }
+            }
+            if timestamps.is_empty() {
+                eprintln!(
+                    "[SUBMIT_BLOCK] ❌ REJECTED: Unable to read any of the last {} blocks for MTP check",
+                    window
+                );
+                return Err(anyhow::anyhow!(
+                    "Unable to read any of the last {} blocks for MTP check",
+                    window
+                ));
+            }
+            timestamps.sort_unstable();
+            let mtp = timestamps[timestamps.len() / 2];
+            if block.header.timestamp <= mtp {
+                eprintln!(
+                    "[SUBMIT_BLOCK] ❌ REJECTED: Timestamp {} not after MTP-{} {}",
+                    block.header.timestamp,
+                    timestamps.len(),
+                    mtp
+                );
+                return Err(anyhow::anyhow!(
+                    "Block timestamp {} must be strictly after median-time-past {} ({}-block window)",
+                    block.header.timestamp,
+                    mtp,
+                    timestamps.len()
+                ));
             }
             // Also reject blocks with timestamps too far in the future (>2 hours)
             let now = std::time::SystemTime::now()
