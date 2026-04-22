@@ -238,8 +238,13 @@ impl AppState {
                 ),
             ),
 
-            // Node active flag - background polling loops check this
-            node_active: Arc::new(std::sync::atomic::AtomicBool::new(true)),
+            // Node active flag - background polling loops check this.
+            // Defaults to false: the node is OFF until either the backend
+            // auto-start path (tauri_app.rs, gated by auto_connect_node) or
+            // the user's Start Node click sets it to true. The status poller
+            // reads the *real* sync state from embedded_node.is_sync_running(),
+            // so this flag is purely a "is polling allowed" gate now.
+            node_active: Arc::new(std::sync::atomic::AtomicBool::new(false)),
 
             // Internet connectivity monitor flag (set to true when mining starts, false when stopped)
             network_monitor_active: Arc::new(std::sync::atomic::AtomicBool::new(false)),

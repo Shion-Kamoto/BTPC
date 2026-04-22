@@ -219,13 +219,16 @@ pub async fn stop_node(
 
 #[tauri::command]
 pub async fn get_node_status(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    let running = state.node_active.load(Ordering::SeqCst);
+    // Truth about "is the node running" lives on the embedded node itself.
+    // node_active is only a background-polling gate and can be true while the
+    // sync stack is not yet started (e.g. right after login).
+    let node = state.embedded_node.read().await;
+    let running = node.is_sync_running();
 
     // Get additional info from embedded node if running
     // FIX 2026-04-12: Use get_peer_count() directly for accurate P2P peer count
     // instead of get_sync_progress().connected_peers which may not update.
     let (block_height, peer_count) = if running {
-        let node = state.embedded_node.read().await;
         let height = node
             .get_blockchain_state()
             .await
@@ -236,6 +239,7 @@ pub async fn get_node_status(state: State<'_, AppState>) -> Result<serde_json::V
     } else {
         (0, 0)
     };
+    drop(node);
 
     Ok(serde_json::json!({
         "is_running": running,

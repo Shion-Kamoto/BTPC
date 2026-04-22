@@ -856,95 +856,52 @@ async function checkAutoStartSettings() {
         console.log('[Auto-Start] autoConnect value:', nodeConfig.autoConnect, '(type:', typeof nodeConfig.autoConnect + ')');
         console.log('[Auto-Start] autoStart value:', miningConfig.autoStart, '(type:', typeof miningConfig.autoStart + ')');
 
-        // Check if node should auto-start
-        if (nodeConfig.autoConnect) {
-            // Check if node is already running
-            try {
-                const nodeStatus = await window.invoke('get_node_status');
-                if (!nodeStatus.running) {
-                    console.log('Auto-starting node on application launch...');
-                    // FIX 2025-12-27: Clear old uptime and set fresh start time
-                    // This fixes the "3+ days uptime" bug when auto-starting
-                    const NODE_START_TIME_KEY = 'btpc_node_start_time';
-                    localStorage.setItem(NODE_START_TIME_KEY, Date.now().toString());
-
-                    await window.invoke('start_node');
-                    if (window.Toast) {
-                        Toast.info('Node auto-started (Settings > Application)');
-                    }
-
-                    // If mining should also auto-start, wait for node then start mining
-                    if (miningConfig.autoStart) {
-                        // Wait a moment for node to initialize
-                        setTimeout(async () => {
-                            try {
-                                const autoMiningConfig = await getAutoStartMiningConfig();
-                                if (autoMiningConfig) {
-                                    console.log('Auto-starting mining on node start...', autoMiningConfig);
-                                    await window.invoke('start_mining', { config: autoMiningConfig });
-                                    if (window.Toast) {
-                                        Toast.info('Mining auto-started (Settings > Node)');
-                                    }
-                                } else {
-                                    console.warn('Auto-start mining skipped: No wallet address available');
-                                    if (window.Toast) {
-                                        Toast.warning('Mining not started: Create a wallet first');
-                                    }
-                                }
-                            } catch (miningErr) {
-                                console.error('Failed to auto-start mining:', miningErr);
-                            }
-                        }, 2000);
-                    }
-                } else {
-                    console.log('Node already running, skipping auto-start');
-                    // But still check if mining should auto-start
-                    if (miningConfig.autoStart) {
-                        try {
-                            const miningStatus = await window.invoke('get_mining_status');
-                            if (!miningStatus.is_mining) {
-                                const autoMiningConfig = await getAutoStartMiningConfig();
-                                if (autoMiningConfig) {
-                                    console.log('Auto-starting mining (node already running)...', autoMiningConfig);
-                                    await window.invoke('start_mining', { config: autoMiningConfig });
-                                    if (window.Toast) {
-                                        Toast.info('Mining auto-started (Settings > Node)');
-                                    }
-                                } else {
-                                    console.warn('Auto-start mining skipped: No wallet address available');
-                                }
-                            }
-                        } catch (e) {
-                            console.error('Failed to check/start mining:', e);
+        // Node lifecycle is backend-authoritative: the Rust layer reads
+        // the `auto_connect_node` setting and starts the node on launch if
+        // enabled. Frontend no longer invokes `start_node` here — that was
+        // a second source of truth that diverged from the backend setting.
+        // Frontend only handles mining auto-start, which must wait for the
+        // node to be running (regardless of how it got there).
+        if (miningConfig.autoStart) {
+            // Poll for node-running because backend auto-start can take
+            // longer than a fixed delay (DNS + peer bootstrap on cold start).
+            const POLL_MS = 1000;
+            const MAX_WAIT_MS = 30000;
+            const start = Date.now();
+            const pollForNode = async () => {
+                try {
+                    const nodeStatus = await window.invoke('get_node_status');
+                    if (nodeStatus.running) {
+                        const miningStatus = await window.invoke('get_mining_status');
+                        if (miningStatus.is_mining) {
+                            console.log('[Auto-Start] Mining already running, skipping');
+                            return;
                         }
-                    }
-                }
-            } catch (e) {
-                console.error('Failed to check node status for auto-start:', e);
-            }
-        } else if (miningConfig.autoStart) {
-            // Mining auto-start is enabled but node auto-start is not
-            // Check if node is running and start mining if so
-            try {
-                const nodeStatus = await window.invoke('get_node_status');
-                if (nodeStatus.running) {
-                    const miningStatus = await window.invoke('get_mining_status');
-                    if (!miningStatus.is_mining) {
                         const autoMiningConfig = await getAutoStartMiningConfig();
-                        if (autoMiningConfig) {
-                            console.log('Auto-starting mining (node already running)...', autoMiningConfig);
-                            await window.invoke('start_mining', { config: autoMiningConfig });
+                        if (!autoMiningConfig) {
+                            console.warn('[Auto-Start] Mining skipped: no wallet address available');
                             if (window.Toast) {
-                                Toast.info('Mining auto-started (Settings > Node)');
+                                Toast.warning('Mining not started: Create a wallet first');
                             }
-                        } else {
-                            console.warn('Auto-start mining skipped: No wallet address available');
+                            return;
                         }
+                        console.log('[Auto-Start] Node is up, starting mining...', autoMiningConfig);
+                        await window.invoke('start_mining', { config: autoMiningConfig });
+                        if (window.Toast) {
+                            Toast.info('Mining auto-started (Settings > Node)');
+                        }
+                        return;
                     }
+                    if (Date.now() - start >= MAX_WAIT_MS) {
+                        console.warn('[Auto-Start] Timed out waiting for node to start; mining not started');
+                        return;
+                    }
+                    setTimeout(pollForNode, POLL_MS);
+                } catch (e) {
+                    console.error('[Auto-Start] Error while waiting for node:', e);
                 }
-            } catch (e) {
-                console.error('Failed to auto-start mining:', e);
-            }
+            };
+            setTimeout(pollForNode, POLL_MS);
         }
     } catch (error) {
         console.error('Error checking auto-start settings:', error);
