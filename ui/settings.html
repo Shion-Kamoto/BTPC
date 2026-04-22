@@ -462,7 +462,7 @@
                     </div>
                     <div class="form-group">
                         <label class="form-label custom-checkbox">
-                            <input type="checkbox" id="auto-start-node" checked>
+                            <input type="checkbox" id="auto-start-node">
                             <span>Auto-start node on application launch</span>
                         </label>
                     </div>
@@ -948,7 +948,7 @@
                 document.getElementById('max-peers').value = '8';
                 document.getElementById('enable-mining').checked = false;
                 document.getElementById('log-level').value = 'info';
-                document.getElementById('auto-start-node').checked = true;
+                document.getElementById('auto-start-node').checked = false;
 
                 showMessage('Settings reset to defaults', 'success');
             }

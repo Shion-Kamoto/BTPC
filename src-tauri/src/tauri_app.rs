@@ -132,8 +132,8 @@ pub fn run() {
                 let should_auto_connect = settings
                     .load_setting("auto_connect_node")
                     .unwrap_or(None)
-                    .map(|v| v != "false")
-                    .unwrap_or(true); // Default: always connect on fresh install
+                    .map(|v| v.trim() == "true")
+                    .unwrap_or(false); // Default: node OFF on fresh install; user opts in via Settings > Application
 
                 if should_auto_connect {
                     let embedded_node = app_state.embedded_node.clone();
@@ -341,17 +341,20 @@ pub fn run() {
                             }
                         });
 
+                        // Read the real sync state from the embedded node rather
+                        // than hardcoding running=true. node_active is just the
+                        // polling gate — it can be true (e.g. after login) even
+                        // when the sync stack hasn't been started.
+                        let sync_running = node.is_sync_running();
                         let _ = app_state.node_status.update(
                             |status| {
-                                // Reached only when node_active is true (guard above),
-                                // so running=true here reflects real sync-stack state.
-                                status.running = true;
+                                status.running = sync_running;
                                 status.pid = None;
                                 status.block_height = blockchain_state.current_height;
                                 status.peer_count = sync_progress.connected_peers;
                                 status.sync_progress = sync_progress.sync_percentage / 100.0;
                                 status.network = node.get_network();
-                                status.difficulty = difficulty; // THIS is the fix!
+                                status.difficulty = difficulty;
                             },
                             &app_handle_for_node,
                         );
