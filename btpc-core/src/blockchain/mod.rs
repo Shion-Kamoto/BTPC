@@ -156,10 +156,6 @@ pub struct NetworkParams {
     pub network: Network,
     /// Genesis block hash
     pub genesis_hash: Hash,
-    /// Default port for this network
-    pub default_port: u16,
-    /// Network magic bytes
-    pub magic_bytes: [u8; 4],
     /// Minimum difficulty target
     pub min_difficulty_target: u32,
     /// Maximum difficulty target
@@ -173,8 +169,6 @@ impl NetworkParams {
         NetworkParams {
             network: Network::Mainnet,
             genesis_hash: Hash::zero(), // Will be set after genesis creation
-            default_port: 8333,
-            magic_bytes: [0x42, 0x54, 0x00, 0x01], // "BT" + version
             min_difficulty_target: 0x3c7fffff,     // SHA-512 ~32 bits work
             max_difficulty_target: 0x407fffff,     // SHA-512 instant mining
         }
@@ -186,8 +180,6 @@ impl NetworkParams {
         NetworkParams {
             network: Network::Testnet,
             genesis_hash: Hash::zero(), // Will be set after genesis creation
-            default_port: 18333,
-            magic_bytes: [0x42, 0x54, 0x01, 0x01], // "BT" + testnet version
             min_difficulty_target: 0x3c7fffff,     // SHA-512 ~32 bits work
             max_difficulty_target: 0x407fffff,     // SHA-512 instant mining
         }
@@ -199,8 +191,6 @@ impl NetworkParams {
         NetworkParams {
             network: Network::Regtest,
             genesis_hash: Hash::zero(), // Will be set after genesis creation
-            default_port: 18444,
-            magic_bytes: [0x42, 0x54, 0x02, 0x01], // "BT" + regtest version
             min_difficulty_target: 0x407fffff,     // Regtest uses easiest difficulty
             max_difficulty_target: 0x407fffff,     // Same as min for regtest
         }
@@ -286,13 +276,10 @@ mod tests {
         let testnet = NetworkParams::testnet();
         let regtest = NetworkParams::regtest();
 
-        // Different networks should have different magic bytes
-        assert_ne!(mainnet.magic_bytes, testnet.magic_bytes);
-        assert_ne!(testnet.magic_bytes, regtest.magic_bytes);
-
-        // Different ports
-        assert_ne!(mainnet.default_port, testnet.default_port);
-        assert_ne!(testnet.default_port, regtest.default_port);
+        // Each network carries its own Network marker
+        assert_eq!(mainnet.network, Network::Mainnet);
+        assert_eq!(testnet.network, Network::Testnet);
+        assert_eq!(regtest.network, Network::Regtest);
 
         // Regtest should have easiest difficulty
         assert!(regtest.min_difficulty_target > mainnet.min_difficulty_target);
