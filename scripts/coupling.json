@@ -1,0 +1,84 @@
+{
+  "version": 1,
+  "generated_for": "BTPC (live workspace: btpc-core + src-tauri + bins)",
+  "note": "Machine-readable coupling index. Each concern is one logical thing mirrored across N files that must stay in sync. checks[] are mechanically greppable; semantic_coupling[] are curated sync obligations that cannot be mechanically checked. The checker (coupling_check.py) FAILS when a mirror diverges from source_of_truth — first run is EXPECTED to fail on known-unfixed drift (that is the point: surface staleness, do not hide it).",
+  "concerns": [
+    {
+      "id": "magic-bytes",
+      "title": "P2P wire magic bytes must have a single source of truth",
+      "severity": "high",
+      "source_of_truth": "btpc-core/src/network/protocol.rs",
+      "reason": "Four divergent magic-byte sets coexist. Only protocol.rs is read by the live wire path (NetworkConfig::magic_bytes). The other three sets disagree with it and with each other; any code path or second implementation reading the wrong set silently fails handshakes.",
+      "checks": [
+        {"pattern": "0xB7,\\s*0xC0,\\s*0x1A,\\s*0x55", "expect": "present", "files": ["btpc-core/src/network/protocol.rs"], "note": "wire mainnet magic"},
+        {"pattern": "0xF1,\\s*0xC0,\\s*0xBA,\\s*0x55", "expect": "present", "files": ["btpc-core/src/network/protocol.rs"], "note": "wire testnet magic"},
+        {"pattern": "0xDA,\\s*0xB5,\\s*0xBF,\\s*0xFA", "expect": "present", "files": ["btpc-core/src/network/protocol.rs"], "note": "wire regtest magic"},
+        {"pattern": "0x42,\\s*0x54,\\s*0x50,\\s*0x43", "expect": "absent", "files": ["btpc-core/src/economics/constants.rs"], "note": "economics 'BTPC' magic duplicates wire magic"},
+        {"pattern": "0x74,\\s*0x42,\\s*0x54,\\s*0x50", "expect": "absent", "files": ["btpc-core/src/economics/constants.rs"], "note": "economics 'tBTP' magic duplicates wire magic"},
+        {"pattern": "NETWORK_MAGIC_MAINNET", "expect": "absent", "files": ["btpc-core/src/lib.rs"], "note": "lib.rs Network::magic_bytes() is dead and diverges from wire"},
+        {"pattern": "0x42,\\s*0x54,\\s*0x01,\\s*0x01", "expect": "absent", "files": ["btpc-core/src/blockchain/mod.rs"], "note": "NetworkParams testnet magic diverges from wire"},
+        {"pattern": "0x42,\\s*0x54,\\s*0x02,\\s*0x01", "expect": "absent", "files": ["btpc-core/src/blockchain/mod.rs"], "note": "NetworkParams regtest magic diverges from wire"}
+      ],
+      "semantic_coupling": [
+        "btpc-core/src/lib.rs NETWORK_MAGIC_* constants and Network::magic_bytes() are written-but-never-read (dead config) — delete or delegate to protocol::BTPC_*_MAGIC",
+        "btpc-core/src/blockchain/mod.rs NetworkParams.magic_bytes field is dead config — delete or delegate to protocol",
+        "btpc-core/src/economics/constants.rs NetworkConstants.magic is consumed only by its own tests — dead"
+      ]
+    },
+    {
+      "id": "network-ports",
+      "title": "P2P default ports must have a single source of truth",
+      "severity": "high",
+      "source_of_truth": "btpc-core/src/economics/constants.rs",
+      "reason": "NetworkParams (blockchain/mod.rs) still carries Bitcoin's ports (8333/18333/18444) while the live network listens on 18341/18351/18361. README example uses 8333 too.",
+      "checks": [
+        {"pattern": "MAINNET_PORT:\\s*u16\\s*=\\s*18341", "expect": "present", "files": ["btpc-core/src/economics/constants.rs"], "note": "canonical mainnet port"},
+        {"pattern": "TESTNET_PORT:\\s*u16\\s*=\\s*18351", "expect": "present", "files": ["btpc-core/src/economics/constants.rs"], "note": "canonical testnet port"},
+        {"pattern": "REGTEST_PORT:\\s*u16\\s*=\\s*18361", "expect": "present", "files": ["btpc-core/src/economics/constants.rs"], "note": "canonical regtest port"},
+        {"pattern": "default_port:\\s*8333", "expect": "absent", "files": ["btpc-core/src/blockchain/mod.rs"], "note": "NetworkParams mainnet still carries Bitcoin's 8333"},
+        {"pattern": "default_port:\\s*18333", "expect": "absent", "files": ["btpc-core/src/blockchain/mod.rs"], "note": "NetworkParams testnet carries 18333"},
+        {"pattern": "default_port:\\s*18444", "expect": "absent", "files": ["btpc-core/src/blockchain/mod.rs"], "note": "NetworkParams regtest carries 18444"}
+      ],
+      "semantic_coupling": [
+        "btpc-core/src/network/mod.rs NetworkConfig::mainnet/testnet/regtest hardcode 18341/18351/18361 — should read economics::constants::*_PORT instead of duplicating the literals",
+        "README.md listen_addr example uses 8333 (stale)"
+      ]
+    },
+    {
+      "id": "block-reward",
+      "title": "Block reward formula must have a single implementation",
+      "severity": "high",
+      "source_of_truth": "btpc-core/src/economics/constants.rs",
+      "reason": "The linear-decay reward formula is implemented 4x; editing one silently leaves the rest stale (consensus-critical).",
+      "checks": [],
+      "semantic_coupling": [
+        "calculate_block_reward defined 4x: btpc-core/src/blockchain/mod.rs:220, btpc-core/src/economics/rewards.rs:24, btpc-core/src/consensus/rewards.rs:16, src-tauri/src/embedded_node.rs:3309",
+        "Only consensus/rewards.rs goes through ConsensusParams; the others hardcode economics::constants. Delegate all call sites to one impl."
+      ]
+    },
+    {
+      "id": "difficulty-adjustment",
+      "title": "Difficulty adjustment must have a single implementation",
+      "severity": "high",
+      "source_of_truth": "btpc-core/src/consensus/difficulty.rs",
+      "reason": "The desktop embedded node re-derives difficulty (LWMA, fast-adjustment, EDA blending) alongside the core difficulty module.",
+      "checks": [],
+      "semantic_coupling": [
+        "src-tauri/src/embedded_node.rs calculate_next_difficulty / calculate_lwma_difficulty / calculate_fast_adjustment / blend_difficulty duplicate btpc-core/src/consensus/difficulty.rs",
+        "EDA tier constants (900/1200/1800s) live in btpc-core/src/consensus/mod.rs constants and are consumed by the embedded node — must stay equal"
+      ]
+    },
+    {
+      "id": "sync-duality",
+      "title": "Two sync systems must not silently diverge",
+      "severity": "medium",
+      "source_of_truth": "btpc-core/src/network/integrated_sync.rs",
+      "reason": "Legacy SyncManager (network/sync.rs) is still live in bins/btpc_node; IntegratedSyncManager is the hardened path. Deleting or changing one without the other risks a second divergent sync.",
+      "checks": [],
+      "semantic_coupling": [
+        "btpc-core/src/network/sync.rs SyncManager is used only by bins/btpc_node/src/main.rs — legacy; migrate to IntegratedSyncManager or document why it must stay",
+        "specs/003-testnet-p2p-hardening/tasks.md T056/T118 note sync.rs:75-88 should delegate to IntegratedSyncManager"
+      ]
+    }
+  ]
+}
