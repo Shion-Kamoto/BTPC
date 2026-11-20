@@ -224,6 +224,19 @@ impl EmbeddedNode {
             Arc::clone(&block_height_for_pm),
         ));
 
+        // BTC-standard peers.dat equivalent: open a persistent, RocksDB-backed
+        // addrman so outbound selection and failure eviction survive restarts.
+        // Falls back to in-memory if the DB cannot be opened.
+        let addrman_path = data_dir.join("addrman");
+        match btpc_core::network::address_manager::AddressManager::open_at(&addrman_path) {
+            Ok(am) => peer_manager.install_address_manager(am).await,
+            Err(e) => eprintln!(
+                "⚠️  Could not open persistent addrman at {} (in-memory fallback): {}",
+                addrman_path.display(),
+                e
+            ),
+        }
+
         // Create node instance
         let node = EmbeddedNode {
             database,

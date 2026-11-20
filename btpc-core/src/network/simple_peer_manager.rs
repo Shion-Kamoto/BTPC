@@ -493,6 +493,14 @@ impl SimplePeerManager {
         &self.address_manager
     }
 
+    /// Replace the in-memory address manager with a persistent, RocksDB-backed
+    /// one (opened via `AddressManager::open_at`). Install once at startup,
+    /// before `start_connection_manager`, so outbound selection and failure
+    /// eviction survive restarts — the peers.dat equivalent for the addrman.
+    pub async fn install_address_manager(&self, am: AddressManager) {
+        *self.address_manager.write().await = am;
+    }
+
     /// Pick outbound peer candidates from the bucketed address manager,
     /// biased across distinct /16 network groups (FR-009).
     pub async fn pick_outbound_candidates(&self, count: usize) -> Vec<SocketAddr> {
@@ -631,6 +639,16 @@ impl SimplePeerManager {
 
         match handshake_result {
             Ok(peer_version) => {
+                // FR-007: self-connection detection. If the remote peer
+                // echoed our manager-lifetime nonce back to us, it is us —
+                // drop without banning and without recording the address
+                // in the discovery/address book.
+                if peer_version.nonce == node_nonce {
+                    let mut tracker = connection_tracker.write().await;
+                    tracker.remove_connection(&addr);
+                    return Ok(());
+                }
+
                 println!(
                     "✅ Handshake complete with {} (height: {})",
                     addr, peer_version.start_height
@@ -702,6 +720,7 @@ impl SimplePeerManager {
                 let event_tx_clone = event_tx.clone();
                 let tracker_clone = Arc::clone(&connection_tracker);
                 let discovery_clone = Arc::clone(&discovery);
+                let address_manager_clone = Arc::clone(&address_manager);
                 let ping_interval_dur = config.timeouts.ping_interval;
                 let ping_timeout_dur = config.timeouts.ping_timeout;
                 tokio::spawn(async move {
@@ -753,6 +772,7 @@ impl SimplePeerManager {
                                                     &event_tx_clone,
                                                     &peer_tx_for_handler,
                                                     &discovery_clone,
+                                                    &address_manager_clone,
                                                     &peers_for_relay,
                                                     &mut getaddr_replied,
                                                 )
@@ -836,26 +856,45 @@ impl SimplePeerManager {
             tracker.add_connection(&addr);
         }
 
+        // Ensure the address exists in the bucketed addrman before we dial,
+        // so success/failure tracking has an entry to update (FR-009).
+        self.address_manager
+            .write()
+            .await
+            .add_new(addr, ServiceFlags::NETWORK.0);
+
         let stream = TcpStream::connect(addr).await.map_err(|e| {
             // Unregister on connection failure
             let tracker = self.connection_tracker.clone();
             let disc = Arc::clone(&self.discovery);
+            let am = Arc::clone(&self.address_manager);
             tokio::spawn(async move {
                 tracker.write().await.remove_connection(&addr);
                 disc.write().await.record_failure(&addr);
+                am.write().await.record_failure(&addr);
             });
             NetworkError::Connection(format!("Failed to connect: {}", e))
         })?;
+
+        // The actual local IP we dialed out from — never the bind-all `::` or
+        // `0.0.0.0` — so peers learn a routable address for us (fixes the
+        // `[::]` self-advertisement leak).
+        let our_local_ip = stream
+            .local_addr()
+            .map(|a| a.ip())
+            .unwrap_or_else(|_| self.local_addr.ip());
 
         let codec = ProtocolCodec::new(self.magic_bytes);
         let mut connection = PeerConnection::new(stream, codec);
 
         // Create our version message (003-testnet-p2p-hardening: self-connection
         // detection uses the locally-generated nonce from `self.node_nonce`).
+        // BTC-standard addressing: addr_recv = the peer we dial, addr_from = our
+        // real IP on our real listening port.
         let our_version = VersionMessage::new(
             ServiceFlags::NETWORK,
-            NetworkAddress::default(),
-            NetworkAddress::default(),
+            NetworkAddress::from_socket_addr(&addr, ServiceFlags::NETWORK),
+            NetworkAddress::new(our_local_ip, self.local_addr.port(), ServiceFlags::NETWORK),
             self.config.user_agent.clone(),
             *self.block_height.read().await,
             true,
@@ -865,6 +904,15 @@ impl SimplePeerManager {
         // Perform handshake
         match connection.handshake(our_version).await {
             Ok(peer_version) => {
+                // FR-007: self-connection detection — a node dialing itself
+                // sees its own nonce on the outbound path too. Drop without
+                // banning and without touching the discovery/address book.
+                if peer_version.nonce == self.node_nonce {
+                    let mut tracker = self.connection_tracker.write().await;
+                    tracker.remove_connection(&addr);
+                    return Ok(());
+                }
+
                 println!(
                     "✅ Connected to {} (height: {})",
                     addr, peer_version.start_height
@@ -875,6 +923,12 @@ impl SimplePeerManager {
                     let mut disc = self.discovery.write().await;
                     disc.add_address(addr, ServiceFlags::NETWORK);
                     disc.record_success(&addr);
+                }
+
+                // Confirm/promote in the bucketed addrman (FR-009).
+                {
+                    let mut am = self.address_manager.write().await;
+                    am.record_success(&addr);
                 }
 
                 // Send peer connected event (with backpressure)
@@ -923,7 +977,7 @@ impl SimplePeerManager {
                 // 2. Announce our own listening address so the peer can store and
                 //    relay it — this is how new nodes propagate into the network.
                 let our_addr_msg = Message::Addr(vec![NetworkAddress::new(
-                    self.local_addr.ip(),
+                    our_local_ip,
                     self.local_addr.port(),
                     ServiceFlags::NETWORK,
                 )]);
@@ -936,6 +990,7 @@ impl SimplePeerManager {
                 let event_tx_clone = self.event_tx.clone();
                 let tracker_clone = Arc::clone(&self.connection_tracker);
                 let discovery_clone = Arc::clone(&self.discovery);
+                let address_manager_clone = Arc::clone(&self.address_manager);
                 let ping_interval_dur = self.config.timeouts.ping_interval;
                 let ping_timeout_dur = self.config.timeouts.ping_timeout;
                 tokio::spawn(async move {
@@ -987,6 +1042,7 @@ impl SimplePeerManager {
                                                     &event_tx_clone,
                                                     &peer_tx_for_handler,
                                                     &discovery_clone,
+                                                    &address_manager_clone,
                                                     &peers_for_relay,
                                                     &mut getaddr_replied,
                                                 )
@@ -1053,6 +1109,7 @@ impl SimplePeerManager {
 
                 // Update stats and unregister connection on handshake failure
                 self.discovery.write().await.record_failure(&addr);
+                self.address_manager.write().await.record_failure(&addr);
                 let mut tracker = self.connection_tracker.write().await;
                 tracker.remove_connection(&addr);
 
@@ -1075,6 +1132,7 @@ impl SimplePeerManager {
         event_tx: &mpsc::Sender<PeerEvent>,
         peer_tx: &mpsc::Sender<Message>,
         discovery: &Arc<RwLock<PeerDiscovery>>,
+        address_manager: &Arc<RwLock<AddressManager>>,
         all_peers: &Arc<RwLock<HashMap<SocketAddr, PeerHandle>>>,
         getaddr_replied: &mut bool,
     ) {
@@ -1140,6 +1198,14 @@ impl SimplePeerManager {
                 if !fresh.is_empty() {
                     // Insert into discovery address book
                     discovery.write().await.add_addresses(fresh.clone());
+
+                    // Also feed the bucketed addrman (FR-009) so outbound
+                    // selection sees gossiped peers — the addrman is the
+                    // authoritative outbound selector.
+                    let mut am = address_manager.write().await;
+                    for na in &fresh {
+                        am.add_new(na.socket_addr(), na.services);
+                    }
                 }
 
                 // T024: Relay to 2 random peers if ≤10 entries (gossip protocol).
@@ -1412,12 +1478,11 @@ impl SimplePeerManager {
                 let needed =
                     MIN_OUTBOUND_CONNECTIONS.saturating_sub(manager.outbound_count().await);
 
-                // Fetch a few extra candidates in case some fail
-                let candidates = manager
-                    .discovery
-                    .write()
-                    .await
-                    .get_peers(needed + 5, ServiceFlags::NETWORK);
+                // Fetch a few extra candidates in case some fail.
+                // Select from the bucketed addrman (FR-009) — tried-first,
+                // biased across /16 network groups — mirroring Bitcoin Core's
+                // ThreadOpenConnections / addrman.Select().
+                let candidates = manager.pick_outbound_candidates(needed + 5).await;
 
                 let already_connected: std::collections::HashSet<SocketAddr> =
                     manager.peers.read().await.keys().cloned().collect();
@@ -1754,6 +1819,7 @@ mod red_phase_tests {
         let (event_tx, mut event_rx) = mpsc::channel::<PeerEvent>(8);
         let (peer_tx, _peer_rx) = mpsc::channel::<Message>(8);
         let discovery = Arc::new(RwLock::new(PeerDiscovery::new(1000)));
+        let address_manager = Arc::new(RwLock::new(AddressManager::in_memory()));
         let all_peers: Arc<RwLock<RedHashMap<SocketAddr, PeerHandle>>> =
             Arc::new(RwLock::new(RedHashMap::new()));
         let mut getaddr_replied = false;
@@ -1768,6 +1834,7 @@ mod red_phase_tests {
             &event_tx,
             &peer_tx,
             &discovery,
+            &address_manager,
             &all_peers,
             &mut getaddr_replied,
         )
@@ -1795,6 +1862,7 @@ mod red_phase_tests {
         let (event_tx, mut event_rx) = mpsc::channel::<PeerEvent>(8);
         let (peer_tx, _peer_rx) = mpsc::channel::<Message>(8);
         let discovery = Arc::new(RwLock::new(PeerDiscovery::new(1000)));
+        let address_manager = Arc::new(RwLock::new(AddressManager::in_memory()));
         let all_peers: Arc<RwLock<RedHashMap<SocketAddr, PeerHandle>>> =
             Arc::new(RwLock::new(RedHashMap::new()));
         let mut getaddr_replied = false;
@@ -1815,6 +1883,7 @@ mod red_phase_tests {
             &event_tx,
             &peer_tx,
             &discovery,
+            &address_manager,
             &all_peers,
             &mut getaddr_replied,
         )
