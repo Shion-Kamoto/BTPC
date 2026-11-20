@@ -32,8 +32,8 @@ portpicker = "0.1"  # Ephemeral port selection for test harness
 
 # TLS Support for RPC (Issue #2)
 tokio-rustls = "0.26"
-rustls = "0.23"
-rustls-webpki = "0.103.10"
+rustls = "0.23.46"
+rustls-webpki = "0.103.16"
 rustls-pemfile = "2.0"
 
 # DoS Protection for RPC (Issue #3)

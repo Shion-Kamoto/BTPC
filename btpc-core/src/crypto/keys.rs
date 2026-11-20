@@ -843,4 +843,69 @@ mod tests {
             "Seed with at least one non-zero byte must be accepted"
         );
     }
+
+    // Security: Corrupting a single signature byte must break verification
+    #[test]
+    fn test_signature_tampering_rejected() {
+        let private_key = PrivateKey::generate_ml_dsa().unwrap();
+        let public_key = private_key.public_key();
+        let message = b"tamper detection test";
+
+        let signature = private_key.sign(message).unwrap();
+        assert!(public_key.verify(message, &signature));
+
+        // Flip one byte in the signature — verification must fail
+        let mut sig_bytes = signature.to_bytes();
+        sig_bytes[0] ^= 0x01;
+        let tampered = Signature::from_bytes(&sig_bytes).unwrap();
+        assert!(
+            !public_key.verify(message, &tampered),
+            "tampered signature must fail verification"
+        );
+    }
+
+    // Security: A signature must not verify under a different public key
+    #[test]
+    fn test_wrong_key_rejection() {
+        let key_a = PrivateKey::generate_ml_dsa().unwrap();
+        let pub_a = key_a.public_key();
+        let key_b = PrivateKey::generate_ml_dsa().unwrap();
+        let pub_b = key_b.public_key();
+        let message = b"wrong key rejection test";
+
+        let sig_a = key_a.sign(message).unwrap();
+        assert!(pub_a.verify(message, &sig_a));
+        assert!(
+            !pub_b.verify(message, &sig_a),
+            "signature from key A must not verify under key B"
+        );
+    }
+
+    // Security: A seed-reconstructed key must sign messages that verify against
+    // the original stored public key (deterministic keygen from seed).
+    #[test]
+    fn test_seed_reconstruction_signature_verifies() {
+        let seed = [42u8; 32];
+        let original = PrivateKey::from_seed(&seed).unwrap();
+        let stored_private = original.to_bytes();
+        let stored_public = original.public_key().to_bytes();
+
+        let reconstructed = PrivateKey::from_key_pair_bytes_with_seed(
+            &stored_private,
+            &stored_public,
+            seed,
+        )
+        .unwrap();
+
+        let message = b"seed reconstruction verification";
+        let signature = reconstructed
+            .sign(message)
+            .expect("seed-reconstructed key must be able to sign");
+
+        let public_key = PublicKey::from_bytes(&stored_public).unwrap();
+        assert!(
+            public_key.verify(message, &signature),
+            "signature from seed-reconstructed key must verify against stored public key"
+        );
+    }
 }

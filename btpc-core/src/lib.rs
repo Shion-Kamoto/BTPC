@@ -44,9 +44,6 @@ pub use crypto::{PrivateKey, PublicKey, Signature};
 
 // Version and network constants
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const NETWORK_MAGIC_MAINNET: [u8; 4] = [0x42, 0x54, 0x00, 0x01]; // "BT" + version
-pub const NETWORK_MAGIC_TESTNET: [u8; 4] = [0x42, 0x54, 0xFF, 0x01]; // "BT" + testnet
-pub const NETWORK_MAGIC_REGTEST: [u8; 4] = [0x42, 0x54, 0xFF, 0xFF]; // "BT" + regtest
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Network {
@@ -56,14 +53,6 @@ pub enum Network {
 }
 
 impl Network {
-    pub fn magic_bytes(&self) -> [u8; 4] {
-        match self {
-            Network::Mainnet => NETWORK_MAGIC_MAINNET,
-            Network::Testnet => NETWORK_MAGIC_TESTNET,
-            Network::Regtest => NETWORK_MAGIC_REGTEST,
-        }
-    }
-
     pub fn as_str(&self) -> &'static str {
         match self {
             Network::Mainnet => "mainnet",

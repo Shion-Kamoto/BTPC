@@ -1,0 +1,454 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=2.4cm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage[svgnames]{xcolor}
+\usepackage{upquote}
+\usepackage[hidelinks]{hyperref}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=NavyBlue,
+  urlcolor=NavyBlue,
+  citecolor=NavyBlue,
+  pdftitle={BTPC: Bitcoin-Time Protocol Chain — White Paper},
+  pdfauthor={BTPC Development Team},
+  pdfsubject={A quantum-resistant proof-of-work cryptocurrency with sustainable economics}
+}
+
+\title{\textbf{BTPC: Bitcoin-Time Protocol Chain}\\[0.6em]
+\large A Quantum-Resistant Proof-of-Work Cryptocurrency with Sustainable Economics}
+\author{BTPC Development Team}
+\date{Version 2.2 --- November 2026}
+
+\setlength{\parskip}{0.5em}
+\setlength{\parindent}{0pt}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+\noindent BTPC (Bitcoin-Time Protocol Chain) is a quantum-resistant, proof-of-work cryptocurrency that addresses two structural weaknesses of Bitcoin-class systems: vulnerability to cryptographically relevant quantum computers, and the long-term economic fragility of geometric halving schedules.
+
+BTPC signs transactions with ML-DSA (Dilithium5, NIST post-quantum signature level~5), hashes with SHA-512 (64-byte digests), and derives keys with SHAKE-256 under domain separation. Its monetary policy replaces Bitcoin's stepwise halving with a continuous linear decay: the block reward starts at 32.375~BTPC and decreases linearly (an average of $\approx$2{,}525 credits per block) over 24 years (1{,}262{,}304 blocks), reaching a permanent tail emission of 0.5~BTPC. Total supply at the end of the decay period is approximately 20.75~million BTPC, after which annual issuance is fixed at $\sim$26{,}298~BTPC and the inflation rate asymptotically approaches zero.
+
+The core is a clean-room Rust implementation following Bitcoin's proven architecture --- the UTXO model, proof-of-work consensus, 10-minute target block times, and 2{,}016-block difficulty adjustment --- with every parameter verified against the codebase (see Appendix~A).
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+\section{Introduction}
+
+\subsection{The Quantum Threat}
+
+Bitcoin and nearly all deployed blockchains secure ownership with ECDSA over secp256k1. Shor's algorithm breaks the elliptic-curve discrete-logarithm problem in polynomial time on a sufficiently large fault-tolerant quantum computer, allowing an adversary to recover private keys from exposed public keys and forge signatures. Grover's algorithm halves the effective security of symmetric primitives: SHA-256's 256-bit classical security drops to 128-bit against quantum search.
+
+Blockchain transactions are permanent and publicly visible. The ``harvest now, decrypt later'' model means funds secured by quantum-vulnerable signatures are exposed today for attack the moment a capable machine arrives. BTPC's design premise is that long-term value storage cannot wait for that event.
+
+\subsection{The Halving Problem}
+
+Bitcoin's halving reduces the block subsidy by 50\% every 210{,}000 blocks ($\sim$4 years). This creates abrupt, discontinuous revenue shocks for miners, transient hash-rate instability after each event, and --- over the long run --- a transition to a fee-only security model whose viability is unproven. No major blockchain has yet operated at scale under a fee-dominant security regime.
+
+\subsection{BTPC's Approach}
+
+BTPC addresses both problems in a single coherent design: post-quantum cryptography throughout, and a smooth linear-decay reward schedule that removes halving shocks while guaranteeing a perpetual minimum miner subsidy.
+
+\section{Design Principles}
+
+\begin{itemize}[leftmargin=1.5em,itemsep=2pt]
+\item \textbf{Quantum-first.} Every cryptographic primitive is post-quantum. No classical public-key cryptography (RSA, ECDSA, DSA) appears anywhere in the consensus-critical path.
+\item \textbf{Bitcoin-compatible architecture.} BTPC deliberately retains the structures that have survived 15 years of adversarial testing: the UTXO model, SHA-based proof-of-work, 10-minute target block times, and 2{,}016-block difficulty adjustment.
+\item \textbf{Predictable economics.} The emission schedule is a closed-form arithmetic function of block height. Any participant can compute the exact reward at any future height with integer arithmetic --- no governance votes, oracles, or parameter updates.
+\item \textbf{Security through simplicity.} BTPC supports only Pay-to-Public-Key-Hash (P2PKH) transactions. There is no scripting language and no Turing-complete execution environment.
+\item \textbf{Memory safety.} The core is written in Rust, eliminating buffer overflows, use-after-free, and data races at the language level.
+\end{itemize}
+
+\section{Cryptographic Foundations}
+
+\subsection{Signatures: ML-DSA (Dilithium5)}
+
+BTPC uses ML-DSA at NIST security level~5 (the Dilithium5 parameter set). It is the only signature scheme used for transaction authorisation.
+
+\begin{center}
+\begin{tabular}{lr}
+\toprule
+\textbf{Parameter} & \textbf{Size} \\
+\midrule
+Private key & 4{,}864 bytes \\
+Public key & 2{,}592 bytes \\
+Signature & 4{,}595 bytes \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The security basis is the Module-Learning-With-Errors (MLWE) and Module-Short-Integer-Solution (MSIS) lattice problems. The large signatures and keys are the unavoidable cost of post-quantum security; BTPC accepts this in exchange for eliminating the entire class of quantum signature-forgery attacks.
+
+\subsection{Hashing: SHA-512}
+
+All hashing uses SHA-512, producing 64-byte digests. Block hashes are double-hashed, following Bitcoin's pattern:
+
+\begin{verbatim}
+block_hash = SHA-512(SHA-512(block_header))
+\end{verbatim}
+
+SHA-512 provides 256-bit security against Grover's algorithm (versus 128-bit for SHA-256), and the double hash prevents length-extension attacks.
+
+\subsection{Key Derivation: SHAKE-256}
+
+Wallet seed expansion uses SHAKE-256 (the SHA-3 extendable-output function) with a domain-separation tag so that the same BIP-39 mnemonic in another system yields different keys. The pipeline is: 32-byte entropy $\to$ BIP-39 mnemonic $\to$ SHAKE-256 expansion (domain-separated) $\to$ ML-DSA key generation. All-zero seeds are rejected.
+
+\subsection{Wallet Encryption}
+
+Wallet files are encrypted at rest with Argon2id (memory-hard password hashing, 64~MB / 3 iterations / 4 lanes) feeding AES-256-GCM authenticated encryption. Sensitive material (passwords, seeds, private keys) is held in zeroizing containers that wipe memory on drop.
+
+\subsection{Constant-Time Operations}
+
+Difficulty-target comparisons and credential verification use constant-time equality checks to avoid timing side channels.
+
+\section{Address Format}
+
+BTPC addresses use Base58Check encoding with a network version byte, mirroring Bitcoin:
+
+\begin{center}
+\begin{tabular}{lcl}
+\toprule
+\textbf{Network} & \textbf{Version byte} & \textbf{Prefix} \\
+\midrule
+Mainnet & \texttt{0x00} & \texttt{1} \\
+Testnet & \texttt{0x6f} & \texttt{m}/\texttt{n} \\
+Regtest & \texttt{0x6f} & \texttt{m}/\texttt{n} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+An address is derived from the public key as:
+
+\begin{verbatim}
+address = Base58Check(version_byte || RIPEMD-160(SHA-512(public_key)))
+\end{verbatim}
+
+Note the double SHA-512 checksum (rather than Bitcoin's double SHA-256) and SHA-512 (rather than SHA-256) in the address hash, matching the 64-byte hash space used throughout.
+
+\section{Economic Model: Linear Decay}
+
+\subsection{Constants}
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{Constant} & \textbf{Value} \\
+\midrule
+Initial reward ($R_0$) & 3{,}237{,}500{,}000 credits (32.375 BTPC) \\
+Tail emission ($R_T$) & 50{,}000{,}000 credits (0.5 BTPC) \\
+Blocks per year ($B$) & 52{,}596 ($365.25 \times 24 \times 6$) \\
+Decay period ($Y$) & 24 years \\
+Decay end height ($N$) & 1{,}262{,}304 blocks \\
+Average decrease per block & $\approx$ 2{,}525.1445 credits (floor 2{,}525) \\
+Base unit & 1 BTPC $=$ 100{,}000{,}000 credits \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Reward Function}
+
+Let $D = R_0 - R_T = 3{,}187{,}500{,}000$ be the total decay amount and $N = Y \cdot B = 1{,}262{,}304$ the decay-end height.
+
+\[
+R(h) =
+\begin{cases}
+R_0, & h = 0 \\
+\max\bigl(R_0 - \lfloor D \cdot h / N \rfloor,\; R_T\bigr), & 0 < h < N \\
+R_T, & h \ge N
+\end{cases}
+\]
+
+The reward is computed with integer-only arithmetic (u128 intermediates) so the result is bit-identical on every platform --- a consensus requirement. The average decrease rate is $\Delta = D/N \approx 2525.1445$ credits per block; the stored constant \texttt{DECREASE\_PER\_BLOCK} $= \lfloor \Delta \rfloor = 2525$ is its floor.
+
+\subsection{Reward Schedule}
+
+\begin{center}
+\begin{tabular}{lrr}
+\toprule
+\textbf{Height} & \textbf{Reward (credits)} & \textbf{Reward (BTPC)} \\
+\midrule
+0 (genesis) & 3{,}237{,}500{,}000 & 32.375 \\
+52{,}596 (year 1) & 3{,}104{,}687{,}500 & 31.047 \\
+631{,}152 (year 12) & 1{,}643{,}750{,}000 & 16.438 \\
+1{,}262{,}303 (last decay block) & 50{,}002{,}526 & 0.500 \\
+1{,}262{,}304 (first tail block) & 50{,}000{,}000 & 0.500 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Supply and Inflation}
+
+Total supply at the end of the decay period (year 24) is approximately \textbf{20.75~million BTPC}. Thereafter, issuance is a fixed $\sim$26{,}298~BTPC per year ($0.5 \times 52{,}596$ blocks), and the inflation \emph{rate} declines monotonically toward zero as the supply grows. The perpetual tail emission provides a permanent miner subsidy independent of fee-market conditions, and gradually replaces coins lost to key loss and user error.
+
+\section{Consensus Mechanism}
+
+\subsection{Proof of Work}
+
+Proof-of-work is SHA-512 based. A block is valid when its double-SHA-512 header hash is numerically below the current difficulty target. The nonce is 4 bytes.
+
+\subsection{Difficulty Adjustment}
+
+Difficulty is recalculated every 2{,}016 blocks with a target timespan of 1{,}209{,}600 seconds (two weeks), retargeting toward the 600-second block interval. This preserves Bitcoin's proven responsiveness while operating in the 64-byte hash space.
+
+\subsection{Timestamp Rules}
+
+\begin{itemize}[leftmargin=1.5em,itemsep=2pt]
+\item Target block time: 600 seconds.
+\item Minimum spacing between consecutive blocks: 60 seconds.
+\item Maximum future timestamp: 7{,}200 seconds (2 hours) ahead of network time.
+\item Timestamps are validated against median-time-past, Bitcoin-style.
+\end{itemize}
+
+\section{Transaction System}
+
+BTPC uses the UTXO model with Bitcoin-compatible structure. Each transaction consumes one or more outputs and creates new ones; ownership is transferred by satisfying a P2PKH script with a valid ML-DSA signature.
+
+Only P2PKH is supported. There are no smart contracts, no multi-signature aggregation, and no scripting beyond the minimal \texttt{OP\_DUP OP\_HASH160 \textless{}hash\textgreater{} OP\_EQUALVERIFY OP\_CHECKSIG} pattern. A transaction carries a \texttt{fork\_id} byte identifying the network (mainnet / testnet / regtest) to prevent cross-network replay.
+
+\section{Block Structure}
+
+The block header mirrors Bitcoin's, with the two hash fields expanded to 64 bytes for SHA-512:
+
+\begin{center}
+\begin{tabular}{lr}
+\toprule
+\textbf{Field} & \textbf{Size} \\
+\midrule
+Version & 4 bytes \\
+Previous block hash & 64 bytes \\
+Merkle root & 64 bytes \\
+Timestamp & 4 bytes \\
+Bits (difficulty) & 4 bytes \\
+Nonce & 4 bytes \\
+\midrule
+\textbf{Total} & \textbf{144 bytes} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The 144-byte header (versus Bitcoin's 80 bytes) is entirely attributable to the 64-byte digests replacing 32-byte ones.
+
+\section{Network Architecture}
+
+\subsection{Network Parameters}
+
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Network} & \textbf{P2P port} & \textbf{RPC port} & \textbf{Magic bytes} \\
+\midrule
+Mainnet & 18341 & 18340 & \texttt{B7 C0 1A 55} \\
+Testnet & 18351 & 18350 & \texttt{F1 C0 BA 55} \\
+Regtest & 18361 & 18360 & \texttt{DA B5 BF FA} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Each network has a distinct P2P port and 4-byte magic value, preventing accidental cross-network connections. Nodes listen dual-stack on \texttt{[::]:<port>}.
+
+\subsection{Peer Discovery and Synchronisation}
+
+The network follows Bitcoin's bootstrap model:
+
+\begin{itemize}[leftmargin=1.5em,itemsep=2pt]
+\item A persistent address manager (the analogue of Bitcoin's \texttt{addrman}) stores known peers in new/tried tables, bucketed by /16 (IPv4) and /32 (IPv6) network groups, and survives restarts via RocksDB.
+\item Bootstrap proceeds from a persisted \texttt{peers.dat} address book, LAN UDP discovery, DNS seeds, and manual peer-add --- in that order. (At present the network is behind carrier-grade NAT with no hardcoded seed nodes, so fresh nodes rely on the address book and manual peer-add until a reachable seed is established.)
+\item Headers-first synchronisation is used, with per-peer and aggregate in-flight request caps, and a stall reaper that disconnects and penalises unresponsive peers.
+\item Self-connections are detected by comparing a random nonce exchanged in the version handshake, preventing a node from counting itself as a peer.
+\end{itemize}
+
+\subsection{RPC Interface}
+
+Nodes expose an authenticated JSON-RPC 2.0 interface (mainnet 18340, testnet 18350, regtest 18360) used by the mining rig and operator tooling. Authentication is mandatory --- the node refuses to start without valid credentials --- and the interface can be secured with TLS (a self-signed certificate is generated by the one-command \texttt{--setup} flow).
+
+\section{Security Considerations}
+
+\begin{itemize}[leftmargin=1.5em,itemsep=2pt]
+\item \textbf{Post-quantum signatures} eliminate quantum forgery and key-recovery attacks against transaction ownership.
+\item \textbf{Constant-time operations} mitigate timing side channels in cryptographic comparisons.
+\item \textbf{Memory-safe implementation} (Rust) removes entire vulnerability classes.
+\item \textbf{Minimal scripting surface} (P2PKH only) sharply reduces the attack surface relative to general-purpose platforms.
+\item \textbf{Rate limiting and connection caps} (per-IP and per-subnet) mitigate denial-of-service and eclipse attacks.
+\item \textbf{Authenticated, TLS-capable RPC} protects the operator interface.
+\end{itemize}
+
+Known trade-offs, stated honestly: ML-DSA signatures and keys are orders of magnitude larger than ECDSA (4{,}595-byte signatures vs $\sim$71 bytes), which increases on-chain storage and bandwidth costs; there is no native multi-signature aggregation; and ML-DSA is not yet supported in commercial hardware wallets.
+
+\section{Comparison with Bitcoin}
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Property} & \textbf{Bitcoin} & \textbf{BTPC} \\
+\midrule
+Signature scheme & ECDSA (secp256k1) & ML-DSA (Dilithium5) \\
+Quantum resistance & No & Yes (NIST level 5) \\
+Hash function & SHA-256 (32 bytes) & SHA-512 (64 bytes) \\
+Header size & 80 bytes & 144 bytes \\
+Block time & $\sim$10 minutes & $\sim$10 minutes \\
+Difficulty period & 2{,}016 blocks & 2{,}016 blocks \\
+Reward model & Geometric halving & Linear decay + tail emission \\
+Scripting & Full script & P2PKH only \\
+Base unit & satoshi & credit \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Implementation Status}
+
+The core is implemented in Rust as a workspace: \texttt{btpc-core} (the library), \texttt{btpc\_node} (headless full node), \texttt{btpc\_wallet} (CLI wallet), \texttt{btpc\_miner} (CPU miner), and a Tauri desktop wallet. A dedicated GPU mining rig (\texttt{BTPC\_RIG}) mines against a node over authenticated HTTPS, and a BalenaEtcher-flashable OS image (\texttt{BTPC-OS}) boots commodity hardware straight into mining with NVIDIA and AMD GPU support.
+
+Post-quantum cryptography, the linear-decay consensus, P2P networking with Bitcoin-style peer discovery, and the authenticated RPC layer are implemented and covered by automated tests. The project is near completion, with peer-discovery hardening and node--rig security (mandatory auth + TLS + certificate pinning) being the most recent work.
+
+\section{Conclusion}
+
+BTPC demonstrates that quantum resistance and economic sustainability are achievable without abandoning the architectural lessons of Bitcoin. By pairing NIST-level post-quantum signatures and SHA-512 hashing with a continuous linear-decay monetary policy and a permanent tail emission, BTPC provides a store of value designed for the multi-decade horizon in which quantum computers will exist.
+
+\appendix
+
+\section{Parameter Reference}
+
+Every protocol parameter in this document is verified against the implementation. Source locations (live tree, \texttt{/media/bob/HDD1/BTPC}):
+
+\begin{center}
+\begin{tabular}{llp{6.4cm}}
+\toprule
+\textbf{Parameter} & \textbf{Value} & \textbf{Source} \\
+\midrule
+P2P ports (main/test/reg) & 18341 / 18351 / 18361 & \texttt{btpc-core/src/network/mod.rs} \\
+Magic bytes & \texttt{B7C01A55}/\texttt{F1C0BA55}/\texttt{DAB5BFFA} & \texttt{btpc-core/src/network/protocol.rs} \\
+RPC ports (main/test/reg) & 18340 / 18350 / 18360 & \texttt{btpc-core/src/economics/constants.rs} \\
+Protocol version & 70015 & \texttt{btpc-core/src/network/protocol.rs} \\
+Target block time & 600 s & \texttt{btpc-core/src/consensus/mod.rs} \\
+Min block spacing & 60 s & \texttt{btpc-core/src/consensus/mod.rs} \\
+Max future block time & 7200 s & \texttt{btpc-core/src/consensus/mod.rs} \\
+Difficulty period & 2{,}016 blocks & \texttt{btpc-core/src/consensus/difficulty.rs} \\
+Genesis timestamp & 1735689600 (2025-01-01 UTC) & \texttt{btpc-core/src/blockchain/genesis.rs} \\
+Initial reward & 3{,}237{,}500{,}000 credits & \texttt{btpc-core/src/consensus/rewards.rs} \\
+Tail emission & 50{,}000{,}000 credits & (ibid.) \\
+Decay end height & 1{,}262{,}304 blocks & (ibid.) \\
+Average decrease per block & $\approx$ 2{,}525.1445 credits & \texttt{btpc-core/src/economics/constants.rs} \\
+ML-DSA private key & 4{,}864 bytes & \texttt{btpc-core/src/crypto/mod.rs} \\
+ML-DSA public key & 2{,}592 bytes & \texttt{btpc-core/src/crypto/mod.rs} \\
+ML-DSA signature & 4{,}595 bytes & \texttt{btpc-core/src/crypto/mod.rs} \\
+Address version bytes & 0x00 / 0x6f & \texttt{btpc-core/src/crypto/address.rs} \\
+Credits per BTPC & 100{,}000{,}000 & economics module \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The economic model is independently verified by the \texttt{BTPC\_VERIFICATION\_ALGORITHM} script, which asserts the reward function at key heights, the decay-end supply (between 20.5~M and 21~M BTPC), and the year-over-year inflation schedule.
+
+\section{Mathematical Specification}
+
+This appendix states the exact consensus and cryptographic calculations, matching the implementation. Let $H(x) = \text{SHA-512}(x)$, and let $\lfloor \cdot \rfloor$ denote integer (floor) division.
+
+\subsection{Hashing}
+
+Block and transaction identifiers use double SHA-512:
+
+\[
+\operatorname{id}(x) = H(H(x))
+\]
+
+\subsection{Block Reward (Linear Decay)}
+
+With $R_0 = 3{,}237{,}500{,}000$, $R_T = 50{,}000{,}000$, $B = 52{,}596$, $Y = 24$, $N = YB = 1{,}262{,}304$, and $D = R_0 - R_T = 3{,}187{,}500{,}000$:
+
+\[
+R(h) =
+\begin{cases}
+R_0, & h = 0 \\
+\max\bigl(R_0 - \lfloor D \cdot h / N \rfloor,\; R_T\bigr), & 0 < h < N \\
+R_T, & h \ge N
+\end{cases}
+\]
+
+The per-block decrease is $\Delta = D/N \approx 2525.1445$ credits/block; the stored constant \texttt{DECREASE\_PER\_BLOCK} $= \lfloor \Delta \rfloor = 2525$ is its floor.
+
+\subsection{Total Supply}
+
+\[
+S(h) = \sum_{i=0}^{h} R(i)
+\]
+
+Decay-period closed form (arithmetic series, used by \texttt{MAX\_MONEY}):
+
+\[
+S(N) \approx \frac{N (R_0 + R_T)}{2} = \frac{1{,}262{,}304 \times 3{,}287{,}500{,}000}{2} \approx 2.075 \times 10^{15}\ \text{credits} \approx 20.75\ \text{M BTPC}
+\]
+
+\subsection{Inflation Rate}
+
+\[
+I(h) = \frac{R(h) \cdot B}{S(h)} \times 100\%
+\]
+
+\subsection{Maximum Supply}
+
+\[
+\mathit{MAX\_MONEY} = \frac{N (R_0 + R_T)}{2} + 1000 \cdot B \cdot R_T
+\]
+
+(the tail term uses 1000 years as the practical horizon).
+
+\subsection{Difficulty Retarget}
+
+Every $N_d = 2016$ blocks, with target timespan $T_{\text{target}} = 2016 \times 600\ \text{s} = 1{,}209{,}600\ \text{s}$:
+
+\[
+r = \frac{T_{\text{actual}}}{T_{\text{target}}}, \qquad
+r = \operatorname{clamp}\!\left(r,\ \tfrac{1}{4},\ 4\right), \qquad
+T_{\text{next}} = T_{\text{prev}} \times r
+\]
+
+\subsection{Proof of Work}
+
+A block is valid if and only if its double-SHA-512 header hash is at or below the target (64-byte big-endian comparison):
+
+\[
+H(H(\text{header})) \le \text{target}
+\]
+
+\subsection{Compact Target Encoding (bits)}
+
+The 64-byte target is serialised as a 32-bit compact ``bits'' value --- a 1-byte exponent plus a 3-byte mantissa, Bitcoin-style, with the mantissa occupying the most-significant bytes of the 64-byte field.
+
+\subsection{Merkle Root}
+
+Leaves are transaction IDs. Each internal node is the double SHA-512 of the concatenation of its two children; an odd node is duplicated (Bitcoin behaviour):
+
+\[
+\text{node} = H\bigl(H(\text{left} \mathbin{\Vert} \text{right})\bigr)
+\]
+
+\subsection{Transaction Fee}
+
+\[
+\text{fee} = \sum \text{input\_UTXO\_values} - \sum \text{output\_values}
+\]
+
+\subsection{Address Derivation}
+
+\[
+\text{address} = \text{Base58Check}\bigl(\text{version} \mathbin{\Vert} \text{RIPEMD-160}(H(\text{public\_key}))\bigr)
+\]
+\[
+\text{checksum} = H(H(\text{payload}))[0..4]
+\]
+
+The Base58Check checksum is the first 4 bytes of the double SHA-512 of the payload.
+
+\end{document}

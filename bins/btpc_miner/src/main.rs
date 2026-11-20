@@ -49,7 +49,7 @@ impl Default for MinerConfig {
         MinerConfig {
             network: Network::Mainnet,
             threads: num_cpus::get(),
-            rpc_url: "http://127.0.0.1:8332".to_string(),
+            rpc_url: "http://127.0.0.1:8432".to_string(),
             mining_address: "burn_address".to_string(),
             coinbase_message: "BTPC Miner v0.1.0".to_string(),
             target_hashrate: None,
@@ -506,7 +506,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .long("rpc-url")
                 .value_name("URL")
                 .help("RPC server URL")
-                .default_value("http://127.0.0.1:8332"),
+                .default_value("http://127.0.0.1:8432"),
         )
         .arg(
             Arg::new("address")

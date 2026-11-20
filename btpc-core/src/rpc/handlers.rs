@@ -18,6 +18,7 @@ use crate::{
 pub struct BlockchainRpcHandlers {
     blockchain_db: Arc<RwLock<BlockchainDb>>,
     utxo_db: Arc<RwLock<UtxoDb>>,
+    mempool: Arc<std::sync::RwLock<crate::mempool::Mempool>>,
     network: crate::Network,
 }
 
@@ -26,11 +27,13 @@ impl BlockchainRpcHandlers {
     pub fn new(
         blockchain_db: Arc<RwLock<BlockchainDb>>,
         utxo_db: Arc<RwLock<UtxoDb>>,
+        mempool: Arc<std::sync::RwLock<crate::mempool::Mempool>>,
         network: crate::Network,
     ) -> Self {
         BlockchainRpcHandlers {
             blockchain_db,
             utxo_db,
+            mempool,
             network,
         }
     }
@@ -96,10 +99,11 @@ impl BlockchainRpcHandlers {
             .await;
 
         let blockchain_db = Arc::clone(&self.blockchain_db);
+        let mempool = Arc::clone(&self.mempool);
         let network = self.network;
         server
             .register_method("getblocktemplate", move |params| {
-                Self::get_block_template(&blockchain_db, network, params)
+                Self::get_block_template(&blockchain_db, &mempool, network, params)
             })
             .await;
 
@@ -766,12 +770,13 @@ impl BlockchainRpcHandlers {
     /// Get block template for mining
     fn get_block_template(
         blockchain_db: &Arc<RwLock<BlockchainDb>>,
+        mempool: &Arc<std::sync::RwLock<crate::mempool::Mempool>>,
         network: crate::Network,
         _params: Option<Value>,
     ) -> Result<Value, RpcServerError> {
         use crate::{
             blockchain::{BlockHeader, OutPoint, Transaction, TransactionInput, TransactionOutput},
-            consensus::DifficultyTarget,
+            consensus::{DifficultyTarget, RewardCalculator},
             storage::BlockchainDatabase,
         };
 
@@ -791,6 +796,12 @@ impl BlockchainRpcHandlers {
             (Hash::zero(), 1, 0)
         };
 
+        // Block reward for the new block's height (linear-decay schedule).
+        // FIX: was hardcoded 50 BTPC, which exceeded the consensus reward ceiling
+        // (RewardCalculator ~32.375 BTPC at genesis) and caused every mined block
+        // to be rejected as ExcessiveBlockReward.
+        let reward = RewardCalculator::calculate_reward(height).unwrap_or(0);
+
         // Create coinbase transaction template
         let coinbase_tx = Transaction {
             version: 1,
@@ -803,7 +814,7 @@ impl BlockchainRpcHandlers {
                 sequence: 0xffffffff,
             }],
             outputs: vec![TransactionOutput {
-                value: 5_000_000_000, // 50 BTPC
+                value: reward,
                 script_pubkey: crate::crypto::Script::new(),
             }],
             lock_time: 0,
@@ -813,59 +824,16 @@ impl BlockchainRpcHandlers {
         // Calculate merkle root
         let merkle_root = coinbase_tx.hash();
 
-        // Calculate proper difficulty based on blockchain height
-        // This should adjust every 2016 blocks
-        let difficulty_bits = if height == 0 {
-            // Genesis block uses network minimum
-            DifficultyTarget::minimum_for_network(network).bits
+        // Calculate difficulty for the new block's height.
+        // For pre-adjustment heights (< 2016), use "difficulty 1" (Bitcoin-style);
+        // otherwise inherit the tip block's bits. The 2016-block adjustment
+        // algorithm converges to real network hashrate.
+        let difficulty_bits = if height < 2016 {
+            DifficultyTarget::initial_for_network(network).bits
+        } else if let Some(tip) = &tip_block {
+            tip.header.bits
         } else {
-            // For regtest, check if we need difficulty adjustment
-            const ADJUSTMENT_INTERVAL: u32 = 2016;
-
-            if height % ADJUSTMENT_INTERVAL == 0 && height > 0 {
-                // This is an adjustment block - calculate new difficulty
-                use crate::consensus::DifficultyAdjustment;
-
-                // For simplicity on regtest, since we don't have easy access to historical blocks,
-                // let's do a simple difficulty increase to demonstrate the adjustment mechanism
-                if let Some(tip) = &tip_block {
-                    let previous_target = DifficultyTarget::from_bits(tip.header.bits);
-
-                    // For regtest demonstration: simulate that blocks are coming too fast
-                    // This will make difficulty harder (smaller target = harder to mine)
-                    // In a real implementation, we'd calculate based on actual block times
-                    let simulated_actual_timespan = 600; // Pretend blocks came in 10 minutes (too fast!)
-                    let target_timespan = DifficultyAdjustment::get_target_timespan(); // 2 weeks worth
-
-                    let new_target = DifficultyAdjustment::adjust_difficulty(
-                        &previous_target,
-                        simulated_actual_timespan,
-                        target_timespan,
-                    );
-
-                    eprintln!("⚡ DIFFICULTY ADJUSTMENT at height {}:", height);
-                    eprintln!("   Previous difficulty bits: 0x{:08x}", tip.header.bits);
-                    eprintln!(
-                        "   Simulated timespan: {} seconds (blocks came too fast!)",
-                        simulated_actual_timespan
-                    );
-                    eprintln!("   Target timespan: {} seconds", target_timespan);
-                    eprintln!("   New difficulty bits: 0x{:08x}", new_target.bits);
-                    eprintln!("   Difficulty should be HARDER now (smaller target)");
-
-                    new_target.bits
-                } else {
-                    // No previous block, use network minimum
-                    DifficultyTarget::minimum_for_network(network).bits
-                }
-            } else {
-                // Use the difficulty from the previous block
-                if let Some(tip) = &tip_block {
-                    tip.header.bits
-                } else {
-                    DifficultyTarget::minimum_for_network(network).bits
-                }
-            }
+            DifficultyTarget::initial_for_network(network).bits
         };
 
         let target = DifficultyTarget::from_bits(difficulty_bits);
@@ -889,11 +857,33 @@ impl BlockchainRpcHandlers {
         // Serialize block to hex
         let block_hex = hex::encode(block.serialize());
 
+        // Gather mempool transactions (up to 1000, highest fee first) and their
+        // total fees, matching the desktop node's getblocktemplate.
+        let (mempool_txs, total_fees): (Vec<Value>, u64) = {
+            let mp = mempool.read().map_err(|e| {
+                RpcServerError::Internal(format!("Mempool lock poisoned: {}", e))
+            })?;
+            let entries = mp.get_transactions_by_fee(1000);
+            let fees: u64 = entries.iter().map(|e| e.fee).sum();
+            let txs = entries
+                .iter()
+                .map(|entry| {
+                    json!({
+                        "data": hex::encode(entry.transaction.serialize()),
+                        "txid": entry.transaction.hash().to_hex(),
+                        "fee": entry.fee,
+                        "sigops": entry.transaction.inputs.len() + entry.transaction.outputs.len()
+                    })
+                })
+                .collect();
+            (txs, fees)
+        };
+
         Ok(json!({
             "version": 1,
             "previousblockhash": hex::encode(prev_hash.as_bytes()),
-            "transactions": [],
-            "coinbasevalue": 5_000_000_000u64,
+            "transactions": mempool_txs,
+            "coinbasevalue": reward + total_fees,
             "target": hex::encode(target.target),
             "mintime": timestamp,
             "curtime": timestamp,

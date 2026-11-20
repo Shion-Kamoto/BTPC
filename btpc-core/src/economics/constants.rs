@@ -73,15 +73,6 @@ pub const MAX_MONEY: u64 = {
     decay_supply + tail_supply
 };
 
-/// Network magic bytes for mainnet
-pub const MAINNET_MAGIC: [u8; 4] = [0x42, 0x54, 0x50, 0x43]; // "BTPC"
-
-/// Network magic bytes for testnet
-pub const TESTNET_MAGIC: [u8; 4] = [0x74, 0x42, 0x54, 0x50]; // "tBTP"
-
-/// Network magic bytes for regtest
-pub const REGTEST_MAGIC: [u8; 4] = [0x72, 0x42, 0x54, 0x50]; // "rBTP"
-
 /// Default port for mainnet P2P (BTPC isolated from Bitcoin)
 pub const MAINNET_PORT: u16 = 18341;
 
@@ -207,55 +198,6 @@ const _: () = {
     assert!(MIN_FEE_PER_KB > 0);
 };
 
-/// Get network-specific constants
-pub struct NetworkConstants {
-    pub magic: [u8; 4],
-    pub port: u16,
-    pub rpc_port: u16,
-    pub address_version: u8,
-    pub script_version: u8,
-    pub bech32_hrp: &'static str,
-    pub min_difficulty_bits: u32,
-}
-
-impl NetworkConstants {
-    pub fn mainnet() -> Self {
-        NetworkConstants {
-            magic: MAINNET_MAGIC,
-            port: MAINNET_PORT,
-            rpc_port: MAINNET_RPC_PORT,
-            address_version: ADDRESS_VERSION_MAINNET,
-            script_version: SCRIPT_VERSION_MAINNET,
-            bech32_hrp: BECH32_HRP_MAINNET,
-            min_difficulty_bits: 0x3c7fffff, // Mainnet minimum difficulty (SHA-512 ~32 bits work)
-        }
-    }
-
-    pub fn testnet() -> Self {
-        NetworkConstants {
-            magic: TESTNET_MAGIC,
-            port: TESTNET_PORT,
-            rpc_port: TESTNET_RPC_PORT,
-            address_version: ADDRESS_VERSION_TESTNET,
-            script_version: SCRIPT_VERSION_TESTNET,
-            bech32_hrp: BECH32_HRP_TESTNET,
-            min_difficulty_bits: 0x3c7fffff, // Testnet minimum difficulty (SHA-512 ~32 bits work)
-        }
-    }
-
-    pub fn regtest() -> Self {
-        NetworkConstants {
-            magic: REGTEST_MAGIC,
-            port: REGTEST_PORT,
-            rpc_port: REGTEST_RPC_PORT,
-            address_version: ADDRESS_VERSION_REGTEST,
-            script_version: SCRIPT_VERSION_REGTEST,
-            bech32_hrp: BECH32_HRP_REGTEST,
-            min_difficulty_bits: 0x407fffff, // Regtest minimum difficulty (SHA-512 instant mining)
-        }
-    }
-}
-
 #[cfg(test)]
 #[allow(clippy::assertions_on_constants)]
 mod tests {
@@ -270,26 +212,6 @@ mod tests {
             DECREASE_PER_BLOCK,
             TOTAL_DECAY_AMOUNT / (DECAY_END_HEIGHT as u64)
         );
-    }
-
-    #[test]
-    fn test_network_constants() {
-        let mainnet = NetworkConstants::mainnet();
-        let testnet = NetworkConstants::testnet();
-        let regtest = NetworkConstants::regtest();
-
-        // Ensure each network has unique magic bytes
-        assert_ne!(mainnet.magic, testnet.magic);
-        assert_ne!(mainnet.magic, regtest.magic);
-        assert_ne!(testnet.magic, regtest.magic);
-
-        // Ensure ports are different
-        assert_ne!(mainnet.port, testnet.port);
-        assert_ne!(mainnet.port, regtest.port);
-
-        // Ensure RPC ports are different
-        assert_ne!(mainnet.rpc_port, testnet.rpc_port);
-        assert_ne!(mainnet.rpc_port, regtest.rpc_port);
     }
 
     #[test]

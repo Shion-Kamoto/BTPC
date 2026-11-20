@@ -224,6 +224,19 @@ impl EmbeddedNode {
             Arc::clone(&block_height_for_pm),
         ));
 
+        // BTC-standard peers.dat equivalent: open a persistent, RocksDB-backed
+        // addrman so outbound selection and failure eviction survive restarts.
+        // Falls back to in-memory if the DB cannot be opened.
+        let addrman_path = data_dir.join("addrman");
+        match btpc_core::network::address_manager::AddressManager::open_at(&addrman_path) {
+            Ok(am) => peer_manager.install_address_manager(am).await,
+            Err(e) => eprintln!(
+                "⚠️  Could not open persistent addrman at {} (in-memory fallback): {}",
+                addrman_path.display(),
+                e
+            ),
+        }
+
         // Create node instance
         let node = EmbeddedNode {
             database,
@@ -1156,9 +1169,9 @@ impl EmbeddedNode {
                                 match node.submit_block(&block_hex).await {
                                     Ok(msg) => {
                                         eprintln!("✅ Block from peer {} accepted: {}", from, msg);
-                                        // Broadcast to other peers
-                                        drop(node); // Release write lock before broadcast
-                                        peer_manager_arc.broadcast_block(&block).await;
+                                        // Broadcast now happens inside submit_block; just release
+                                        // the write lock before reading the status snapshot below.
+                                        drop(node);
 
                                         // T035 (US2): Emit status on new block accepted
                                         let status = build_node_status_snapshot(node_ref).await;
@@ -2467,6 +2480,15 @@ impl EmbeddedNode {
             next_height,
             &block_hash_hex[0..16]
         );
+
+        // FIX 2026-04-22: Announce the accepted block to all peers.
+        // Mirrors bins/btpc_node/src/main.rs (broadcast_block after mining).
+        // Without this, blocks mined by the desktop embedded node were stored
+        // locally but never propagated — peers only learned of them if they
+        // happened to GetData-request the exact hash (which no Inv announced).
+        // This runs after put_block + UTXO flush + tx_storage, so we never
+        // announce a block we haven't fully persisted.
+        self.peer_manager.broadcast_block(&block).await;
 
         Ok(format!("Block accepted: {}", block_hash_hex))
     }

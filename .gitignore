@@ -56,3 +56,15 @@ __pycache__/
 
 # Temp/modified files
 *.modified
+
+# BTPC — intentionally uncommitted working-tree artifacts (per user rules / status3.md)
+.graphify*
+graphify-out/
+btpc-desktop-app/graphify-out/
+.specify/
+spec-kit/
+specs/
+btpc-core/tests/
+ui/tests/
+btpc-core/examples/
+Machine A log.txt
