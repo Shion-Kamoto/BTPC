@@ -208,7 +208,7 @@ impl Default for RpcConfig {
     fn default() -> Self {
         RpcConfig {
             bind_address: "127.0.0.1".to_string(),
-            port: 8432,                    // BTPC port (not Bitcoin's 8332)
+            port: crate::economics::MAINNET_RPC_PORT, // 18340 (mainnet default; not Bitcoin's 8332)
             max_request_size: 1024 * 1024, // 1MB
 
             // Security-First: Auth enabled by default (Article I)
@@ -271,21 +271,22 @@ impl RpcConfig {
     pub fn for_network(network: Network) -> Self {
         let mut config = Self::default();
 
-        // Network-specific rate limiting and connection limits
+        // Network-specific RPC port + rate limiting and connection limits.
+        // RPC ports mirror the P2P ports (18341/18351/18361), one below each:
+        //   mainnet 18340, testnet 18350, regtest 18360.
         match network {
             Network::Regtest => {
-                // High throughput for local testing and rapid mining
-                // Supports 1000+ blocks/min with multiple mining threads
+                config.port = crate::economics::REGTEST_RPC_PORT; // 18360
                 config.rate_limit_per_ip = 10_000; // 10,000 req/min
                 config.max_connections_per_ip = 50; // Parallel testing
             }
             Network::Testnet => {
-                // Moderate limits for public testnet
+                config.port = crate::economics::TESTNET_RPC_PORT; // 18350
                 config.rate_limit_per_ip = 300; // 300 req/min
                 config.max_connections_per_ip = 20;
             }
             Network::Mainnet => {
-                // Conservative limits for production security (DoS protection)
+                config.port = crate::economics::MAINNET_RPC_PORT; // 18340
                 config.rate_limit_per_ip = 60; // 60 req/min (default)
                 config.max_connections_per_ip = 10;
             }
@@ -1110,6 +1111,24 @@ mod tests {
         let result = server.verify_auth("wronguser", "testpassword1234567890");
 
         assert!(!result, "Should reject incorrect username");
+    }
+
+    #[test]
+    fn test_verify_auth_fails_closed_without_credentials() {
+        // When auth is enabled but no credentials are configured (the default
+        // RpcConfig state), verification must fail closed — never accept.
+        let config = RpcConfig {
+            enable_auth: true,
+            username: None,
+            password: None,
+            ..Default::default()
+        };
+        let server = RpcServer::new(config);
+
+        assert!(
+            !server.verify_auth("anyuser", "anypassword"),
+            "auth with no configured credentials must fail closed"
+        );
     }
 
     #[test]

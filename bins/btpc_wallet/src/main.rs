@@ -35,7 +35,7 @@ impl Default for WalletConfig {
         WalletConfig {
             network: Network::Mainnet,
             datadir: PathBuf::from("~/.btpc/wallet"),
-            rpc_url: "http://127.0.0.1:8332".to_string(),
+            rpc_url: "http://127.0.0.1:8432".to_string(),
             fee_rate: 1000, // 0.00001 BTPC per byte
         }
     }
@@ -614,7 +614,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .long("rpc-url")
                 .value_name("URL")
                 .help("RPC server URL")
-                .default_value("http://127.0.0.1:8332"),
+                .default_value("http://127.0.0.1:8432"),
         )
         .subcommand(
             Command::new("generate")

@@ -75,7 +75,7 @@ pub struct Node {
     rpc_server: Arc<RpcServer>,
     block_validator: Arc<BlockValidator>,
     tx_validator: Arc<TransactionValidator>,
-    mempool: Arc<btpc_core::storage::mempool::Mempool>,
+    mempool: Arc<std::sync::RwLock<btpc_core::mempool::Mempool>>,
     block_height: Arc<RwLock<u32>>,
 }
 
@@ -261,15 +261,16 @@ impl Node {
         let tx_validator = Arc::new(TransactionValidator::new());
 
         // Initialize mempool
-        let mempool = Arc::new(btpc_core::storage::mempool::Mempool::new()?);
+        let mempool = Arc::new(std::sync::RwLock::new(btpc_core::mempool::Mempool::new()));
 
         // Initialize RPC server
-        let rpc_server = Arc::new(RpcServer::new(config.rpc.clone()));
+        let rpc_server = Arc::new(RpcServer::new_validated(config.rpc.clone())?);
 
         // Register RPC handlers
         let blockchain_handlers = BlockchainRpcHandlers::new(
             Arc::clone(&blockchain_db),
             Arc::clone(&utxo_db),
+            Arc::clone(&mempool),
             config.network,
         );
         blockchain_handlers.register_methods(&rpc_server).await;
@@ -486,15 +487,34 @@ impl Node {
                         let tx_hash = tx.hash();
                         println!("💳 Received transaction {} from {}", tx_hash.to_hex(), from);
 
-                        // Add to mempool
-                        if let Err(e) = mempool.add_transaction(tx) {
-                            eprintln!(
-                                "Failed to add transaction {} to mempool: {}",
-                                tx_hash.to_hex(),
-                                e
-                            );
-                        } else {
-                            println!("✅ Transaction {} added to mempool", tx_hash.to_hex());
+                        // Calculate fee (input value - output value), matching the
+                        // desktop node's sendrawtransaction path.
+                        let fee = {
+                            let utxo = utxo_db.read().await;
+                            let mut input_value: u64 = 0;
+                            for input in &tx.inputs {
+                                if let Ok(Some(u)) = utxo.get_utxo(&input.previous_output) {
+                                    input_value = input_value.saturating_add(u.output.value);
+                                }
+                            }
+                            let output_value: u64 = tx.outputs.iter().map(|o| o.value).sum();
+                            input_value.saturating_sub(output_value)
+                        };
+
+                        // Add to fee-tracking mempool (matches desktop node)
+                        match mempool.write() {
+                            Ok(mut mp) => {
+                                if let Err(e) = mp.add_transaction(tx, fee) {
+                                    eprintln!(
+                                        "Failed to add transaction {} to mempool: {}",
+                                        tx_hash.to_hex(),
+                                        e
+                                    );
+                                } else {
+                                    println!("✅ Transaction {} added to mempool", tx_hash.to_hex());
+                                }
+                            }
+                            Err(e) => eprintln!("Mempool lock poisoned: {}", e),
                         }
                     }
                     PeerEvent::InventoryReceived { from: _, inv: _ } => {
@@ -756,12 +776,31 @@ impl Node {
         self.peer_manager.broadcast_transaction(tx).await;
     }
 
-    /// Add a transaction to the mempool
+    /// Add a transaction to the mempool (computing fee from the UTXO set)
     pub fn add_transaction_to_mempool(
         &self,
         tx: btpc_core::blockchain::Transaction,
     ) -> Result<(), String> {
-        self.mempool.add_transaction(tx).map_err(|e| e.to_string())
+        let fee = match self.utxo_db.try_read() {
+            Ok(db) => {
+                let mut input_value: u64 = 0;
+                for input in &tx.inputs {
+                    if let Ok(Some(u)) = db.get_utxo(&input.previous_output) {
+                        input_value = input_value.saturating_add(u.output.value);
+                    }
+                }
+                let output_value: u64 = tx.outputs.iter().map(|o| o.value).sum();
+                input_value.saturating_sub(output_value)
+            }
+            Err(_) => 0,
+        };
+        match self.mempool.write() {
+            Ok(mut mp) => mp
+                .add_transaction(tx, fee)
+                .map(|_| ())
+                .map_err(|e| e.to_string()),
+            Err(e) => Err(e.to_string()),
+        }
     }
 
     /// Get transactions from mempool for mining
@@ -769,8 +808,14 @@ impl Node {
         &self,
         max_count: usize,
     ) -> Vec<btpc_core::blockchain::Transaction> {
-        let all_txs = self.mempool.get_all_transactions();
-        all_txs.into_iter().take(max_count).collect()
+        match self.mempool.read() {
+            Ok(mp) => mp
+                .get_transactions_by_fee(max_count)
+                .into_iter()
+                .map(|e| e.transaction.clone())
+                .collect(),
+            Err(_) => Vec::new(),
+        }
     }
 
     /// Get node status
@@ -800,6 +845,162 @@ pub struct NodeStatus {
     pub block_height: u32,
 }
 
+/// Expand a leading `~/` into the user's home directory.
+fn expand_tilde(path: &std::path::Path) -> PathBuf {
+    if let Some(rest) = path.to_str().and_then(|s| s.strip_prefix("~/")) {
+        if let Some(home) = std::env::var_os("HOME") {
+            return PathBuf::from(home).join(rest);
+        }
+    }
+    path.to_path_buf()
+}
+
+/// One-command setup: generate a self-signed TLS certificate + key, random RPC
+/// credentials, and a complete rig config file (with reward address + rig name).
+fn run_setup(
+    datadir: &std::path::Path,
+    rpc_bind: &str,
+    rpc_port: u16,
+    setup_hosts: &[String],
+    address: Option<&str>,
+    rig_name: Option<&str>,
+    network: Network,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use rand::distributions::{Alphanumeric, DistString};
+
+    let datadir = expand_tilde(datadir);
+    std::fs::create_dir_all(&datadir)?;
+
+    let cert_path = datadir.join("rpc.crt");
+    let key_path = datadir.join("rpc.key");
+
+    // Subject alt names: localhost + loopback + any user-specified hosts/IPs.
+    let mut san = vec![
+        "localhost".to_string(),
+        "127.0.0.1".to_string(),
+        "::1".to_string(),
+    ];
+    for host in setup_hosts {
+        if !san.contains(host) {
+            san.push(host.clone());
+        }
+    }
+
+    // Generate the self-signed certificate (no openssl required).
+    let rcgen::CertifiedKey { cert, key_pair } = rcgen::generate_simple_self_signed(san)?;
+    std::fs::write(&cert_path, cert.pem())?;
+    std::fs::write(&key_path, key_pair.serialize_pem())?;
+
+    // Random credentials (username >= 8 chars, password >= 16 chars).
+    let username = Alphanumeric.sample_string(&mut rand::thread_rng(), 10);
+    let password = Alphanumeric.sample_string(&mut rand::thread_rng(), 24);
+
+    let url_host = if rpc_bind == "0.0.0.0" || rpc_bind == "::" {
+        "localhost".to_string()
+    } else {
+        rpc_bind.to_string()
+    };
+
+    let network_type = match network {
+        Network::Mainnet => "mainnet",
+        Network::Testnet => "testnet",
+        Network::Regtest => "regtest",
+    };
+
+    // Reward address falls back to a placeholder so the file is always valid,
+    // but we warn when the address (the one thing only the user knows) wasn't
+    // supplied.
+    let mining_address = address.unwrap_or("1YourBTPCAddressHere");
+
+    // Rig name: use --name, otherwise generate a unique default so several rigs
+    // are distinguishable without any extra input.
+    let rig_name = match rig_name {
+        Some(n) => n.to_string(),
+        None => format!(
+            "rig-{}",
+            Alphanumeric.sample_string(&mut rand::thread_rng(), 6).to_lowercase()
+        ),
+    };
+
+    let cert_path_str = cert_path.display().to_string();
+
+    // Write a complete, ready-to-use rig config (matches the remote-node.toml
+    // layout in the BTPC_RIG config/ directory).
+    let rig_config = format!(
+        r#"# BTPC Mining Rig — remote node configuration
+# Generated by `btpc_node --setup`. Ready to use.
+
+rig_name = "{rig_name}"
+
+[network]
+network_type = "{network_type}"
+node_mode = "remote"
+remote_rpc_url = "https://{url_host}:{rpc_port}"
+rpc_username = "{username}"
+rpc_password = "{password}"
+tls_ca_cert = "{cert_path_str}"
+data_dir = "/var/lib/btpc"
+
+[mining]
+mining_address = "{mining_address}"
+coinbase_message = "{rig_name}"
+
+[gpu]
+enabled = true
+device_ids = []
+thermal_limit = 85.0
+
+[logging]
+level = "info"
+
+[watchdog]
+enabled = true
+socket_path = "/run/btpc-miner.sock"
+reboot_on_gpu_hang = false
+"#,
+        network_type = network_type,
+        url_host = url_host,
+        rpc_port = rpc_port,
+        username = username,
+        password = password,
+        cert_path_str = cert_path_str,
+        mining_address = mining_address,
+        rig_name = rig_name,
+    );
+
+    let rig_config_path = datadir.join("rig-config.toml");
+    std::fs::write(&rig_config_path, rig_config)?;
+
+    println!();
+    println!("BTPC Node setup complete");
+    println!("  certificate : {}", cert_path.display());
+    println!("  private key : {}", key_path.display());
+    println!("  rig config  : {}", rig_config_path.display());
+    println!();
+    println!("Start the node with:");
+    println!(
+        "  btpc_node --rpcuser {} --rpcpass {} --tlscert {} --tlskey {}",
+        username,
+        password,
+        cert_path.display(),
+        key_path.display()
+    );
+    println!();
+    if address.is_none() {
+        println!("NOTE: no --address was given, so the rig config still has a");
+        println!("placeholder mining_address. Re-run with --address <wallet> or edit");
+        println!("{} to set your reward deposit address.", rig_config_path.display());
+        println!();
+    }
+    println!(
+        "Copy {} to the mining rig and point the rig at it.",
+        rig_config_path.display()
+    );
+    println!();
+
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Parse command line arguments
@@ -824,8 +1025,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Arg::new("rpcport")
                 .long("rpcport")
                 .value_name("PORT")
-                .help("RPC server port")
-                .default_value("8332"),
+                .help("RPC server port (defaults to the network port: 18340/18350/18360)"),
         )
         .arg(
             Arg::new("rpcbind")
@@ -859,6 +1059,55 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .help("Enable mining")
                 .action(clap::ArgAction::SetTrue),
         )
+        .arg(
+            Arg::new("rpcuser")
+                .long("rpcuser")
+                .value_name("USER")
+                .help("RPC username (required; min 8 characters)"),
+        )
+        .arg(
+            Arg::new("rpcpass")
+                .long("rpcpass")
+                .value_name("PASS")
+                .help("RPC password (required; min 16 characters)"),
+        )
+        .arg(
+            Arg::new("tlscert")
+                .long("tlscert")
+                .value_name("PATH")
+                .help("TLS certificate file (PEM) — enables HTTPS RPC"),
+        )
+        .arg(
+            Arg::new("tlskey")
+                .long("tlskey")
+                .value_name("PATH")
+                .help("TLS private key file (PEM) — enables HTTPS RPC"),
+        )
+        .arg(
+            Arg::new("setup")
+                .long("setup")
+                .help("Generate TLS cert + credentials and print ready-to-use config")
+                .action(clap::ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("setup-host")
+                .long("setup-host")
+                .value_name("HOST")
+                .help("Extra hostname/IP to include in the generated cert (repeatable)")
+                .action(clap::ArgAction::Append),
+        )
+        .arg(
+            Arg::new("address")
+                .long("address")
+                .value_name("ADDRESS")
+                .help("BTPC wallet address for block reward deposits (goes in rig config)"),
+        )
+        .arg(
+            Arg::new("name")
+                .long("name")
+                .value_name("NAME")
+                .help("Rig name (embedded in the coinbase message)"),
+        )
         .get_matches();
 
     // Parse network
@@ -874,12 +1123,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Parse other configuration
     let datadir = PathBuf::from(matches.get_one::<String>("datadir").unwrap());
-    let rpc_port: u16 = matches
+    let rpc_port: Option<u16> = matches
         .get_one::<String>("rpcport")
-        .unwrap()
-        .parse()
-        .map_err(|_| "Invalid RPC port")?;
+        .map(|s| s.parse::<u16>().map_err(|_| "Invalid RPC port"))
+        .transpose()?;
+    // Effective RPC port: the network-specific default (mainnet 18340, testnet 18350,
+    // regtest 18360) unless overridden via --rpcport.
+    let rpc_port = rpc_port.unwrap_or_else(|| RpcConfig::for_network(network).port);
     let rpc_bind = matches.get_one::<String>("rpcbind").unwrap().clone();
+
+    // One-command setup: generate cert + credentials + rig config, then exit.
+    if matches.get_flag("setup") {
+        let setup_hosts: Vec<String> = matches
+            .get_many::<String>("setup-host")
+            .unwrap_or_default()
+            .cloned()
+            .collect();
+        let address = matches.get_one::<String>("address").map(|s| s.as_str());
+        let name = matches.get_one::<String>("name").map(|s| s.as_str());
+        run_setup(&datadir, &rpc_bind, rpc_port, &setup_hosts, address, name, network)?;
+        return Ok(());
+    }
+
     let listen_addr: Option<String> = matches.get_one::<String>("listen").cloned();
     let connect_peers: Vec<String> = matches
         .get_many::<String>("connect")
@@ -893,7 +1158,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut rpc_config = RpcConfig::for_network(network);
     rpc_config.bind_address = rpc_bind;
     rpc_config.port = rpc_port;
-    rpc_config.enable_auth = false; // Disable auth for local testing
+
+    // RPC authentication is mandatory — the node refuses to start without
+    // valid credentials (enforced by RpcServer::new_validated).
+    rpc_config.enable_auth = true;
+    rpc_config.username = matches.get_one::<String>("rpcuser").cloned();
+    rpc_config.password = matches.get_one::<String>("rpcpass").cloned();
+
+    // TLS is optional: enabled when cert/key paths are provided
+    // (new_validated requires BOTH once enabled).
+    let tls_cert = matches.get_one::<String>("tlscert").cloned();
+    let tls_key = matches.get_one::<String>("tlskey").cloned();
+    rpc_config.enable_tls = tls_cert.is_some() || tls_key.is_some();
+    rpc_config.tls_cert_path = tls_cert;
+    rpc_config.tls_key_path = tls_key;
 
     let config = NodeConfig {
         network,
