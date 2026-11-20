@@ -41,8 +41,8 @@ pub struct NodeConfig {
     pub max_peers: usize,
     /// Enable mining
     pub enable_mining: bool,
-    /// Listen address for P2P
-    pub listen_addr: String,
+    /// Listen address for P2P (None = use the network-specific default)
+    pub listen_addr: Option<String>,
     /// Connect to specific peers
     pub connect_peers: Vec<String>,
     /// Enable daemon mode
@@ -57,7 +57,7 @@ impl Default for NodeConfig {
             rpc: RpcConfig::default(),
             max_peers: 8,
             enable_mining: false,
-            listen_addr: "0.0.0.0:8333".to_string(),
+            listen_addr: None,
             connect_peers: Vec::new(),
             daemon: false,
         }
@@ -215,19 +215,28 @@ impl Node {
         let sync_manager = Arc::new(RwLock::new(SyncManager::new(config.max_peers)));
         let peer_discovery = Arc::new(RwLock::new(PeerDiscovery::new(1000)));
 
-        // Initialize peer manager
-        let listen_addr: std::net::SocketAddr = config
-            .listen_addr
-            .parse()
-            .unwrap_or_else(|_| "0.0.0.0:8333".parse().unwrap());
-
-        // Create network config based on BTPC network type
+        // Create network config based on the BTPC network type. Each network
+        // defines its own P2P listen address + port:
+        //   mainnet [::]:18341, testnet [::]:18351, regtest [::]:18361.
         let mut network_config = match config.network {
             Network::Mainnet => btpc_core::network::NetworkConfig::mainnet(),
             Network::Testnet => btpc_core::network::NetworkConfig::testnet(),
-            Network::Regtest => btpc_core::network::NetworkConfig::testnet(), // Use testnet config for regtest
+            Network::Regtest => btpc_core::network::NetworkConfig::regtest(),
         };
-        network_config.listen_addr = listen_addr;
+
+        // --listen is optional: only override the network default when the user
+        // explicitly provided an address. This fixes the previous bug where the
+        // hardcoded default "0.0.0.0:8333" forced every network onto Bitcoin's
+        // P2P port (and regtest was mis-mapped to testnet's config).
+        if let Some(addr_str) = &config.listen_addr {
+            match addr_str.parse::<std::net::SocketAddr>() {
+                Ok(addr) => network_config.listen_addr = addr,
+                Err(_) => eprintln!(
+                    "⚠️  Invalid --listen address '{}', using network default {}",
+                    addr_str, network_config.listen_addr
+                ),
+            }
+        }
 
         let peer_manager = Arc::new(SimplePeerManager::new(
             network_config,
@@ -336,7 +345,13 @@ impl Node {
 
     /// Start P2P networking
     async fn start_networking(&self) -> Result<(), Box<dyn std::error::Error>> {
-        println!("Starting P2P networking on {}", self.config.listen_addr);
+        println!(
+            "Starting P2P networking on {}",
+            self.config
+                .listen_addr
+                .as_deref()
+                .unwrap_or("(network default)")
+        );
 
         // ── Bitcoin-style bootstrap ──────────────────────────────────────────
 
@@ -823,8 +838,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Arg::new("listen")
                 .long("listen")
                 .value_name("ADDR")
-                .help("P2P listen address")
-                .default_value("0.0.0.0:8333"),
+                .help("P2P listen address (defaults to the network port: 18341/18351/18361)"),
         )
         .arg(
             Arg::new("connect")
@@ -866,7 +880,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .parse()
         .map_err(|_| "Invalid RPC port")?;
     let rpc_bind = matches.get_one::<String>("rpcbind").unwrap().clone();
-    let listen_addr = matches.get_one::<String>("listen").unwrap().clone();
+    let listen_addr: Option<String> = matches.get_one::<String>("listen").cloned();
     let connect_peers: Vec<String> = matches
         .get_many::<String>("connect")
         .unwrap_or_default()
