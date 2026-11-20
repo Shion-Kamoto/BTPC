@@ -24,8 +24,9 @@ authors = ["BTPC Development Team"]
 
 # Shared dependencies across workspace
 [workspace.dependencies]
-# TLS security pin — fixes RUSTSEC-2026-0049 (CRL matching flaw)
-rustls-webpki = "0.103.10"
+# TLS security pin — fixes RUSTSEC-2026-0049 (CRL matching flaw) and
+# RUSTSEC-2026-0098/0099/0104/0382 (name-constraint + intermediate cert flaws)
+rustls-webpki = "0.103.16"
 
 # Cryptography
 pqcrypto = "0.18"
