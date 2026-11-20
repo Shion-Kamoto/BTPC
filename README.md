@@ -67,12 +67,23 @@ The desktop app binary will be in `btpc-desktop-app/src-tauri/target/release/`
 ## Quick Start
 
 ### Running a Node
-```bash
-# Start a node on regtest network (for testing)
-./target/release/btpc_node --network regtest
 
-# Start a node on mainnet
-./target/release/btpc_node --network mainnet
+RPC authentication is **mandatory** — the node refuses to start without valid credentials
+(`--rpcuser` ≥ 8 chars, `--rpcpass` ≥ 16 chars).
+
+```bash
+# One-command setup: generate a self-signed TLS cert + random RPC credentials +
+# a complete rig config (rig-config.toml) — no openssl needed.
+./target/release/btpc_node --setup --network mainnet --address <wallet> --name rig-01
+
+# Start a node (mainnet P2P [::]:18341, RPC on 127.0.0.1:18340)
+./target/release/btpc_node --network mainnet \
+    --rpcuser <user> --rpcpass <pass> \
+    --tlscert <datadir>/rpc.crt --tlskey <datadir>/rpc.key
+
+# Testnet / regtest
+./target/release/btpc_node --network testnet --rpcuser <u> --rpcpass <p>
+./target/release/btpc_node --network regtest --rpcuser <u> --rpcpass <p>
 ```
 
 ### Creating a Wallet
@@ -156,23 +167,35 @@ cargo bench
 
 ## Configuration
 
+### Network Parameters
+
+| Network | P2P port | RPC port | User agent |
+|---|---|---|---|
+| mainnet | 18341 | 18340 | `/BTPC:1.0.0/` |
+| testnet | 18351 | 18350 | `/BTPC:1.0.0-testnet/` |
+| regtest | 18361 | 18360 | `/BTPC:1.0.0-regtest/` |
+
+The node listens on `[::]:<port>` (dual-stack). `--listen` overrides the port only when
+passed explicitly; by default each network uses its own port above. RPC is a separate
+`--rpcport` (defaults to the network's RPC port above) bound to `127.0.0.1` by default.
+
 ### Node Configuration
-Create `config.toml`:
-```toml
-[network]
-network_type = "mainnet"  # or "testnet", "regtest"
-listen_addr = "0.0.0.0:8333"
-max_peers = 125
 
-[rpc]
-enabled = true
-bind_address = "127.0.0.1:8332"
-username = "your_rpc_user"
-password = "your_rpc_password"
+The node is configured via **CLI flags**, not a config file:
 
-[storage]
-data_dir = "~/.btpc/mainnet"
-```
+- `--network mainnet|testnet|regtest` (default `mainnet`)
+- `--datadir <dir>` (default `~/.btpc`)
+- `--listen <addr>` (optional; defaults to the network port above)
+- `--connect <peer>` (repeatable; explicit outbound peer)
+- `--rpcport <port>` / `--rpcbind <addr>` (defaults to 18340/18350/18360 / 127.0.0.1)
+- `--rpcuser <user>` / `--rpcpass <pass>` (**required** — auth is mandatory)
+- `--tlscert <path>` / `--tlskey <path>` (optional; enable HTTPS RPC)
+- `--daemon` (run without waiting on stdin)
+- `--mine` (in-process CPU mining, test path)
+- `--setup` (one-command TLS cert + credential + rig-config generator)
+
+`--setup` writes `<datadir>/rpc.crt`, `rpc.key`, and a complete `rig-config.toml`
+ready to hand to the mining rig.
 
 ### Mining Configuration
 Set mining address in wallet:
@@ -187,6 +210,17 @@ Set mining address in wallet:
 - **Block Time**: ~10 minutes target
 - **Supply**: Emission schedule with halving (see economics module)
 - **Storage**: RocksDB with column families for blocks, transactions, UTXO set
+
+## Mining Rig & OS Image
+
+The dedicated GPU mining rig lives in a separate tree: **BTPC_RIG**
+(`/media/bob/HDD1/BTPC_RIG`). It's a thin JSON-RPC client (not a P2P node) that mines
+against a `btpc_node` over HTTPS with a pinned self-signed cert. It ships **mainnet-only**
+(`[::]:18341`); testnet/regtest are dev-only on the node. See its own README.
+
+`BTPC_RIG/btpc-os/` builds a BalenaEtcher-flashable OS image (Ubuntu 24.04 + NVIDIA 580 +
+AMD ROCm 5.7.2 + the node/rig/dashboard/watchdog binaries) that boots a rig straight into
+mining. Build with `sudo ./build.sh`; the image lands in `btpc-os/out/`.
 
 ## Security
 
